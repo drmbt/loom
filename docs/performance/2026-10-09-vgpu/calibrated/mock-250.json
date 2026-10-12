@@ -1,0 +1,1736 @@
+{
+  "environment": {
+    "node": "v22.23.3",
+    "platform": "darwin/arm64",
+    "cpu": "Apple M3 Max",
+    "count": 250,
+    "runs": 15,
+    "trialOrder": "alternating baseline/candidate process order; no samples discarded"
+  },
+  "harnessHash": "79e0e6848e12363e1fe232afef258bdd7573545f1fb4a27977627c82fcfd69e6",
+  "artifacts": [
+    {
+      "label": "baseline",
+      "entry": "/tmp/loom-vgpu-canary-base/packages/vgpu-api/dist/mock.js",
+      "entryHash": "2348537830f5f8f02b0d8600c1a4bb09673912fbb1330c3d5fecb19491fbcb60",
+      "drawHash": "1f35f9e2bb2a33cb2696817cb95c005c997030874720b889b71c0ddf8f1e8d85",
+      "frameHash": "6666b036b299459b4ade7c92aa2cfc0401ce30cd5d9be05213f2bfd814a96bdb"
+    },
+    {
+      "label": "pipeline",
+      "entry": "/tmp/loom-vgpu-pipeline-candidate/packages/vgpu-api/dist/mock.js",
+      "entryHash": "2348537830f5f8f02b0d8600c1a4bb09673912fbb1330c3d5fecb19491fbcb60",
+      "drawHash": "560ee80c2eb1db128a11800c50042fe884c0f3b780fe80f3806f4dee3d94f0f1",
+      "frameHash": "cb4c9fff3b029c880f44551ec5bab2feac89a5fae8476d91fd652a8ce0c4f19c"
+    }
+  ],
+  "results": [
+    {
+      "mode": "unique",
+      "entries": [
+        {
+          "label": "baseline",
+          "path": "/tmp/loom-vgpu-canary-base/packages/vgpu-api/dist/mock.js",
+          "samples": [
+            0.5959834000000004,
+            0.6069102000000005,
+            0.5990481111111109,
+            0.6037388222222227,
+            0.6015157555555561,
+            0.5934517777777781,
+            0.6041359777777776,
+            0.5960519111111116,
+            0.5956055333333315,
+            0.5687425555555551,
+            0.6019425777777795,
+            0.5923759555555557,
+            0.5918137777777781,
+            0.5967416888888885,
+            0.5992722666666658
+          ],
+          "pixels": [],
+          "trials": [
+            {
+              "usPerDraw": 0.5959834000000004,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03884004999995412,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 17.749999999992383
+              },
+              "estimatedObserverUsPerDraw": 0.00005178673333327216,
+              "estimatedAdjustedUsPerDraw": 0.5959316132666671
+            },
+            {
+              "usPerDraw": 0.6069102000000005,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.04009660000000679,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 80.87500000000603
+              },
+              "estimatedObserverUsPerDraw": 0.000053462133333342384,
+              "estimatedAdjustedUsPerDraw": 0.6068567378666672
+            },
+            {
+              "usPerDraw": 0.5990481111111109,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03594830000001679,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 7.082999999994399
+              },
+              "estimatedObserverUsPerDraw": 0.00004793106666668905,
+              "estimatedAdjustedUsPerDraw": 0.5990001800444442
+            },
+            {
+              "usPerDraw": 0.6037388222222227,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.039653100000028016,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 16.08299999999474
+              },
+              "estimatedObserverUsPerDraw": 0.00005287080000003735,
+              "estimatedAdjustedUsPerDraw": 0.6036859514222227
+            },
+            {
+              "usPerDraw": 0.6015157555555561,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.039309200000033684,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 9.624999999999773
+              },
+              "estimatedObserverUsPerDraw": 0.00005241226666671158,
+              "estimatedAdjustedUsPerDraw": 0.6014633432888894
+            },
+            {
+              "usPerDraw": 0.5934517777777781,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.04209295000000779,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 100.6670000000014
+              },
+              "estimatedObserverUsPerDraw": 0.00005612393333334372,
+              "estimatedAdjustedUsPerDraw": 0.5933956538444448
+            },
+            {
+              "usPerDraw": 0.6041359777777776,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.0416128999999998,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 20.833000000010315
+              },
+              "estimatedObserverUsPerDraw": 0.0000554838666666664,
+              "estimatedAdjustedUsPerDraw": 0.604080493911111
+            },
+            {
+              "usPerDraw": 0.5960519111111116,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.0394512999999634,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 32.33300000000838
+              },
+              "estimatedObserverUsPerDraw": 0.00005260173333328453,
+              "estimatedAdjustedUsPerDraw": 0.5959993093777782
+            },
+            {
+              "usPerDraw": 0.5956055333333315,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.04135649999998847,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 90.00000000000341
+              },
+              "estimatedObserverUsPerDraw": 0.000055141999999984626,
+              "estimatedAdjustedUsPerDraw": 0.5955503913333315
+            },
+            {
+              "usPerDraw": 0.5687425555555551,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.0442821500000008,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08400000000108321,
+                "minUs": 0,
+                "maxUs": 12.750000000011141
+              },
+              "estimatedObserverUsPerDraw": 0.00005904286666666773,
+              "estimatedAdjustedUsPerDraw": 0.5686835126888884
+            },
+            {
+              "usPerDraw": 0.6019425777777795,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03897349999997459,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 11.375000000001023
+              },
+              "estimatedObserverUsPerDraw": 0.000051964666666632786,
+              "estimatedAdjustedUsPerDraw": 0.6018906131111128
+            },
+            {
+              "usPerDraw": 0.5923759555555557,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.039377199999997003,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 6.457999999994968
+              },
+              "estimatedObserverUsPerDraw": 0.00005250293333332934,
+              "estimatedAdjustedUsPerDraw": 0.5923234526222223
+            },
+            {
+              "usPerDraw": 0.5918137777777781,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03844270000007057,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 4.208000000005541
+              },
+              "estimatedObserverUsPerDraw": 0.00005125693333342743,
+              "estimatedAdjustedUsPerDraw": 0.5917625208444447
+            },
+            {
+              "usPerDraw": 0.5967416888888885,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.039145949999968364,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 6.874999999993747
+              },
+              "estimatedObserverUsPerDraw": 0.00005219459999995782,
+              "estimatedAdjustedUsPerDraw": 0.5966894942888885
+            },
+            {
+              "usPerDraw": 0.5992722666666658,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.039544400000005454,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 11.084000000010974
+              },
+              "estimatedObserverUsPerDraw": 0.00005272586666667394,
+              "estimatedAdjustedUsPerDraw": 0.5992195407999991
+            }
+          ],
+          "median": 0.5967416888888885,
+          "min": 0.5687425555555551,
+          "max": 0.6069102000000005
+        },
+        {
+          "label": "pipeline",
+          "path": "/tmp/loom-vgpu-pipeline-candidate/packages/vgpu-api/dist/mock.js",
+          "samples": [
+            0.584066622222223,
+            0.6033268666666658,
+            0.5870907777777776,
+            0.5817462666666658,
+            0.5809092000000001,
+            0.5915649777777803,
+            0.6138249777777771,
+            0.6028408222222206,
+            0.6084963999999997,
+            0.6095934444444446,
+            0.5779193777777787,
+            0.5796314222222213,
+            0.6032194666666653,
+            0.608634333333335,
+            0.5882222666666672
+          ],
+          "pixels": [],
+          "trials": [
+            {
+              "usPerDraw": 0.584066622222223,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03858964999998804,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 7.167000000009693
+              },
+              "estimatedObserverUsPerDraw": 0.00005145286666665072,
+              "estimatedAdjustedUsPerDraw": 0.5840151693555564
+            },
+            {
+              "usPerDraw": 0.6033268666666658,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03795060000003758,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 2.249999999989427
+              },
+              "estimatedObserverUsPerDraw": 0.00005060080000005011,
+              "estimatedAdjustedUsPerDraw": 0.6032762658666657
+            },
+            {
+              "usPerDraw": 0.5870907777777776,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.040337349999951755,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 24.292000000002645
+              },
+              "estimatedObserverUsPerDraw": 0.00005378313333326901,
+              "estimatedAdjustedUsPerDraw": 0.5870369946444444
+            },
+            {
+              "usPerDraw": 0.5817462666666658,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03836459999999633,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 3.124999999997158
+              },
+              "estimatedObserverUsPerDraw": 0.0000511527999999951,
+              "estimatedAdjustedUsPerDraw": 0.5816951138666658
+            },
+            {
+              "usPerDraw": 0.5809092000000001,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.038062350000023316,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 11.624999999995111
+              },
+              "estimatedObserverUsPerDraw": 0.00005074980000003109,
+              "estimatedAdjustedUsPerDraw": 0.5808584502
+            },
+            {
+              "usPerDraw": 0.5915649777777803,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03796509999994413,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 19.458000000000197
+              },
+              "estimatedObserverUsPerDraw": 0.00005062013333325884,
+              "estimatedAdjustedUsPerDraw": 0.591514357644447
+            },
+            {
+              "usPerDraw": 0.6138249777777771,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03575425000000223,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 3.249999999994202
+              },
+              "estimatedObserverUsPerDraw": 0.0000476723333333363,
+              "estimatedAdjustedUsPerDraw": 0.6137773054444438
+            },
+            {
+              "usPerDraw": 0.6028408222222206,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03729675000000654,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 4.708000000007928
+              },
+              "estimatedObserverUsPerDraw": 0.00004972900000000872,
+              "estimatedAdjustedUsPerDraw": 0.6027910932222206
+            },
+            {
+              "usPerDraw": 0.6084963999999997,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.037134750000003436,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 10.166999999995596
+              },
+              "estimatedObserverUsPerDraw": 0.00004951300000000458,
+              "estimatedAdjustedUsPerDraw": 0.6084468869999997
+            },
+            {
+              "usPerDraw": 0.6095934444444446,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03886940000001147,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 2.417000000008329
+              },
+              "estimatedObserverUsPerDraw": 0.000051825866666681955,
+              "estimatedAdjustedUsPerDraw": 0.609541618577778
+            },
+            {
+              "usPerDraw": 0.5779193777777787,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03616034999998234,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 8.250000000003865
+              },
+              "estimatedObserverUsPerDraw": 0.000048213799999976455,
+              "estimatedAdjustedUsPerDraw": 0.5778711639777787
+            },
+            {
+              "usPerDraw": 0.5796314222222213,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.037340500000045296,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 2.4579999999900792
+              },
+              "estimatedObserverUsPerDraw": 0.00004978733333339373,
+              "estimatedAdjustedUsPerDraw": 0.5795816348888879
+            },
+            {
+              "usPerDraw": 0.6032194666666653,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.039778299999965586,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 15.375000000005912
+              },
+              "estimatedObserverUsPerDraw": 0.00005303773333328745,
+              "estimatedAdjustedUsPerDraw": 0.6031664289333319
+            },
+            {
+              "usPerDraw": 0.608634333333335,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03815735000000302,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 1.9580000000019027
+              },
+              "estimatedObserverUsPerDraw": 0.00005087646666667069,
+              "estimatedAdjustedUsPerDraw": 0.6085834568666684
+            },
+            {
+              "usPerDraw": 0.5882222666666672,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03599339999996261,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 11.583000000001675
+              },
+              "estimatedObserverUsPerDraw": 0.00004799119999995014,
+              "estimatedAdjustedUsPerDraw": 0.5881742754666672
+            }
+          ],
+          "median": 0.5915649777777803,
+          "min": 0.5779193777777787,
+          "max": 0.6138249777777771
+        }
+      ]
+    },
+    {
+      "mode": "repeated",
+      "entries": [
+        {
+          "label": "baseline",
+          "path": "/tmp/loom-vgpu-canary-base/packages/vgpu-api/dist/mock.js",
+          "samples": [
+            0.36246575555555754,
+            0.35914355555555566,
+            0.346912044444445,
+            0.3333074666666666,
+            0.3404193777777768,
+            0.34728597777777803,
+            0.34917682222222257,
+            0.3373445111111121,
+            0.3552342000000007,
+            0.34999460000000115,
+            0.3750064222222205,
+            0.32634255555555364,
+            0.3508389777777776,
+            0.3412887555555544,
+            0.32993328888889106
+          ],
+          "pixels": [],
+          "trials": [
+            {
+              "usPerDraw": 0.36246575555555754,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03520295000004978,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 5.375000000000796
+              },
+              "estimatedObserverUsPerDraw": 0.00004693726666673304,
+              "estimatedAdjustedUsPerDraw": 0.36241881828889083
+            },
+            {
+              "usPerDraw": 0.35914355555555566,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03484639999998791,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 7.3330000000026985
+              },
+              "estimatedObserverUsPerDraw": 0.00004646186666665055,
+              "estimatedAdjustedUsPerDraw": 0.35909709368888904
+            },
+            {
+              "usPerDraw": 0.346912044444445,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03472859999999613,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 4.707999999993717
+              },
+              "estimatedObserverUsPerDraw": 0.00004630479999999485,
+              "estimatedAdjustedUsPerDraw": 0.346865739644445
+            },
+            {
+              "usPerDraw": 0.3333074666666666,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03448284999999203,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 8.83299999999565
+              },
+              "estimatedObserverUsPerDraw": 0.000045977133333322705,
+              "estimatedAdjustedUsPerDraw": 0.3332614895333333
+            },
+            {
+              "usPerDraw": 0.3404193777777768,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.034898600000002486,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 6.042000000007874
+              },
+              "estimatedObserverUsPerDraw": 0.00004653146666666998,
+              "estimatedAdjustedUsPerDraw": 0.34037284631111014
+            },
+            {
+              "usPerDraw": 0.34728597777777803,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03570834999996535,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 16.083999999992216
+              },
+              "estimatedObserverUsPerDraw": 0.00004761113333328713,
+              "estimatedAdjustedUsPerDraw": 0.34723836664444474
+            },
+            {
+              "usPerDraw": 0.34917682222222257,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03844979999995459,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 68.41700000001083
+              },
+              "estimatedObserverUsPerDraw": 0.000051266399999939455,
+              "estimatedAdjustedUsPerDraw": 0.34912555582222266
+            },
+            {
+              "usPerDraw": 0.3373445111111121,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03408559999998388,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 6.957999999997355
+              },
+              "estimatedObserverUsPerDraw": 0.000045447466666645174,
+              "estimatedAdjustedUsPerDraw": 0.33729906364444545
+            },
+            {
+              "usPerDraw": 0.3552342000000007,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03458750000000137,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 6.000000000000227
+              },
+              "estimatedObserverUsPerDraw": 0.00004611666666666849,
+              "estimatedAdjustedUsPerDraw": 0.35518808333333407
+            },
+            {
+              "usPerDraw": 0.34999460000000115,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.035469999999977374,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 5.167000000000144
+              },
+              "estimatedObserverUsPerDraw": 0.00004729333333330316,
+              "estimatedAdjustedUsPerDraw": 0.34994730666666785
+            },
+            {
+              "usPerDraw": 0.3750064222222205,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03528519999997073,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 6.457999999994968
+              },
+              "estimatedObserverUsPerDraw": 0.0000470469333332943,
+              "estimatedAdjustedUsPerDraw": 0.37495937528888723
+            },
+            {
+              "usPerDraw": 0.32634255555555364,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03443684999999377,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 14.083999999996877
+              },
+              "estimatedObserverUsPerDraw": 0.00004591579999999169,
+              "estimatedAdjustedUsPerDraw": 0.3262966397555536
+            },
+            {
+              "usPerDraw": 0.3508389777777776,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03528974999999761,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 9.082999999989738
+              },
+              "estimatedObserverUsPerDraw": 0.000047052999999996813,
+              "estimatedAdjustedUsPerDraw": 0.3507919247777776
+            },
+            {
+              "usPerDraw": 0.3412887555555544,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03481774999999203,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 8.666999999988434
+              },
+              "estimatedObserverUsPerDraw": 0.000046423666666656035,
+              "estimatedAdjustedUsPerDraw": 0.34124233188888775
+            },
+            {
+              "usPerDraw": 0.32993328888889106,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.034271600000003136,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 5.290999999999713
+              },
+              "estimatedObserverUsPerDraw": 0.00004569546666667085,
+              "estimatedAdjustedUsPerDraw": 0.3298875934222244
+            }
+          ],
+          "median": 0.34728597777777803,
+          "min": 0.32634255555555364,
+          "max": 0.3750064222222205
+        },
+        {
+          "label": "pipeline",
+          "path": "/tmp/loom-vgpu-pipeline-candidate/packages/vgpu-api/dist/mock.js",
+          "samples": [
+            0.3387944,
+            0.3533027555555566,
+            0.34631017777777834,
+            0.35174060000000035,
+            0.3481471777777769,
+            0.34427782222221986,
+            0.35940460000000013,
+            0.33978339999999935,
+            0.3439407333333329,
+            0.3508315555555536,
+            0.34602504444444265,
+            0.3426778222222216,
+            0.3356426444444466,
+            0.35499155555555556,
+            0.34887315555555654
+          ],
+          "pixels": [],
+          "trials": [
+            {
+              "usPerDraw": 0.3387944,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.038625449999988605,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08299999998939711,
+                "minUs": 0,
+                "maxUs": 99.1250000000008
+              },
+              "estimatedObserverUsPerDraw": 0.00005150059999998481,
+              "estimatedAdjustedUsPerDraw": 0.3387428994
+            },
+            {
+              "usPerDraw": 0.3533027555555566,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03374625000001288,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 9.500000000002728
+              },
+              "estimatedObserverUsPerDraw": 0.00004499500000001717,
+              "estimatedAdjustedUsPerDraw": 0.35325776055555663
+            },
+            {
+              "usPerDraw": 0.34631017777777834,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03752994999998336,
+                "medianUs": 0.04100000001017179,
+                "p95Us": 0.08299999998939711,
+                "minUs": 0,
+                "maxUs": 91.70899999999449
+              },
+              "estimatedObserverUsPerDraw": 0.00005003993333331115,
+              "estimatedAdjustedUsPerDraw": 0.34626013784444504
+            },
+            {
+              "usPerDraw": 0.35174060000000035,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03440004999996944,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 6.1249999999972715
+              },
+              "estimatedObserverUsPerDraw": 0.00004586673333329259,
+              "estimatedAdjustedUsPerDraw": 0.35169473326666706
+            },
+            {
+              "usPerDraw": 0.3481471777777769,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.033485500000023906,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 1.5409999999889124
+              },
+              "estimatedObserverUsPerDraw": 0.00004464733333336521,
+              "estimatedAdjustedUsPerDraw": 0.3481025304444435
+            },
+            {
+              "usPerDraw": 0.34427782222221986,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03388879999998338,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 1.6669999999976426
+              },
+              "estimatedObserverUsPerDraw": 0.000045185066666644504,
+              "estimatedAdjustedUsPerDraw": 0.34423263715555324
+            },
+            {
+              "usPerDraw": 0.35940460000000013,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03438104999998544,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 5.167000000000144
+              },
+              "estimatedObserverUsPerDraw": 0.000045841399999980584,
+              "estimatedAdjustedUsPerDraw": 0.35935875860000016
+            },
+            {
+              "usPerDraw": 0.33978339999999935,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.039538449999980685,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 77.66700000000526
+              },
+              "estimatedObserverUsPerDraw": 0.00005271793333330758,
+              "estimatedAdjustedUsPerDraw": 0.339730682066666
+            },
+            {
+              "usPerDraw": 0.3439407333333329,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.038104799999986484,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 71.54100000001051
+              },
+              "estimatedObserverUsPerDraw": 0.00005080639999998198,
+              "estimatedAdjustedUsPerDraw": 0.3438899269333329
+            },
+            {
+              "usPerDraw": 0.3508315555555536,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.034451949999964884,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 4.166999999995369
+              },
+              "estimatedObserverUsPerDraw": 0.00004593593333328651,
+              "estimatedAdjustedUsPerDraw": 0.3507856196222203
+            },
+            {
+              "usPerDraw": 0.34602504444444265,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.033773300000012794,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 5.1660000000026685
+              },
+              "estimatedObserverUsPerDraw": 0.000045031066666683726,
+              "estimatedAdjustedUsPerDraw": 0.34598001337777595
+            },
+            {
+              "usPerDraw": 0.3426778222222216,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03426819999999466,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 3.8330000000001974
+              },
+              "estimatedObserverUsPerDraw": 0.00004569093333332622,
+              "estimatedAdjustedUsPerDraw": 0.34263213128888825
+            },
+            {
+              "usPerDraw": 0.3356426444444466,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03388605000003793,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 3.249999999994202
+              },
+              "estimatedObserverUsPerDraw": 0.00004518140000005057,
+              "estimatedAdjustedUsPerDraw": 0.33559746304444654
+            },
+            {
+              "usPerDraw": 0.35499155555555556,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03487555000004363,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 4.415999999991982
+              },
+              "estimatedObserverUsPerDraw": 0.00004650073333339151,
+              "estimatedAdjustedUsPerDraw": 0.35494505482222216
+            },
+            {
+              "usPerDraw": 0.34887315555555654,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.0387312499999922,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 67.08299999999667
+              },
+              "estimatedObserverUsPerDraw": 0.00005164166666665627,
+              "estimatedAdjustedUsPerDraw": 0.3488215138888899
+            }
+          ],
+          "median": 0.34631017777777834,
+          "min": 0.3356426444444466,
+          "max": 0.35940460000000013
+        }
+      ]
+    },
+    {
+      "mode": "alternating",
+      "entries": [
+        {
+          "label": "baseline",
+          "path": "/tmp/loom-vgpu-canary-base/packages/vgpu-api/dist/mock.js",
+          "samples": [
+            0.3545396444444443,
+            0.38232033333333443,
+            0.37357777777777695,
+            0.3612657555555551,
+            0.382469377777778,
+            0.3769853111111107,
+            0.37403417777777764,
+            0.3836202666666652,
+            0.36196197777777867,
+            0.3742527111111109,
+            0.39064820000000033,
+            0.37004633333333176,
+            0.3876305111111126,
+            0.3842602222222221,
+            0.3862759555555562
+          ],
+          "pixels": [],
+          "trials": [
+            {
+              "usPerDraw": 0.3545396444444443,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03449319999999005,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 4.917000000006055
+              },
+              "estimatedObserverUsPerDraw": 0.000045990933333320066,
+              "estimatedAdjustedUsPerDraw": 0.354493653511111
+            },
+            {
+              "usPerDraw": 0.38232033333333443,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.033941400000006186,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 3.6249999999995453
+              },
+              "estimatedObserverUsPerDraw": 0.00004525520000000825,
+              "estimatedAdjustedUsPerDraw": 0.38227507813333444
+            },
+            {
+              "usPerDraw": 0.37357777777777695,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.038834600000003404,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 83.95799999999554
+              },
+              "estimatedObserverUsPerDraw": 0.00005177946666667121,
+              "estimatedAdjustedUsPerDraw": 0.3735259983111103
+            },
+            {
+              "usPerDraw": 0.3612657555555551,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03485840000001446,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 7.541000000003351
+              },
+              "estimatedObserverUsPerDraw": 0.00004647786666668594,
+              "estimatedAdjustedUsPerDraw": 0.36121927768888845
+            },
+            {
+              "usPerDraw": 0.382469377777778,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03507965000003068,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 6.540999999998576
+              },
+              "estimatedObserverUsPerDraw": 0.000046772866666707576,
+              "estimatedAdjustedUsPerDraw": 0.3824226049111113
+            },
+            {
+              "usPerDraw": 0.3769853111111107,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03475355000001059,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 4.208000000005541
+              },
+              "estimatedObserverUsPerDraw": 0.000046338066666680784,
+              "estimatedAdjustedUsPerDraw": 0.376938973044444
+            },
+            {
+              "usPerDraw": 0.37403417777777764,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.035141500000003136,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 7.167000000009693
+              },
+              "estimatedObserverUsPerDraw": 0.00004685533333333751,
+              "estimatedAdjustedUsPerDraw": 0.3739873224444443
+            },
+            {
+              "usPerDraw": 0.3836202666666652,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03440754999999172,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 4.708000000007928
+              },
+              "estimatedObserverUsPerDraw": 0.00004587673333332229,
+              "estimatedAdjustedUsPerDraw": 0.38357438993333187
+            },
+            {
+              "usPerDraw": 0.36196197777777867,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03597330000001904,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 15.708000000003608
+              },
+              "estimatedObserverUsPerDraw": 0.00004796440000002539,
+              "estimatedAdjustedUsPerDraw": 0.3619140133777786
+            },
+            {
+              "usPerDraw": 0.3742527111111109,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.034491500000014955,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 9.749999999996817
+              },
+              "estimatedObserverUsPerDraw": 0.000045988666666686605,
+              "estimatedAdjustedUsPerDraw": 0.37420672244444425
+            },
+            {
+              "usPerDraw": 0.39064820000000033,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.035082750000032095,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 8.665999999990959
+              },
+              "estimatedObserverUsPerDraw": 0.000046777000000042795,
+              "estimatedAdjustedUsPerDraw": 0.3906014230000003
+            },
+            {
+              "usPerDraw": 0.37004633333333176,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.039789350000002346,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 104.41600000000051
+              },
+              "estimatedObserverUsPerDraw": 0.0000530524666666698,
+              "estimatedAdjustedUsPerDraw": 0.3699932808666651
+            },
+            {
+              "usPerDraw": 0.3876305111111126,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.035890699999995945,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 10.041999999998552
+              },
+              "estimatedObserverUsPerDraw": 0.00004785426666666126,
+              "estimatedAdjustedUsPerDraw": 0.3875826568444459
+            },
+            {
+              "usPerDraw": 0.3842602222222221,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.0351115999999827,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 4.583000000010884
+              },
+              "estimatedObserverUsPerDraw": 0.0000468154666666436,
+              "estimatedAdjustedUsPerDraw": 0.3842134067555555
+            },
+            {
+              "usPerDraw": 0.3862759555555562,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.04040069999997087,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 89.25000000000693
+              },
+              "estimatedObserverUsPerDraw": 0.00005386759999996116,
+              "estimatedAdjustedUsPerDraw": 0.38622208795555624
+            }
+          ],
+          "median": 0.3769853111111107,
+          "min": 0.3545396444444443,
+          "max": 0.39064820000000033
+        },
+        {
+          "label": "pipeline",
+          "path": "/tmp/loom-vgpu-pipeline-candidate/packages/vgpu-api/dist/mock.js",
+          "samples": [
+            0.38190833333333324,
+            0.3858823999999989,
+            0.36263984444444364,
+            0.37584622222222097,
+            0.3729296666666681,
+            0.38941755555555346,
+            0.4022944666666673,
+            0.39046768888889005,
+            0.3776258444444447,
+            0.3762722666666669,
+            0.3797360888888881,
+            0.39284171111111194,
+            0.402429622222222,
+            0.39012793333333273,
+            0.4130435333333329
+          ],
+          "pixels": [],
+          "trials": [
+            {
+              "usPerDraw": 0.38190833333333324,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03410165000001868,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 3.5419999999959373
+              },
+              "estimatedObserverUsPerDraw": 0.00004546886666669157,
+              "estimatedAdjustedUsPerDraw": 0.38186286446666656
+            },
+            {
+              "usPerDraw": 0.3858823999999989,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03477159999999415,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 3.6669999999929814
+              },
+              "estimatedObserverUsPerDraw": 0.000046362133333325535,
+              "estimatedAdjustedUsPerDraw": 0.3858360378666656
+            },
+            {
+              "usPerDraw": 0.36263984444444364,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03493980000001784,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 5.583999999998923
+              },
+              "estimatedObserverUsPerDraw": 0.00004658640000002379,
+              "estimatedAdjustedUsPerDraw": 0.3625932580444436
+            },
+            {
+              "usPerDraw": 0.37584622222222097,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.034626200000002424,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 11.208999999993807
+              },
+              "estimatedObserverUsPerDraw": 0.0000461682666666699,
+              "estimatedAdjustedUsPerDraw": 0.3758000539555543
+            },
+            {
+              "usPerDraw": 0.3729296666666681,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03569875000004004,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 9.66700000000742
+              },
+              "estimatedObserverUsPerDraw": 0.00004759833333338672,
+              "estimatedAdjustedUsPerDraw": 0.3728820683333347
+            },
+            {
+              "usPerDraw": 0.38941755555555346,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.034074549999925804,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 11.750000000006366
+              },
+              "estimatedObserverUsPerDraw": 0.0000454327333332344,
+              "estimatedAdjustedUsPerDraw": 0.3893721228222202
+            },
+            {
+              "usPerDraw": 0.4022944666666673,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03733320000000475,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 56.12500000000864
+              },
+              "estimatedObserverUsPerDraw": 0.00004977760000000633,
+              "estimatedAdjustedUsPerDraw": 0.40224468906666727
+            },
+            {
+              "usPerDraw": 0.39046768888889005,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.036738800000013325,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 61.08300000001066
+              },
+              "estimatedObserverUsPerDraw": 0.000048985066666684434,
+              "estimatedAdjustedUsPerDraw": 0.3904187038222234
+            },
+            {
+              "usPerDraw": 0.3776258444444447,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03539769999998725,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 16.124999999988177
+              },
+              "estimatedObserverUsPerDraw": 0.000047196933333316334,
+              "estimatedAdjustedUsPerDraw": 0.37757864751111136
+            },
+            {
+              "usPerDraw": 0.3762722666666669,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.034028699999990406,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 2.4590000000017653
+              },
+              "estimatedObserverUsPerDraw": 0.000045371599999987204,
+              "estimatedAdjustedUsPerDraw": 0.3762268950666669
+            },
+            {
+              "usPerDraw": 0.3797360888888881,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.034401649999981035,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 4.208999999988805
+              },
+              "estimatedObserverUsPerDraw": 0.00004586886666664138,
+              "estimatedAdjustedUsPerDraw": 0.37969022002222147
+            },
+            {
+              "usPerDraw": 0.39284171111111194,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.035260599999951125,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 8.583000000001562
+              },
+              "estimatedObserverUsPerDraw": 0.00004701413333326817,
+              "estimatedAdjustedUsPerDraw": 0.3927946969777787
+            },
+            {
+              "usPerDraw": 0.402429622222222,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.03554540000001936,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 5.207999999996105
+              },
+              "estimatedObserverUsPerDraw": 0.00004739386666669248,
+              "estimatedAdjustedUsPerDraw": 0.4023822283555553
+            },
+            {
+              "usPerDraw": 0.39012793333333273,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.04102184999999707,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 100.04200000000196
+              },
+              "estimatedObserverUsPerDraw": 0.000054695799999996096,
+              "estimatedAdjustedUsPerDraw": 0.39007323753333273
+            },
+            {
+              "usPerDraw": 0.4130435333333329,
+              "drawsPerFrame": 750,
+              "passesPerFrame": 3,
+              "timedFrames": 60,
+              "warmupFrames": 15,
+              "clockCalibration": {
+                "samples": 20000,
+                "meanUs": 0.0361388000000197,
+                "medianUs": 0.04199999999343618,
+                "p95Us": 0.08300000000360797,
+                "minUs": 0,
+                "maxUs": 9.457999999995081
+              },
+              "estimatedObserverUsPerDraw": 0.00004818506666669293,
+              "estimatedAdjustedUsPerDraw": 0.4129953482666662
+            }
+          ],
+          "median": 0.3858823999999989,
+          "min": 0.36263984444444364,
+          "max": 0.4130435333333329
+        }
+      ]
+    }
+  ]
+}

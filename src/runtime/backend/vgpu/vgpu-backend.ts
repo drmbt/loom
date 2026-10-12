@@ -90,6 +90,7 @@ import {
   type ResourceSet,
 } from "./resources.ts";
 import { createWarmEffects, type WarmEffects } from "./warm-effects.ts";
+import { createEnvironmentPreparation } from "./environment-preparation.ts";
 
 /**
  * The vgpu adapter: the only implementation of `RenderBackend`, and the only place in the
@@ -159,6 +160,7 @@ function externalImageSize(image: unknown): readonly [number, number] | undefine
 }
 
 interface Program {
+  preparations?: ReturnType<typeof createEnvironmentPreparation>;
   readonly id: string;
   /** Mutable: `resize()` reconciles both so the compile cache never diverges from the GPU (R4). */
   signature: string;
@@ -472,6 +474,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
   function attachErrorNet(watched: GpuSession): void {
     unsubscribeErrorNet?.();
     const report = (error: unknown): void => {
+      program?.preparations?.invalidate();
       // During the compile window the B9 listener triages pipeline failures itself
       // (veto + release); reporting them here too would double every shader error.
       if (compileErrorWindow && isPipelineCompileError(error)) return;
@@ -973,6 +976,8 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
             "The restored device refused this pass, so it renders nothing; fix it and recompile.",
           );
         }
+        program.preparations?.invalidate();
+        program.preparations = createEnvironmentPreparation(next.gpu, program.passes, program.resourceDescriptors, program.resources, evictBindGroups);
         program.textureConsumers = indexBindingConsumers(program.resources.dynamicTextures);
         program.bufferConsumers = indexBindingConsumers(program.resources.dynamicBuffers);
         resourceBuilds += 1;
@@ -1119,6 +1124,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
     // (§V126) and `runtime.resetFeedback` need one node's history gone, not every
     // simulation's. No filter = every pair, the device-loss/whole-project semantics.
     const activeProgram = program;
+    activeProgram.preparations?.invalidate();
     const pingPongs = activeProgram.resources.pingPongs;
     const selected =
       resourceIds === undefined
@@ -1331,6 +1337,11 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
    * duration, so any allocation anywhere inside it is the §V8 violation — including one in
    * caller code that happens to run between two `render()` calls.
    */
+  function reportPreparationFailure(error: unknown): void {
+    hub.report(backendDiagnostic("error", BackendDiagnosticCode.frameError,
+      `Environment preparation submission failed: ${describeError(error)}`));
+  }
+
   function runFrame(f: Frame, onFrame: () => void): void {
     // T311: BEFORE the frame opens — building preview resources is an allocation, and
     // the §V8 guard rightly refuses it once `duringFrame` begins.
@@ -1380,6 +1391,9 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
     } finally {
       currentFrame = previous;
     }
+    // Close this backend-owned callback at its existing submission boundary.
+    try { f.submit(); program?.preparations?.submitted(f, reportPreparationFailure); }
+    catch (error) { program?.preparations?.invalidate(); throw error; }
   }
 
   /**
@@ -1670,8 +1684,13 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
         const name = headName ?? cpuSpanName(head.id);
         cpuSpans[name] = (cpuSpans[name] ?? 0) + (performance.now() - started - inDraws);
       };
+      const preparation = active.preparations?.begin(f, active.resources, active.liveUniforms, active.skipped, (pass, destination, drawable) => {
+        const span = spanFor(pass.id);
+        timed(pass.id, () => f.pass({ target: destination, clear: true, ...(span === undefined ? {} : { timer: span }) }, drawable));
+      });
       for (let index = 0; index < passes.length; index += 1) {
         const pass = passes[index] as PassDescriptor;
+        if (pass.kind === "draw" && preparation?.take(pass)) { preparation.completed(pass); continue; }
         if (pass.kind === "loop") continue; // expanded away before we get here
         if (pass.kind === "swap") {
           active.resources.pingPongs.get(pass.resourceId)?.swap();
@@ -1791,6 +1810,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
               skipped ? () => {} : indirect === undefined ? drawable : (encoder) => encoder.draw(drawable, { indirect }),
             ),
           );
+          preparation?.completed(pass);
           continue;
         }
         // counter is reserved for the scan/compact convenience ops; the lifecycle
@@ -1894,7 +1914,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
 
     segments.forEach((passes, index) => {
       const final = index === segments.length - 1;
-      frame(gpu, (f) => {
+      const submitted = frame(gpu, (f) => {
         try {
           encode(f, active, input, passes, final);
         } catch (error) {
@@ -1912,9 +1932,11 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
           } catch {
             // The encode's own error is the one the caller must see.
           }
+          active.preparations?.invalidate();
           throw error;
         }
       });
+      active.preparations?.submitted(submitted, reportPreparationFailure);
       stampRenderedTextures(active, passes, input);
     });
   }
@@ -2074,6 +2096,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
         evictBindGroups(drawable);
         drawable.set(Object.fromEntries(bindings.map(binding => [binding.binding, texture])));
       }
+      active.preparations?.invalidate();
       entry.texture.destroy();
       estimatedBytes += (size[0] * size[1] - entry.size[0] * entry.size[1]) * bytesPerPixelFor(entry.format as Parameters<typeof bytesPerPixelFor>[0]);
       active.dirty = true;
@@ -2816,7 +2839,8 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       const outlived = (): boolean => session !== active || program?.resources !== carriedFrom;
       const stats: BuildStats = { resourcesCreated: 0, resourcesReused: 0, effectsBuilt: 0, effectsReused: 0 };
 
-      let resources: ResourceSet;
+      let resources!: ResourceSet;
+      let preparations: ReturnType<typeof createEnvironmentPreparation> = undefined;
       // B9 (T217, §V9): Dawn does not throw on invalid WGSL. `compileSync()` returns; the
       // validation error surfaces ASYNCHRONOUSLY through vgpu's pipeline error scope and
       // lands on `gpu.onError` (or stderr, when nobody listens). So the try/catch below
@@ -2845,6 +2869,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
           verdicts,
           warmEffects?.gpu === active.gpu ? warmEffects : undefined,
         );
+        preparations = createEnvironmentPreparation(active.gpu, read.passes, read.resources, resources, evictBindGroups);
         // Twice, deliberately: the first settle drains the tracked error-scope pops, whose
         // handlers only THEN enqueue the listener delivery; the second drains those.
         await active.gpu.settled();
@@ -2860,6 +2885,8 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
           read.passes,
         );
       } catch (error) {
+        for (const copy of preparations?.copies() ?? []) evictBindGroups(copy);
+        if (resources !== undefined) releaseResourcesExcept(resources, program?.resources);
         // §T1528b: a build that failed on a device which has since been replaced says
         // nothing about this plan; it is tried again against what is installed now.
         if (outlived()) return backend.compile(plan);
@@ -2897,6 +2924,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       // is everything, and destroying a dead device's objects is a no-op. The verdicts the
       // window collected are dropped with it: they are about objects nobody will draw.
       if (outlived()) {
+        for (const copy of preparations?.copies() ?? []) evictBindGroups(copy);
         releaseResourcesExcept(resources, program?.resources);
         return backend.compile(plan);
       }
@@ -2916,6 +2944,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
         // The half-built resources are released — except objects carried from (and still
         // owned by) the retained program.
         stale = program !== undefined;
+        for (const copy of preparations?.copies() ?? []) evictBindGroups(copy);
         releaseResourcesExcept(resources, program?.resources);
         for (const diagnostic of failureDiagnostics) hub.report(diagnostic);
         throw new ResourceBuildError(failureDiagnostics);
@@ -2923,6 +2952,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       const id = `plan-${planCounter + 1}`;
       const next: Program = {
         id,
+        preparations,
         signature,
         resourceDescriptors: read.resources,
         passes: read.passes,
@@ -2968,6 +2998,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
         flushUniforms(next);
       } catch (error) {
         stale = program !== undefined;
+        for (const copy of preparations?.copies() ?? []) evictBindGroups(copy);
         releaseResourcesExcept(resources, program?.resources);
         hub.report(
           backendDiagnostic(
@@ -2983,6 +3014,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       planCounter += 1;
       const previous = program;
       program = next;
+      for (const copy of previous?.preparations?.copies() ?? []) evictBindGroups(copy);
       if (previous) releaseResourcesExcept(previous.resources, resources);
       lastBuildStats = stats;
       stale = false;
@@ -3143,6 +3175,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
         return;
       }
       active.dirty = false;
+      active.preparations?.beginRender();
 
       const open = currentFrame;
       if (open) {
@@ -3185,6 +3218,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
         );
         return;
       }
+      program?.preparations?.invalidate();
       for (const t of found) t.resize(size);
       program?.textureFrames.delete(outputId);
       // Alternate views belong to the old texture allocation, not the retained Target.

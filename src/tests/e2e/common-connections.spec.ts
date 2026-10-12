@@ -7,7 +7,7 @@ import { allNodeDefinitions } from "@nodes/definitions/index.ts";
 import { buildProjectFile } from "@domain/project/project-file.ts";
 import type { GraphDocument } from "@domain/types/graph.ts";
 import { document, settings } from "@/examples/documents/builders.ts";
-import { APP_VIEWPORT, openApp, selectNode } from "./app.ts";
+import { APP_VIEWPORT, connect, fitAll, openApp, selectNode } from "./app.ts";
 
 test.use({ viewport: APP_VIEWPORT });
 
@@ -70,4 +70,40 @@ test("Common input drops swap sources and reorder layers without losing wires", 
     .map(edge => saved.graph.nodes[edge.source.nodeId]?.label)).toEqual(["blue1"]);
   expect(sources.filter(edge => edge.target.portId === "in2").sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
     .map(edge => saved.graph.nodes[edge.source.nodeId]?.label)).toEqual(["green1", "front1", "red1"]);
+});
+
+test("a numerical mask can be wired through Level and Threshold and saved as an editable network", async ({ page }) => {
+  const store = createGraphStore();
+  const { bus } = createDomainBus({ store, registry: createNodeRegistry(allNodeDefinitions).view() });
+  const created = await bus.execute("graph.applyPatch", { baseRevision: 0, operations: [
+    { op: "addNode", ref: "$map", type: "floatMapIn", label: "floatmap_coverage", position: { x: 0, y: 0 }, parameters: { file: "", emptySource: "constant", emptyValue: 0.3, interpretation: "mask" } },
+    { op: "addNode", ref: "$level", type: "level", label: "level_coverage", position: { x: 260, y: 0 }, parameters: { brightness: 2 } },
+    { op: "addNode", ref: "$threshold", type: "threshold", label: "threshold_coverage", position: { x: 520, y: 0 }, parameters: { threshold: 0.5 } },
+    { op: "addNode", ref: "$mask", type: "mask", label: "mask_processed", position: { x: 780, y: 0 } },
+  ] }, { actor: { kind: "human", id: "numeric-connections" }, projectId: "numeric-connections", capabilities: [] });
+  expect(created.status).toBe("applied");
+  const ids = created.output.createdIds;
+  const project = document("numeric-connections", "Numerical mask processing", settings(), store.view.getGraph());
+  const file = buildProjectFile({ document: project, now: () => project.updatedAt });
+  await openApp(page);
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "File", exact: true }).click();
+  await page.getByTestId("project-open").click();
+  await (await chooser).setFiles({ name: "numeric-mask.loom.json", mimeType: "application/json", buffer: Buffer.from(file.text) });
+  await expect(page.locator(".react-flow__node")).toHaveCount(4);
+  await fitAll(page);
+  for (const [from, to, port] of [["$map", "$level", "input"], ["$level", "$threshold", "input"], ["$threshold", "$mask", "mask"]]) {
+    await connect(page, { nodeId: ids[from!]!, portId: "out" }, { nodeId: ids[to!]!, portId: port! });
+  }
+  await expect(page.locator(".react-flow__edge")).toHaveCount(3);
+  const downloadEvent = page.waitForEvent("download");
+  await page.getByRole("button", { name: "File", exact: true }).click();
+  await page.getByTestId("project-save").click();
+  const savedPath = await (await downloadEvent).path();
+  if (savedPath === null) throw new Error("Saved numerical network has no download");
+  const saved = JSON.parse(await readFile(savedPath, "utf8")) as { graph: GraphDocument };
+  expect(Object.values(saved.graph.edges)).toHaveLength(3);
+  expect(saved.graph.nodes[ids["$map"]!]?.parameters?.["emptyValue"]).toBe(0.3);
+  expect(saved.graph.nodes[ids["$level"]!]?.parameters?.["brightness"]).toBe(2);
+  expect(saved.graph.nodes[ids["$threshold"]!]?.parameters?.["threshold"]).toBe(0.5);
 });

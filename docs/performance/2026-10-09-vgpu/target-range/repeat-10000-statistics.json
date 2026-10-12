@@ -1,0 +1,697 @@
+{
+  "analysisScriptHash": "a710e8bcd81c5bb5b253fba2accbc682b0d6ac66cea51d3576a7ec2a4a0df96d",
+  "method": "Means, medians, MAD, Tukey flags, paired percentage changes, fixed-seed 20,000-resample exploratory bootstrap and outlier sensitivity. Every trial retained.",
+  "reports": [
+    {
+      "input": "/tmp/loom-chrome-headed-10000-repeat.json",
+      "workloads": [
+        {
+          "mode": "unique",
+          "totalDrawsPerFrame": 10000,
+          "passDrawCounts": [
+            3334,
+            3333,
+            3333
+          ],
+          "reference": {
+            "n": 15,
+            "mean": 0.951226666652494,
+            "median": 0.9518333333233993,
+            "min": 0.8705999997258186,
+            "max": 1.0699083333214123,
+            "q1": 0.9364624999463558,
+            "q3": 0.959450000077486,
+            "mad": 0.009425000300010034,
+            "tukeyOutlierIndexes": [
+              3,
+              4,
+              9,
+              12
+            ]
+          },
+          "candidate": {
+            "n": 15,
+            "mean": 0.9138694444166291,
+            "median": 0.9186083331207434,
+            "min": 0.8706833332777023,
+            "max": 0.9566500002145767,
+            "q1": 0.8978375001003345,
+            "q3": 0.9240333332369726,
+            "mad": 0.013891666879256581,
+            "tukeyOutlierIndexes": []
+          },
+          "pairedPercentChanges": [
+            -3.789691692096464,
+            -1.5522675607479552,
+            -5.196761569049102,
+            -18.620754118741935,
+            6.40281772853124,
+            -7.739854893574094,
+            -2.505226566253682,
+            -4.093146557051219,
+            -4.490455555302864,
+            3.2496745823564543,
+            -3.7846189180501977,
+            -0.4135277588113939,
+            -7.228693533059316,
+            -7.858929986764107,
+            2.347873007790602
+          ],
+          "medianPairedPercentChange": -3.789691692096464,
+          "meanPairedPercentChange": -3.684904226054935,
+          "exploratoryPairedBootstrap95Pct": [
+            -7.228693533059316,
+            -1.5522675607479552
+          ],
+          "sensitivityOnly": {
+            "flaggedPairIndexes": [
+              3,
+              4,
+              9,
+              12
+            ],
+            "retainedPairs": 11,
+            "medianPercentChange": -3.789691692096464
+          },
+          "caveat": "15 paired trials give an exploratory interval. Outlier flags are descriptive; no sample is removed from headline results. This does not quantify unrelated background load or prove all workloads improve.",
+          "gpuPassTimeMs": {
+            "reference": {
+              "n": 15,
+              "mean": 2.069845333333333,
+              "median": 2.257715199999999,
+              "min": 1.2604757333333336,
+              "max": 2.866107733333334,
+              "q1": 1.4871210666666668,
+              "q3": 2.5580885333333323,
+              "mad": 0.44892160000000025,
+              "tukeyOutlierIndexes": []
+            },
+            "candidate": {
+              "n": 15,
+              "mean": 1.9788959288888888,
+              "median": 1.7989631999999995,
+              "min": 1.2976128000000002,
+              "max": 2.8824917333333326,
+              "q1": 1.5521109333333332,
+              "q3": 2.514397866666666,
+              "mad": 0.3407871999999992,
+              "tukeyOutlierIndexes": []
+            },
+            "pairedPercentChanges": [
+              24.867323730098544,
+              -11.67608286252353,
+              55.14655760054532,
+              -30.944142362827453,
+              -39.38758389261745,
+              -2.896341463414598,
+              23.931623931623957,
+              -46.125907990314744,
+              -45.26086956521736,
+              16.932752781809413,
+              2.9462738301559765,
+              18.389897395422295,
+              -2.512562814070407,
+              20.045558086560323,
+              25.13039355144613
+            ],
+            "medianPairedPercentChange": 2.9462738301559765,
+            "meanPairedPercentChange": 0.5724593304450943,
+            "exploratoryPairedBootstrap95Pct": [
+              -30.944142362827453,
+              23.931623931623957
+            ],
+            "sensitivityOnly": {
+              "flaggedPairIndexes": [],
+              "retainedPairs": 15,
+              "medianPercentChange": 2.9462738301559765
+            },
+            "caveat": "15 paired trials give an exploratory interval. Outlier flags are descriptive; no sample is removed from headline results. This does not quantify unrelated background load or prove all workloads improve."
+          },
+          "completionTimeMs": {
+            "reference": {
+              "n": 15,
+              "mean": 16.52192222227653,
+              "median": 16.406500000754992,
+              "min": 15.605000000695387,
+              "max": 17.602083332339923,
+              "q1": 16.011166666199763,
+              "q3": 16.91745833357175,
+              "mad": 0.4893333345651616,
+              "tukeyOutlierIndexes": []
+            },
+            "candidate": {
+              "n": 15,
+              "mean": 16.101099999911252,
+              "median": 15.932916667064031,
+              "min": 15.414833333094915,
+              "max": 16.886250000695387,
+              "q1": 15.71716666618983,
+              "q3": 16.496874999751647,
+              "mad": 0.35291666785875897,
+              "tukeyOutlierIndexes": []
+            },
+            "pairedPercentChanges": [
+              0.5607533549579102,
+              -2.4440336866608625,
+              3.6318230844500254,
+              -2.272307020302322,
+              -5.462735425788557,
+              -9.278731203303781,
+              -5.574942811465366,
+              -11.345466273494075,
+              -5.045036945495651,
+              8.210509451732806,
+              4.490552872616749,
+              -3.1611917489668073,
+              -1.3735670516097032,
+              -3.1123552471704174,
+              -3.756056608690339
+            ],
+            "medianPairedPercentChange": -3.1123552471704174,
+            "meanPairedPercentChange": -2.3955190172793595,
+            "exploratoryPairedBootstrap95Pct": [
+              -5.462735425788557,
+              -1.3735670516097032
+            ],
+            "sensitivityOnly": {
+              "flaggedPairIndexes": [],
+              "retainedPairs": 15,
+              "medianPercentChange": -3.1123552471704174
+            },
+            "caveat": "15 paired trials give an exploratory interval. Outlier flags are descriptive; no sample is removed from headline results. This does not quantify unrelated background load or prove all workloads improve."
+          },
+          "observer": [
+            {
+              "label": "baseline",
+              "emptyClockIntervalUs": {
+                "n": 15,
+                "mean": 0.10025000125169754,
+                "median": 0.09975001215934753,
+                "min": 0.0952499970793724,
+                "max": 0.10725000500679016,
+                "q1": 0.09812500551342965,
+                "q3": 0.10237499177455903,
+                "mad": 0.0024999797344207736,
+                "tukeyOutlierIndexes": []
+              },
+              "estimatedUsPerDraw": {
+                "n": 15,
+                "mean": 0.000010025000125169755,
+                "median": 0.000009975001215934753,
+                "min": 0.00000952499970793724,
+                "max": 0.000010725000500679017,
+                "q1": 0.000009812500551342966,
+                "q3": 0.000010237499177455902,
+                "mad": 2.4999797344207867e-7,
+                "tukeyOutlierIndexes": []
+              }
+            },
+            {
+              "label": "pipeline",
+              "emptyClockIntervalUs": {
+                "n": 15,
+                "mean": 0.10056666553020475,
+                "median": 0.10074998289346696,
+                "min": 0.09425001293420791,
+                "max": 0.10550000816583634,
+                "q1": 0.0979999929666519,
+                "q3": 0.10312500372529029,
+                "mad": 0.0027500197291374096,
+                "tukeyOutlierIndexes": []
+              },
+              "estimatedUsPerDraw": {
+                "n": 15,
+                "mean": 0.000010056666553020476,
+                "median": 0.000010074998289346696,
+                "min": 0.000009425001293420791,
+                "max": 0.000010550000816583633,
+                "q1": 0.00000979999929666519,
+                "q3": 0.000010312500372529029,
+                "mad": 2.7500197291374004e-7,
+                "tukeyOutlierIndexes": []
+              }
+            }
+          ]
+        },
+        {
+          "mode": "repeated",
+          "totalDrawsPerFrame": 10000,
+          "passDrawCounts": [
+            3334,
+            3333,
+            3333
+          ],
+          "reference": {
+            "n": 15,
+            "mean": 0.43925055553846887,
+            "median": 0.4390249997874101,
+            "min": 0.43109999989469844,
+            "max": 0.4572749999165535,
+            "q1": 0.43590416679779687,
+            "q3": 0.4411458333084981,
+            "mad": 0.0029166663686434613,
+            "tukeyOutlierIndexes": [
+              0
+            ]
+          },
+          "candidate": {
+            "n": 15,
+            "mean": 0.4281605555448268,
+            "median": 0.4275083332757155,
+            "min": 0.42079166675607366,
+            "max": 0.43811666667461396,
+            "q1": 0.42589166648685933,
+            "q3": 0.42983749978244307,
+            "mad": 0.0022916665176550555,
+            "tukeyOutlierIndexes": [
+              12
+            ]
+          },
+          "pairedPercentChanges": [
+            -7.963843773157864,
+            -3.5014400449523198,
+            -3.3739527858003715,
+            -3.2072815848502856,
+            0.7132227140411729,
+            -2.0842478656873054,
+            -1.5191179308108316,
+            -1.5159820541835844,
+            -2.1064617855982015,
+            -3.5452692390357865,
+            -2.2263025664828073,
+            -3.4050693683427835,
+            -0.5128205424354992,
+            -1.163689793938294,
+            -2.1373118229232158
+          ],
+          "medianPairedPercentChange": -2.1373118229232158,
+          "meanPairedPercentChange": -2.5033045629438657,
+          "exploratoryPairedBootstrap95Pct": [
+            -3.4050693683427835,
+            -1.5159820541835844
+          ],
+          "sensitivityOnly": {
+            "flaggedPairIndexes": [
+              0,
+              12
+            ],
+            "retainedPairs": 13,
+            "medianPercentChange": -2.1373118229232158
+          },
+          "caveat": "15 paired trials give an exploratory interval. Outlier flags are descriptive; no sample is removed from headline results. This does not quantify unrelated background load or prove all workloads improve.",
+          "gpuPassTimeMs": {
+            "reference": {
+              "n": 15,
+              "mean": 2.777561315555556,
+              "median": 2.878122666666667,
+              "min": 2.1069824,
+              "max": 3.3292287999999997,
+              "q1": 2.636731733333333,
+              "q3": 2.9584042666666663,
+              "mad": 0.16602453333333456,
+              "tukeyOutlierIndexes": [
+                0
+              ]
+            },
+            "candidate": {
+              "n": 15,
+              "mean": 2.597992675555555,
+              "median": 2.6006869333333325,
+              "min": 2.162688,
+              "max": 2.9021525333333336,
+              "q1": 2.4881834666666656,
+              "q3": 2.7579733333333327,
+              "mad": 0.13216426666666647,
+              "tukeyOutlierIndexes": []
+            },
+            "pairedPercentChanges": [
+              24.779678589942943,
+              -1.457266640409649,
+              -9.28838951310864,
+              -6.113074204947056,
+              -11.08159392789373,
+              1.5351812366737327,
+              -4.2266187050359,
+              -16.404199475065617,
+              13.976872800402163,
+              -26.4487369985141,
+              -4.309303262182828,
+              -5.6880733944954525,
+              0.9746588693956948,
+              -18.103756708407893,
+              -17.158878504672913
+            ],
+            "medianPairedPercentChange": -5.6880733944954525,
+            "meanPairedPercentChange": -5.26756665588795,
+            "exploratoryPairedBootstrap95Pct": [
+              -16.404199475065617,
+              0.9746588693956948
+            ],
+            "sensitivityOnly": {
+              "flaggedPairIndexes": [
+                0
+              ],
+              "retainedPairs": 14,
+              "medianPercentChange": -5.900573799721254
+            },
+            "caveat": "15 paired trials give an exploratory interval. Outlier flags are descriptive; no sample is removed from headline results. This does not quantify unrelated background load or prove all workloads improve."
+          },
+          "completionTimeMs": {
+            "reference": {
+              "n": 15,
+              "mean": 9.486500000059603,
+              "median": 9.560083332657815,
+              "min": 8.93266666630904,
+              "max": 9.990833333631356,
+              "q1": 9.357958333690961,
+              "q3": 9.65108333354195,
+              "mad": 0.11816666722297597,
+              "tukeyOutlierIndexes": []
+            },
+            "candidate": {
+              "n": 15,
+              "mean": 9.28967222203811,
+              "median": 9.322999999920528,
+              "min": 8.694999998807907,
+              "max": 9.729083332916101,
+              "q1": 9.154124999791385,
+              "q3": 9.517083333681027,
+              "mad": 0.20441666742165943,
+              "tukeyOutlierIndexes": []
+            },
+            "pairedPercentChanges": [
+              0.4737987261862475,
+              1.7677670201992068,
+              1.4218463042983354,
+              -1.4951611567845968,
+              -5.557315979959698,
+              -1.86427910408955,
+              4.369729087548868,
+              -4.726806329899691,
+              2.0629501911227477,
+              -7.2124326848938995,
+              -9.554272645537875,
+              -5.239803152137245,
+              2.3526408864057657,
+              -5.869651276533738,
+              -1.1512067389359615
+            ],
+            "medianPairedPercentChange": -1.4951611567845968,
+            "meanPairedPercentChange": -2.0148131235340725,
+            "exploratoryPairedBootstrap95Pct": [
+              -5.557315979959698,
+              1.7677670201992068
+            ],
+            "sensitivityOnly": {
+              "flaggedPairIndexes": [],
+              "retainedPairs": 15,
+              "medianPercentChange": -1.4951611567845968
+            },
+            "caveat": "15 paired trials give an exploratory interval. Outlier flags are descriptive; no sample is removed from headline results. This does not quantify unrelated background load or prove all workloads improve."
+          },
+          "observer": [
+            {
+              "label": "baseline",
+              "emptyClockIntervalUs": {
+                "n": 15,
+                "mean": 0.09990000198284785,
+                "median": 0.10000000447034836,
+                "min": 0.09450000822544098,
+                "max": 0.10900000333786011,
+                "q1": 0.09774999544024468,
+                "q3": 0.101375000923872,
+                "mad": 0.0014999940991401728,
+                "tukeyOutlierIndexes": [
+                  10
+                ]
+              },
+              "estimatedUsPerDraw": {
+                "n": 15,
+                "mean": 0.000009990000198284784,
+                "median": 0.000010000000447034836,
+                "min": 0.000009450000822544098,
+                "max": 0.000010900000333786012,
+                "q1": 0.000009774999544024467,
+                "q3": 0.0000101375000923872,
+                "mad": 1.4999940991401644e-7,
+                "tukeyOutlierIndexes": [
+                  10
+                ]
+              }
+            },
+            {
+              "label": "pipeline",
+              "emptyClockIntervalUs": {
+                "n": 15,
+                "mean": 0.09754999955495199,
+                "median": 0.09749999642372131,
+                "min": 0.09024998843669892,
+                "max": 0.10449999570846558,
+                "q1": 0.09562499821186066,
+                "q3": 0.09924999997019768,
+                "mad": 0.001999996602535248,
+                "tukeyOutlierIndexes": []
+              },
+              "estimatedUsPerDraw": {
+                "n": 15,
+                "mean": 0.0000097549999554952,
+                "median": 0.000009749999642372132,
+                "min": 0.000009024998843669891,
+                "max": 0.000010449999570846558,
+                "q1": 0.000009562499821186065,
+                "q3": 0.000009924999997019768,
+                "mad": 1.999996602535261e-7,
+                "tukeyOutlierIndexes": []
+              }
+            }
+          ]
+        },
+        {
+          "mode": "alternating",
+          "totalDrawsPerFrame": 10000,
+          "passDrawCounts": [
+            3334,
+            3333,
+            3333
+          ],
+          "reference": {
+            "n": 15,
+            "mean": 0.4575649999744363,
+            "median": 0.458833333303531,
+            "min": 0.44835833335916203,
+            "max": 0.4640833332637946,
+            "q1": 0.4554708334058523,
+            "q3": 0.46136666658023995,
+            "mad": 0.003199999928474473,
+            "tukeyOutlierIndexes": []
+          },
+          "candidate": {
+            "n": 15,
+            "mean": 0.46207722219162517,
+            "median": 0.46159166648983957,
+            "min": 0.4551166667540868,
+            "max": 0.4706249997516473,
+            "q1": 0.45931666667262716,
+            "q3": 0.4643541666616996,
+            "mad": 0.002416666299104697,
+            "tukeyOutlierIndexes": []
+          },
+          "pairedPercentChanges": [
+            0.30965954364003956,
+            0.77313927482483,
+            -1.5538250357542527,
+            0.5208990329727214,
+            0.2988102419277716,
+            -0.3310179591873963,
+            1.6505084631623257,
+            1.409588756796465,
+            0.3084193129142987,
+            3.442286805751893,
+            1.8571088743220665,
+            1.570804013716387,
+            -0.7628041898188442,
+            2.501622592070585,
+            2.951508234837874
+          ],
+          "medianPairedPercentChange": 0.77313927482483,
+          "meanPairedPercentChange": 0.9964471974784509,
+          "exploratoryPairedBootstrap95Pct": [
+            0.2988102419277716,
+            1.8571088743220665
+          ],
+          "sensitivityOnly": {
+            "flaggedPairIndexes": [],
+            "retainedPairs": 15,
+            "medianPercentChange": 0.77313927482483
+          },
+          "caveat": "15 paired trials give an exploratory interval. Outlier flags are descriptive; no sample is removed from headline results. This does not quantify unrelated background load or prove all workloads improve.",
+          "gpuPassTimeMs": {
+            "reference": {
+              "n": 15,
+              "mean": 1.7796664888888891,
+              "median": 1.7541802666666668,
+              "min": 1.3139967999999997,
+              "max": 2.7295744,
+              "q1": 1.595255466666667,
+              "q3": 1.8448384,
+              "mad": 0.12451839999999992,
+              "tukeyOutlierIndexes": [
+                9
+              ]
+            },
+            "candidate": {
+              "n": 15,
+              "mean": 1.752651093333333,
+              "median": 1.72032,
+              "min": 1.279044266666667,
+              "max": 2.3057749333333324,
+              "q1": 1.6389461333333328,
+              "q3": 1.8825216000000005,
+              "mad": 0.12451839999999992,
+              "tukeyOutlierIndexes": [
+                12
+              ]
+            },
+            "pairedPercentChanges": [
+              43.30839567747302,
+              -21.514745308310978,
+              -2.4906600249066213,
+              -1.7780502759044192,
+              -14.485981308411233,
+              23.769338959212316,
+              2.2393282015395366,
+              6.782713085234038,
+              6.424399740428233,
+              -31.052420968387338,
+              12.670007158196196,
+              -21.744054360135912,
+              11.989389920424355,
+              -1.0939510939510844,
+              -3.787416004887001
+            ],
+            "medianPairedPercentChange": -1.0939510939510844,
+            "meanPairedPercentChange": 0.6157528931742072,
+            "exploratoryPairedBootstrap95Pct": [
+              -14.485981308411233,
+              6.782713085234038
+            ],
+            "sensitivityOnly": {
+              "flaggedPairIndexes": [
+                9,
+                12
+              ],
+              "retainedPairs": 13,
+              "medianPercentChange": -1.0939510939510844
+            },
+            "caveat": "15 paired trials give an exploratory interval. Outlier flags are descriptive; no sample is removed from headline results. This does not quantify unrelated background load or prove all workloads improve."
+          },
+          "completionTimeMs": {
+            "reference": {
+              "n": 15,
+              "mean": 12.437433333098886,
+              "median": 12.481500000258286,
+              "min": 11.991083332896233,
+              "max": 12.910916666686536,
+              "q1": 12.312791666885218,
+              "q3": 12.568083332727351,
+              "mad": 0.14983333299557344,
+              "tukeyOutlierIndexes": []
+            },
+            "candidate": {
+              "n": 15,
+              "mean": 12.493550000025165,
+              "median": 12.451083332796891,
+              "min": 12.189416666825613,
+              "max": 12.735999999940395,
+              "q1": 12.381833333273729,
+              "q3": 12.642708333333335,
+              "mad": 0.1603333339095112,
+              "tukeyOutlierIndexes": []
+            },
+            "pairedPercentChanges": [
+              -2.3197423367538272,
+              2.778753881820273,
+              0.7621789474956842,
+              1.9115145016467272,
+              3.454327291127557,
+              0.4675143358437994,
+              -1.2989378994380019,
+              -0.9380549928050042,
+              3.4279395482423203,
+              2.9577533350156227,
+              -1.0968836464583465,
+              1.7936711904342983,
+              -3.621352720753057,
+              -0.78356896213434,
+              -0.2440414244743616
+            ],
+            "medianPairedPercentChange": 0.4675143358437994,
+            "meanPairedPercentChange": 0.4834047365872896,
+            "exploratoryPairedBootstrap95Pct": [
+              -0.9380549928050042,
+              2.778753881820273
+            ],
+            "sensitivityOnly": {
+              "flaggedPairIndexes": [],
+              "retainedPairs": 15,
+              "medianPercentChange": 0.4675143358437994
+            },
+            "caveat": "15 paired trials give an exploratory interval. Outlier flags are descriptive; no sample is removed from headline results. This does not quantify unrelated background load or prove all workloads improve."
+          },
+          "observer": [
+            {
+              "label": "baseline",
+              "emptyClockIntervalUs": {
+                "n": 15,
+                "mean": 0.09849999854962031,
+                "median": 0.09849999845027924,
+                "min": 0.09374999552965164,
+                "max": 0.10550000369548798,
+                "q1": 0.09550000056624414,
+                "q3": 0.10000001192092896,
+                "mad": 0.0024999946355819674,
+                "tukeyOutlierIndexes": []
+              },
+              "estimatedUsPerDraw": {
+                "n": 15,
+                "mean": 0.000009849999854962034,
+                "median": 0.000009849999845027923,
+                "min": 0.000009374999552965164,
+                "max": 0.000010550000369548798,
+                "q1": 0.000009550000056624412,
+                "q3": 0.000010000001192092895,
+                "mad": 2.49999463558196e-7,
+                "tukeyOutlierIndexes": []
+              }
+            },
+            {
+              "label": "pipeline",
+              "emptyClockIntervalUs": {
+                "n": 15,
+                "mean": 0.0992166687051455,
+                "median": 0.098250013589859,
+                "min": 0.09350000619888306,
+                "max": 0.1055000051856041,
+                "q1": 0.09637500792741775,
+                "q3": 0.10224999263882636,
+                "mad": 0.002999977767467507,
+                "tukeyOutlierIndexes": []
+              },
+              "estimatedUsPerDraw": {
+                "n": 15,
+                "mean": 0.000009921666870514551,
+                "median": 0.0000098250013589859,
+                "min": 0.000009350000619888306,
+                "max": 0.00001055000051856041,
+                "q1": 0.000009637500792741775,
+                "q3": 0.000010224999263882637,
+                "mad": 2.9999777674675194e-7,
+                "tukeyOutlierIndexes": []
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

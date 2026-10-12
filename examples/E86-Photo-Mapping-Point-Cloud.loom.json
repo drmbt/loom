@@ -47,17 +47,6 @@
           "portId": "field"
         }
       },
-      "ed_e86-photo-mapping-point-cloud34": {
-        "id": "ed_e86-photo-mapping-point-cloud34",
-        "source": {
-          "nodeId": "nd_e86-photo-mapping-point-cloud8",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "nd_e86-photo-mapping-point-cloud10",
-          "portId": "points"
-        }
-      },
       "ed_e86-photo-mapping-point-cloud35": {
         "id": "ed_e86-photo-mapping-point-cloud35",
         "source": {
@@ -281,13 +270,46 @@
           "nodeId": "nd_e86-photo-mapping-point-cloud22",
           "portId": "in1"
         }
+      },
+      "ed_e86-photo-mapping-point-cloud67": {
+        "id": "ed_e86-photo-mapping-point-cloud67",
+        "source": {
+          "nodeId": "nd_e86-photo-mapping-point-cloud8",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "nd_e86-photo-mapping-point-cloud65",
+          "portId": "in"
+        }
+      },
+      "ed_e86-photo-mapping-point-cloud68": {
+        "id": "ed_e86-photo-mapping-point-cloud68",
+        "source": {
+          "nodeId": "nd_e86-photo-mapping-point-cloud65",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "nd_e86-photo-mapping-point-cloud66",
+          "portId": "in"
+        }
+      },
+      "ed_e86-photo-mapping-point-cloud69": {
+        "id": "ed_e86-photo-mapping-point-cloud69",
+        "source": {
+          "nodeId": "nd_e86-photo-mapping-point-cloud66",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "nd_e86-photo-mapping-point-cloud10",
+          "portId": "points"
+        }
       }
     },
     "groups": {
       "gp_e86-photo-mapping-point-cloud48": {
         "bounds": {
           "height": 1910,
-          "width": 3760,
+          "width": 4280,
           "x": -380,
           "y": -360
         },
@@ -317,8 +339,10 @@
           "nd_e86-photo-mapping-point-cloud6",
           "nd_e86-photo-mapping-point-cloud65",
           "nd_e86-photo-mapping-point-cloud66",
-          "nd_e86-photo-mapping-point-cloud67",
           "nd_e86-photo-mapping-point-cloud7",
+          "nd_e86-photo-mapping-point-cloud70",
+          "nd_e86-photo-mapping-point-cloud71",
+          "nd_e86-photo-mapping-point-cloud72",
           "nd_e86-photo-mapping-point-cloud8",
           "nd_e86-photo-mapping-point-cloud9"
         ]
@@ -408,7 +432,7 @@
           ]
         },
         "position": {
-          "x": 1040,
+          "x": 1560,
           "y": 0
         },
         "size": {
@@ -440,10 +464,10 @@
             },
             "mode": "expression"
           },
-          "eye.y": 0.25,
-          "eye.z": 3.6,
+          "eye.y": 0.15,
+          "eye.z": 3.1,
           "far": 20,
-          "fov": 50,
+          "fov": 55,
           "frame": "level",
           "heading": [
             0,
@@ -466,7 +490,7 @@
           "roll": 0
         },
         "position": {
-          "x": 1300,
+          "x": 1820,
           "y": 300
         },
         "size": {
@@ -513,7 +537,7 @@
           "showEnvironment": false
         },
         "position": {
-          "x": 1560,
+          "x": 2080,
           "y": 0
         },
         "resolution": {
@@ -532,14 +556,14 @@
         "id": "nd_e86-photo-mapping-point-cloud13",
         "label": "lfo_photo_orbit1",
         "parameters": {
-          "amplitude": 0.4,
+          "amplitude": 0.08,
           "frequency": 0.03,
-          "offset": 1.2,
+          "offset": 0,
           "phase": 0,
           "shape": "sine"
         },
         "position": {
-          "x": 1040,
+          "x": 1560,
           "y": 300
         },
         "size": {
@@ -562,7 +586,7 @@
           "whitelevel": 1
         },
         "position": {
-          "x": 1820,
+          "x": 2340,
           "y": 0
         },
         "size": {
@@ -581,7 +605,7 @@
           "invert": 0
         },
         "position": {
-          "x": 2340,
+          "x": 2860,
           "y": 0
         },
         "size": {
@@ -643,7 +667,7 @@
           "v2": 1
         },
         "position": {
-          "x": 2600,
+          "x": 3120,
           "y": 0
         },
         "size": {
@@ -693,7 +717,7 @@
           ]
         },
         "position": {
-          "x": 2860,
+          "x": 3380,
           "y": 0
         },
         "size": {
@@ -717,7 +741,7 @@
           "width": 1920
         },
         "position": {
-          "x": 3120,
+          "x": 3640,
           "y": 0
         },
         "size": {
@@ -734,7 +758,7 @@
           "source": "\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let grid = uv * 10.0;\n  let cell = vec2i(floor(grid));\n  let checker = f32((cell.x + cell.y) % 2);\n  let aa = max(fwidth(grid), vec2f(0.004));\n  let distance = min(fract(grid), 1.0 - fract(grid));\n  let lines = 1.0 - smoothstep(aa.x, aa.x * 2.0, min(distance.x, distance.y));\n  var colour = mix(vec3f(0.07), vec3f(0.2), checker) + vec3f(lines * 0.55);\n  let center = abs(uv - 0.5);\n  colour = mix(colour, vec3f(1.0, 0.15, 0.1), 1.0 - smoothstep(0.002, 0.005, center.x));\n  colour = mix(colour, vec3f(0.1, 1.0, 0.25), 1.0 - smoothstep(0.002, 0.005, center.y));\n  let corners = step(0.92, max(abs(uv.x - 0.5), abs(uv.y - 0.5)) * 2.0);\n  let quadrant = vec3f(select(0.1, 1.0, uv.x > 0.5), select(0.1, 1.0, uv.y > 0.5), 0.6);\n  return vec4f(mix(colour, quadrant, corners), 1.0);\n}"
         },
         "position": {
-          "x": 1820,
+          "x": 2340,
           "y": 900
         },
         "size": {
@@ -752,7 +776,7 @@
           "index": 0
         },
         "position": {
-          "x": 2080,
+          "x": 2600,
           "y": 0
         },
         "size": {
@@ -775,7 +799,7 @@
           "whitelevel": 1
         },
         "position": {
-          "x": 1820,
+          "x": 2340,
           "y": 300
         },
         "size": {
@@ -792,7 +816,7 @@
           "opacity": 1
         },
         "position": {
-          "x": 2080,
+          "x": 2600,
           "y": 300
         },
         "size": {
@@ -809,7 +833,7 @@
           "toneMap": "none"
         },
         "position": {
-          "x": 2340,
+          "x": 2860,
           "y": 300
         },
         "size": {
@@ -1017,59 +1041,52 @@
       "nd_e86-photo-mapping-point-cloud65": {
         "definitionVersion": 1,
         "id": "nd_e86-photo-mapping-point-cloud65",
-        "label": "note_synthetic_site",
+        "label": "kernel_current",
         "parameters": {
-          "body": "The stone photograph and scalar fields share one analytic facade with window recesses, portal, pilasters and a carved rosette. This executable workflow is synthetic, not a demonstration of AI depth quality. Depth and coverage stay r32float data textures. Replace these three source nodes with your saved photograph and maps for a real facade.",
-          "color": "shader",
-          "title": "Synthetic facade · registered RGB, depth and mask"
+          "amount": 1,
+          "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"qualifier\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"depthN\",\"type\":\"f32\",\"default\":[0]},{\"name\":\"motion\",\"type\":\"vec4f\",\"default\":[0,0,0,0]}]",
+          "capacity": 393216,
+          "group": "",
+          "iterations": 1,
+          "kernel": "struct Params {\n  amount: f32, // @default 1\n  speed: f32, // @default 1\n}\nfn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  let uv = vec2f(f32(ctx.dim.i) / f32(max(ctx.dim.cols - 1u, 1u)),\n                 f32(ctx.dim.j) / f32(max(ctx.dim.rows - 1u, 1u)));\n  let t = ctx.absTime * ctx.params.speed;\n  let amount = ctx.params.amount;\n\n  // Travelling curls follow relief: deeper samples move farther and at a different phase.\n  let phase = uv.x * 13.0 - uv.y * 9.0 + p.depthN * 5.0 - t * 1.7;\n  let crest = pow(0.5 + 0.5 * sin(phase), 4.0);\n  let depthWeight = 0.25 + p.depthN * 0.75;\n  q.position += amount * depthWeight * vec3f(\n    0.16 * sin(phase * 0.7 + t * 0.5),\n    0.12 * cos(phase * 0.6 - t * 0.3),\n    0.38 * sin(phase));\n  // x: crest strength; y: depth; zw: original photographic coordinates.\n  q.motion = vec4f(crest * abs(amount), p.depthN, uv);\n  return q;\n}",
+          "seed": 86,
+          "speed": 1,
+          "substeps": 1
         },
         "position": {
-          "x": -340,
-          "y": -320
+          "x": 1040,
+          "y": 0
         },
         "size": {
           "height": 220,
-          "width": 1000
+          "width": 220
         },
-        "type": "annotate"
+        "type": "pointKernel"
       },
       "nd_e86-photo-mapping-point-cloud66": {
         "definitionVersion": 1,
         "id": "nd_e86-photo-mapping-point-cloud66",
-        "label": "note_alignment",
+        "label": "kernel_attribute_light",
         "parameters": {
-          "body": "switch_calibration1: 0 content, 1 regular test chart. Window Out clips with mask_surface1 and follows gridwarp_surface1 and cornerpin_surface1. The inspection preview shows the 3D cloud before the image-space clip. Open window_projector1 explicitly to project it. Every stage remains editable.",
-          "color": "output",
-          "title": "Shared calibration and projector path"
+          "attributes": "[{\"name\":\"position\",\"type\":\"vec3f\",\"semantic\":\"position\",\"default\":[0,0,0]},{\"name\":\"tint\",\"type\":\"vec4f\",\"semantic\":\"color\",\"qualifier\":\"color\",\"default\":[1,1,1,1]},{\"name\":\"depthN\",\"type\":\"f32\",\"default\":[0]},{\"name\":\"motion\",\"type\":\"vec4f\",\"default\":[0,0,0,0]}]",
+          "capacity": 393216,
+          "group": "",
+          "iterations": 1,
+          "kernel": "struct Params {\n  strength: f32, // @default 0.65\n  warm: f32, // @default 0\n}\nfn process(p: Point, ctx: PointCtx) -> Point {\n  var q = p;\n  // The previous kernel's custom attribute drives this stage, not another time wave.\n  let energy = clamp(p.motion.x, 0.0, 1.0);\n  let cold = vec3f(0.045, 0.65, 0.82);\n  let hot = vec3f(0.95, 0.32, 0.07);\n  let light = mix(cold, hot, clamp(ctx.params.warm, 0.0, 1.0));\n  let amount = energy * ctx.params.strength;\n  q.tint = vec4f(p.tint.rgb * (1.0 + amount) + light * amount * p.tint.a, p.tint.a);\n  return q;\n}",
+          "seed": 86,
+          "strength": 0.65,
+          "substeps": 1,
+          "warm": 0
         },
         "position": {
-          "x": 760,
-          "y": -320
+          "x": 1300,
+          "y": 0
         },
         "size": {
           "height": 220,
-          "width": 900
+          "width": 220
         },
-        "type": "annotate"
-      },
-      "nd_e86-photo-mapping-point-cloud67": {
-        "definitionVersion": 1,
-        "id": "nd_e86-photo-mapping-point-cloud67",
-        "label": "note_editable_recipe",
-        "parameters": {
-          "body": "Real point geometry: pointGrid → relative_depth → photo_colour → Geometry → Render and Camera. The 768 × 512 grid holds 393,216 photo-coloured points. Coverage scales excluded points to zero area; keep heat=0 for photographic colour. Density, point size, gain and camera pose are separate editable nodes. Near/far and FOV are assumed display geometry, not metric measurements. Raise level_reference1 brightness from 0 to mix the source photograph back in.",
-          "color": "shader",
-          "title": "Point Cloud · editable stages"
-        },
-        "position": {
-          "x": 0,
-          "y": 1260
-        },
-        "size": {
-          "height": 250,
-          "width": 1500
-        },
-        "type": "annotate"
+        "type": "pointKernel"
       },
       "nd_e86-photo-mapping-point-cloud7": {
         "definitionVersion": 1,
@@ -1089,6 +1106,63 @@
           "width": 220
         },
         "type": "mask"
+      },
+      "nd_e86-photo-mapping-point-cloud70": {
+        "definitionVersion": 1,
+        "id": "nd_e86-photo-mapping-point-cloud70",
+        "label": "note_synthetic_site",
+        "parameters": {
+          "body": "The stone photograph and scalar fields share one analytic facade with window recesses, portal, pilasters and a carved rosette. This executable workflow is synthetic, not a demonstration of AI depth quality. Depth and coverage stay r32float data textures. Replace these three source nodes with your saved photograph and maps for a real facade.",
+          "color": "shader",
+          "title": "Synthetic facade · registered RGB, depth and mask"
+        },
+        "position": {
+          "x": -340,
+          "y": -320
+        },
+        "size": {
+          "height": 220,
+          "width": 1000
+        },
+        "type": "annotate"
+      },
+      "nd_e86-photo-mapping-point-cloud71": {
+        "definitionVersion": 1,
+        "id": "nd_e86-photo-mapping-point-cloud71",
+        "label": "note_alignment",
+        "parameters": {
+          "body": "switch_calibration1: 0 content, 1 regular test chart. Window Out clips with mask_surface1 and follows gridwarp_surface1 and cornerpin_surface1. The inspection preview shows the 3D cloud before the image-space clip. Open window_projector1 explicitly to project it. Every stage remains editable.",
+          "color": "output",
+          "title": "Shared calibration and projector path"
+        },
+        "position": {
+          "x": 1760,
+          "y": -320
+        },
+        "size": {
+          "height": 220,
+          "width": 900
+        },
+        "type": "annotate"
+      },
+      "nd_e86-photo-mapping-point-cloud72": {
+        "definitionVersion": 1,
+        "id": "nd_e86-photo-mapping-point-cloud72",
+        "label": "note_editable_recipe",
+        "parameters": {
+          "body": "Real point geometry: pointGrid → relative_depth → photo_colour → Geometry → Render and Camera. The 768 × 512 grid holds 393,216 photo-coloured points. Coverage scales excluded points to zero area; keep heat=0 for photographic colour. After reconstruction, kernel_current deforms positions and writes motion, and kernel_attribute_light reads that custom attribute to colour the active parts. Amount zero disables deformation and its colour cue. These are reversible animated deformations, not a persistent physical simulation. Density, point size, gain and camera pose are separate editable nodes. Near/far and FOV are assumed display geometry, not metric measurements. level_reference1 controls the source photograph underlay.",
+          "color": "shader",
+          "title": "Point Cloud · editable stages"
+        },
+        "position": {
+          "x": 0,
+          "y": 1260
+        },
+        "size": {
+          "height": 250,
+          "width": 1500
+        },
+        "type": "annotate"
       },
       "nd_e86-photo-mapping-point-cloud8": {
         "definitionVersion": 1,

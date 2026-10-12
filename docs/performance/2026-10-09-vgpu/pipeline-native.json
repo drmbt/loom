@@ -1,0 +1,247 @@
+{
+  "environment": {
+    "node": "v22.23.3",
+    "platform": "darwin/arm64",
+    "cpu": "Apple M3 Max",
+    "count": 2000,
+    "runs": 7
+  },
+  "artifacts": [
+    {
+      "label": "baseline",
+      "entry": "/tmp/loom-vgpu-canary-base/packages/vgpu-api/dist/node.js",
+      "entryHash": "47bb8c130b02cdf985e13ce2fc3919a7356411f8da967224997e8588ed13d11a",
+      "drawHash": "1f35f9e2bb2a33cb2696817cb95c005c997030874720b889b71c0ddf8f1e8d85",
+      "frameHash": "6666b036b299459b4ade7c92aa2cfc0401ce30cd5d9be05213f2bfd814a96bdb"
+    },
+    {
+      "label": "pipeline",
+      "entry": "/tmp/loom-vgpu-pipeline-candidate/packages/vgpu-api/dist/node.js",
+      "entryHash": "47bb8c130b02cdf985e13ce2fc3919a7356411f8da967224997e8588ed13d11a",
+      "drawHash": "560ee80c2eb1db128a11800c50042fe884c0f3b780fe80f3806f4dee3d94f0f1",
+      "frameHash": "cb4c9fff3b029c880f44551ec5bab2feac89a5fae8476d91fd652a8ce0c4f19c"
+    }
+  ],
+  "results": [
+    {
+      "mode": "unique",
+      "entries": [
+        {
+          "label": "baseline",
+          "path": "/tmp/loom-vgpu-canary-base/packages/vgpu-api/dist/node.js",
+          "samples": [
+            3.931015391666668,
+            3.821107772222224,
+            4.16673819722222,
+            4.25412522777778,
+            4.24898286111111,
+            3.880264125,
+            4.037014000000001
+          ],
+          "pixels": [
+            "49e57acbdefb3c53a3afbb920f530618fc62ac23f179512b8141c4079d8dfe94",
+            "49e57acbdefb3c53a3afbb920f530618fc62ac23f179512b8141c4079d8dfe94",
+            "49e57acbdefb3c53a3afbb920f530618fc62ac23f179512b8141c4079d8dfe94",
+            "49e57acbdefb3c53a3afbb920f530618fc62ac23f179512b8141c4079d8dfe94",
+            "49e57acbdefb3c53a3afbb920f530618fc62ac23f179512b8141c4079d8dfe94",
+            "49e57acbdefb3c53a3afbb920f530618fc62ac23f179512b8141c4079d8dfe94",
+            "49e57acbdefb3c53a3afbb920f530618fc62ac23f179512b8141c4079d8dfe94"
+          ],
+          "median": 4.037014000000001,
+          "min": 3.821107772222224,
+          "max": 4.25412522777778
+        },
+        {
+          "label": "pipeline",
+          "path": "/tmp/loom-vgpu-pipeline-candidate/packages/vgpu-api/dist/node.js",
+          "samples": [
+            4.047542825000001,
+            3.87285983888889,
+            3.9193627305555565,
+            3.888806374999998,
+            4.0331827472222255,
+            3.4413523138888866,
+            3.571770141666667
+          ],
+          "pixels": [
+            "49e57acbdefb3c53a3afbb920f530618fc62ac23f179512b8141c4079d8dfe94",
+            "49e57acbdefb3c53a3afbb920f530618fc62ac23f179512b8141c4079d8dfe94",
+            "49e57acbdefb3c53a3afbb920f530618fc62ac23f179512b8141c4079d8dfe94",
+            "49e57acbdefb3c53a3afbb920f530618fc62ac23f179512b8141c4079d8dfe94",
+            "49e57acbdefb3c53a3afbb920f530618fc62ac23f179512b8141c4079d8dfe94",
+            "49e57acbdefb3c53a3afbb920f530618fc62ac23f179512b8141c4079d8dfe94",
+            "49e57acbdefb3c53a3afbb920f530618fc62ac23f179512b8141c4079d8dfe94"
+          ],
+          "median": 3.888806374999998,
+          "min": 3.4413523138888866,
+          "max": 4.047542825000001
+        }
+      ]
+    },
+    {
+      "mode": "repeated",
+      "entries": [
+        {
+          "label": "baseline",
+          "path": "/tmp/loom-vgpu-canary-base/packages/vgpu-api/dist/node.js",
+          "samples": [
+            2.65357743888889,
+            2.6015734888888904,
+            2.5774577527777773,
+            2.586653019444444,
+            2.577235519444445,
+            2.767278455555556,
+            2.577057741666668
+          ],
+          "pixels": [
+            "49e57acbdefb3c53a3afbb920f530618fc62ac23f179512b8141c4079d8dfe94",
+            "49e57acbdefb3c53a3afbb920f530618fc62ac23f179512b8141c4079d8dfe94",
+            "49e57acbdefb3c53a3afbb920f530618fc62ac23f179512b8141c4079d8dfe94",
+            "49e57acbdefb3c53a3afbb920f530618fc62ac23f179512b8141c4079d8dfe94",
+            "49e57acbdefb3c53a3afbb920f530618fc62ac23f179512b8141c4079d8dfe94",
+            "49e57acbdefb3c53a3afbb920f530618fc62ac23f179512b8141c4079d8dfe94",
+            "49e57acbdefb3c53a3afbb920f530618fc62ac23f179512b8141c4079d8dfe94"
+          ],
+          "median": 2.586653019444444,
+          "min": 2.577057741666668,
+          "max": 2.767278455555556
+        },
+        {
+          "label": "pipeline",
+          "path": "/tmp/loom-vgpu-pipeline-candidate/packages/vgpu-api/dist/node.js",
+          "samples": [
+            2.237975463888889,
+            2.28174895,
+            2.373075355555555,
+            2.3114699166666663,
+            2.3383148138888887,
+            2.259294666666668,
+            2.36281053611111
+          ],
+          "pixels": [
+            "49e57acbdefb3c53a3afbb920f530618fc62ac23f179512b8141c4079d8dfe94",
+            "49e57acbdefb3c53a3afbb920f530618fc62ac23f179512b8141c4079d8dfe94",
+            "49e57acbdefb3c53a3afbb920f530618fc62ac23f179512b8141c4079d8dfe94",
+            "49e57acbdefb3c53a3afbb920f530618fc62ac23f179512b8141c4079d8dfe94",
+            "49e57acbdefb3c53a3afbb920f530618fc62ac23f179512b8141c4079d8dfe94",
+            "49e57acbdefb3c53a3afbb920f530618fc62ac23f179512b8141c4079d8dfe94",
+            "49e57acbdefb3c53a3afbb920f530618fc62ac23f179512b8141c4079d8dfe94"
+          ],
+          "median": 2.3114699166666663,
+          "min": 2.237975463888889,
+          "max": 2.373075355555555
+        }
+      ]
+    },
+    {
+      "mode": "alternating",
+      "entries": [
+        {
+          "label": "baseline",
+          "path": "/tmp/loom-vgpu-canary-base/packages/vgpu-api/dist/node.js",
+          "samples": [
+            2.8800321777777786,
+            2.862869908333333,
+            2.8429671277777775,
+            2.8569963138888883,
+            2.864032172222222,
+            2.8653252249999994,
+            2.8968017249999978
+          ],
+          "pixels": [
+            "038fd5b3374989ce95e48d0d396186792936fc58c566d1f48278ab070f549020",
+            "038fd5b3374989ce95e48d0d396186792936fc58c566d1f48278ab070f549020",
+            "038fd5b3374989ce95e48d0d396186792936fc58c566d1f48278ab070f549020",
+            "038fd5b3374989ce95e48d0d396186792936fc58c566d1f48278ab070f549020",
+            "038fd5b3374989ce95e48d0d396186792936fc58c566d1f48278ab070f549020",
+            "038fd5b3374989ce95e48d0d396186792936fc58c566d1f48278ab070f549020",
+            "038fd5b3374989ce95e48d0d396186792936fc58c566d1f48278ab070f549020"
+          ],
+          "median": 2.864032172222222,
+          "min": 2.8429671277777775,
+          "max": 2.8968017249999978
+        },
+        {
+          "label": "pipeline",
+          "path": "/tmp/loom-vgpu-pipeline-candidate/packages/vgpu-api/dist/node.js",
+          "samples": [
+            2.9059542805555556,
+            2.8751355250000006,
+            2.858621305555553,
+            2.82599768888889,
+            2.8509298388888893,
+            2.8748475638888893,
+            2.9166435361111103
+          ],
+          "pixels": [
+            "038fd5b3374989ce95e48d0d396186792936fc58c566d1f48278ab070f549020",
+            "038fd5b3374989ce95e48d0d396186792936fc58c566d1f48278ab070f549020",
+            "038fd5b3374989ce95e48d0d396186792936fc58c566d1f48278ab070f549020",
+            "038fd5b3374989ce95e48d0d396186792936fc58c566d1f48278ab070f549020",
+            "038fd5b3374989ce95e48d0d396186792936fc58c566d1f48278ab070f549020",
+            "038fd5b3374989ce95e48d0d396186792936fc58c566d1f48278ab070f549020",
+            "038fd5b3374989ce95e48d0d396186792936fc58c566d1f48278ab070f549020"
+          ],
+          "median": 2.8748475638888893,
+          "min": 2.82599768888889,
+          "max": 2.9166435361111103
+        }
+      ]
+    },
+    {
+      "mode": "single",
+      "entries": [
+        {
+          "label": "baseline",
+          "path": "/tmp/loom-vgpu-canary-base/packages/vgpu-api/dist/node.js",
+          "samples": [
+            47.35711800000108,
+            44.73930100000058,
+            54.87761999999964,
+            47.42473600000076,
+            49.21658599999972,
+            44.98837999999921,
+            42.701458999999346
+          ],
+          "pixels": [
+            "49e57acbdefb3c53a3afbb920f530618fc62ac23f179512b8141c4079d8dfe94",
+            "49e57acbdefb3c53a3afbb920f530618fc62ac23f179512b8141c4079d8dfe94",
+            "49e57acbdefb3c53a3afbb920f530618fc62ac23f179512b8141c4079d8dfe94",
+            "49e57acbdefb3c53a3afbb920f530618fc62ac23f179512b8141c4079d8dfe94",
+            "49e57acbdefb3c53a3afbb920f530618fc62ac23f179512b8141c4079d8dfe94",
+            "49e57acbdefb3c53a3afbb920f530618fc62ac23f179512b8141c4079d8dfe94",
+            "49e57acbdefb3c53a3afbb920f530618fc62ac23f179512b8141c4079d8dfe94"
+          ],
+          "median": 47.35711800000108,
+          "min": 42.701458999999346,
+          "max": 54.87761999999964
+        },
+        {
+          "label": "pipeline",
+          "path": "/tmp/loom-vgpu-pipeline-candidate/packages/vgpu-api/dist/node.js",
+          "samples": [
+            44.184207999999686,
+            50.25774699999809,
+            49.032115000000516,
+            48.28037199999963,
+            46.84176000000039,
+            44.352068999999574,
+            44.43978600000081
+          ],
+          "pixels": [
+            "49e57acbdefb3c53a3afbb920f530618fc62ac23f179512b8141c4079d8dfe94",
+            "49e57acbdefb3c53a3afbb920f530618fc62ac23f179512b8141c4079d8dfe94",
+            "49e57acbdefb3c53a3afbb920f530618fc62ac23f179512b8141c4079d8dfe94",
+            "49e57acbdefb3c53a3afbb920f530618fc62ac23f179512b8141c4079d8dfe94",
+            "49e57acbdefb3c53a3afbb920f530618fc62ac23f179512b8141c4079d8dfe94",
+            "49e57acbdefb3c53a3afbb920f530618fc62ac23f179512b8141c4079d8dfe94",
+            "49e57acbdefb3c53a3afbb920f530618fc62ac23f179512b8141c4079d8dfe94"
+          ],
+          "median": 46.84176000000039,
+          "min": 44.184207999999686,
+          "max": 50.25774699999809
+        }
+      ]
+    }
+  ]
+}

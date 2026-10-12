@@ -118,6 +118,8 @@ describe("examples: the gate", () => {
       "E84-Photo-Mapping-Contour-Engraving.loom.json",
       "E85-Photo-Mapping-Video.loom.json",
       "E86-Photo-Mapping-Point-Cloud.loom.json",
+      "E87-Photo-Mapping-Falling-Facade.loom.json",
+      "E88-Photo-Mapping-Ribbon-Peel.loom.json",
       "E9-Ember.loom.json",
     ]);
   });

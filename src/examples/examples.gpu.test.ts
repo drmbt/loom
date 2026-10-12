@@ -888,3 +888,45 @@ function halfFloat(bits: number): number {
   if (exponent === 31) return fraction === 0 ? sign * Infinity : Number.NaN;
   return sign * Math.pow(2, exponent - 15) * (1 + fraction / 1024);
 }
+
+describe("Photo Mapping attribute motion", () => {
+  it.each(["E86-Photo-Mapping-Point-Cloud.loom.json", "E87-Photo-Mapping-Falling-Facade.loom.json", "E88-Photo-Mapping-Ribbon-Peel.loom.json"])(
+    "%s moves its points with a fixed camera, and Amount zero holds the image still", async fileName => {
+      if (dawnError !== undefined) throw new Error(`Dawn did not start: ${dawnError}`);
+      const file = listExamples().find(entry => entry.fileName === fileName);
+      if (file === undefined) throw new Error(`${fileName} is not shipped`);
+      const { document } = requireExample(file);
+      const motion = Object.values(document.graph.nodes).find(node => ["kernel_current", "kernel_falling", "kernel_ribbons"].includes(node.label ?? ""));
+      const camera = Object.values(document.graph.nodes).find(node => node.type === "camera");
+      const output = Object.values(document.graph.nodes).find(node => node.type === "output");
+      if (motion === undefined || camera === undefined || output === undefined) throw new Error("Motion fixture lacks its motion, camera or output node");
+      const cameraParameters = { ...camera.parameters, "eye.x": 0.45 };
+      const captureMotion = async (amount: number) => {
+        const graph: GraphDocument = { ...document.graph, nodes: { ...document.graph.nodes,
+          [camera.id]: { ...camera, parameters: cameraParameters },
+          [motion.id]: { ...motion, parameters: { ...motion.parameters, amount } },
+        } };
+        const result = await renderHeadless({ host: nodeGpuHost(), graph,
+          settings: { ...document.settings, outputResolution: { width: 256, height: 170 } },
+          frames: 121, capture: [0, 120], outputNodeId: output.id, animate: true, fps: 60 });
+        expect(result.diagnostics.filter(d => d.severity === "error").map(d => d.message)).toEqual([]);
+        const images = result.frames.map(frame => toRgba8({ width: frame.width, height: frame.height,
+          format: frame.format, bytes: frame.bytes,
+          rowStride: frame.width * BYTES_PER_PIXEL[frame.format],
+        }, { space: "linear" }).data);
+        if (images.length !== 2) throw new Error("Motion proof did not capture both frames");
+        let change = 0;
+        for (let index = 0; index < images[0]!.length; index += 4) {
+          change += Math.abs(images[0]![index]! - images[1]![index]!)
+            + Math.abs(images[0]![index + 1]! - images[1]![index + 1]!)
+            + Math.abs(images[0]![index + 2]! - images[1]![index + 2]!);
+        }
+        return change / (images[0]!.length / 4 * 3);
+      };
+      const still = await captureMotion(0);
+      const moving = await captureMotion(1);
+      expect(still).toBeLessThan(0.1);
+      expect(moving).toBeGreaterThan(1);
+    }, 60_000,
+  );
+});

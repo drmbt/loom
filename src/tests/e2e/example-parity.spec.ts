@@ -467,3 +467,27 @@ test("E3 through the live app matches Dawn per-pixel, addressed by the absolute 
     )
     .toBe("match");
 });
+
+for (const [number, title] of [[86, "Point Cloud"], [87, "Falling Facade"], [88, "Ribbon Peel"]] as const) {
+  test(`E${number} Photo Mapping ${title} opens from the gallery and animates in the viewer`, async ({ page }) => {
+    await openApp(page);
+    await page.getByRole("tab", { name: "examples" }).click();
+    await page.getByRole("button", { name: new RegExp(`^E${number} Photo Mapping ${title}`) }).click();
+    await expect(page.locator("header").first()).toContainText(`E${number}`);
+    await expect(page.getByTestId("viewer-canvas")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Pause", exact: true })).toBeVisible();
+    const before = await glassBytes(page);
+    await expect.poll(async () => {
+      const after = await glassBytes(page);
+      if (before.bytes.length !== after.bytes.length) return 0;
+      let moved = 0;
+      for (let index = 0; index < before.bytes.length; index += 4) {
+        const delta = Math.max(Math.abs(before.bytes[index]! - after.bytes[index]!),
+          Math.abs(before.bytes[index + 1]! - after.bytes[index + 1]!),
+          Math.abs(before.bytes[index + 2]! - after.bytes[index + 2]!));
+        if (delta > 12) moved++;
+      }
+      return moved / (before.bytes.length / 4);
+    }, { message: `E${number} viewer never animated` }).toBeGreaterThan(0.01);
+  });
+}

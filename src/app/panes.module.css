@@ -285,21 +285,7 @@
   flex: 1 1 auto;
   min-height: 0;
   background: var(--bg-sunken);
-  border: var(--border-hairline);
-  border-radius: var(--radius);
   overflow: hidden;
-}
-
-/*
-  Fullscreen (T394). The UA sizes a fullscreen element to the screen, and the hairline and
-  radius above are the pane's chrome — they would frame the picture a second time inside a
-  screen-sized box. Dropped for the duration; `.picture` keeps letterboxing, so filling the
-  screen with the frame gives the picture the whole screen at its own aspect.
-*/
-.surface:fullscreen {
-  border: none;
-  border-radius: 0;
-  background: var(--bg-sunken);
 }
 
 /*

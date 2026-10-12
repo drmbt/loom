@@ -534,6 +534,8 @@ export interface DrawPassDescriptor {
    */
   readonly sourceMap?: WgslSourceMap;
   readonly target: string;
+  /** Pure environment preparation owned by this Render, with an explicit source dependency. */
+  readonly preparation?: { readonly kind: "environment"; readonly source: string };
   /**
    * T1623b: WHICH LAYER of a `layers` target this draw renders into. Required there, and
    * refused anywhere else. Structural: it is part of where the draw goes.
@@ -1095,6 +1097,10 @@ function readDrawPass(id: string, value: Record<string, unknown>): DrawPassDescr
   if (skip !== undefined && typeof skip !== "boolean") return undefined;
   const layer = value["layer"];
   if (layer !== undefined && !(Number.isInteger(layer) && (layer as number) >= 0)) return undefined;
+  const rawPreparation = value["preparation"];
+  if (rawPreparation !== undefined && (!isRecord(rawPreparation) || rawPreparation["kind"] !== "environment" ||
+    typeof rawPreparation["source"] !== "string" || rawPreparation["source"].length === 0 ||
+    Object.keys(rawPreparation).some(key => key !== "kind" && key !== "source") || typeof value["nodeId"] !== "string")) return undefined;
 
   const nodeId = value["nodeId"];
   const sourceMap = readSourceMap(value["sourceMap"]);
@@ -1104,6 +1110,7 @@ function readDrawPass(id: string, value: Record<string, unknown>): DrawPassDescr
     id,
     shader: wgslFromPlan(shader),
     target,
+    ...(rawPreparation === undefined ? {} : { preparation: { kind: "environment" as const, source: (rawPreparation as { source: string }).source } }),
     // T1623b: kept only where it is said, so a draw into a plain target has the bytes it had.
     ...(layer === undefined ? {} : { layer: layer as number }),
     topology,
@@ -1797,6 +1804,7 @@ function passKeyParts(pass: PassDescriptor): unknown[] {
           pass.clear ?? true,
           // T1623b: only where a layer is named, so every other draw's key is the key it had.
           ...(pass.layer === undefined ? [] : [["layer", pass.layer]]),
+          ...(pass.preparation === undefined ? [] : [["preparation", pass.preparation.kind, pass.preparation.source]]),
         ];
       case "counter":
         return ["counter", pass.id, pass.op, pass.resourceId, pass.outputResourceId ?? null];

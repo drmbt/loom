@@ -1,0 +1,699 @@
+{
+  "analysisScriptHash": "556a768b7d8364026401314c9b922c22c242f0ef0c227bc9bb13387ea6ad4f4e",
+  "method": "Means, medians, MAD, Tukey flags, paired percentage changes, fixed-seed 20,000-resample exploratory bootstrap and outlier sensitivity. Every trial retained.",
+  "reports": [
+    {
+      "input": "docs/performance/2026-10-09-vgpu/pipeline-native.json",
+      "workloads": [
+        {
+          "mode": "unique",
+          "count": 2000,
+          "reference": {
+            "n": 7,
+            "mean": 4.048463939285715,
+            "median": 4.037014000000001,
+            "min": 3.821107772222224,
+            "max": 4.25412522777778,
+            "q1": 3.9056397583333338,
+            "q3": 4.207860529166665,
+            "mad": 0.15674987500000093,
+            "tukeyOutlierIndexes": []
+          },
+          "candidate": {
+            "n": 7,
+            "mean": 3.8249824246031747,
+            "median": 3.888806374999998,
+            "min": 3.4413523138888866,
+            "max": 4.047542825000001,
+            "q1": 3.722314990277779,
+            "q3": 3.976272738888891,
+            "mad": 0.14437637222222754,
+            "tukeyOutlierIndexes": []
+          },
+          "pairedPercentChanges": [
+            2.964308752907918,
+            1.3543733846734352,
+            -5.936909279099368,
+            -8.587402420417533,
+            -5.078865247115938,
+            -11.311390074795835,
+            -11.524454914779437
+          ],
+          "medianPairedPercentChange": -5.936909279099368,
+          "meanPairedPercentChange": -5.445762828375251,
+          "exploratoryPairedBootstrap95Pct": [
+            -11.311390074795835,
+            1.3543733846734352
+          ],
+          "sensitivityOnly": {
+            "flaggedPairIndexes": [],
+            "retainedPairs": 7,
+            "medianPercentChange": -5.936909279099368
+          },
+          "caveat": "7 paired trials give an exploratory interval. Outlier flags are descriptive; no sample is removed from headline results. This does not quantify unrelated background load or prove all workloads improve.",
+          "observer": [
+            {
+              "label": "baseline",
+              "emptyClockIntervalUs": null,
+              "estimatedUsPerDraw": null
+            },
+            {
+              "label": "pipeline",
+              "emptyClockIntervalUs": null,
+              "estimatedUsPerDraw": null
+            }
+          ]
+        },
+        {
+          "mode": "repeated",
+          "count": 2000,
+          "reference": {
+            "n": 7,
+            "mean": 2.6201190595238097,
+            "median": 2.586653019444444,
+            "min": 2.577057741666668,
+            "max": 2.767278455555556,
+            "q1": 2.5773466361111113,
+            "q3": 2.62757546388889,
+            "mad": 0.009595277777775912,
+            "tukeyOutlierIndexes": [
+              5
+            ]
+          },
+          "candidate": {
+            "n": 7,
+            "mean": 2.309241386111111,
+            "median": 2.3114699166666663,
+            "min": 2.237975463888889,
+            "max": 2.373075355555555,
+            "q1": 2.270521808333334,
+            "q3": 2.350562674999999,
+            "mad": 0.05134061944444346,
+            "tukeyOutlierIndexes": []
+          },
+          "pairedPercentChanges": [
+            -15.66195012473509,
+            -12.293503921947057,
+            -7.929611920969625,
+            -10.63857814361514,
+            -9.270425762526301,
+            -18.356800627311863,
+            -8.313636209679863
+          ],
+          "medianPairedPercentChange": -10.63857814361514,
+          "meanPairedPercentChange": -11.780643815826421,
+          "exploratoryPairedBootstrap95Pct": [
+            -15.66195012473509,
+            -8.313636209679863
+          ],
+          "sensitivityOnly": {
+            "flaggedPairIndexes": [
+              5
+            ],
+            "retainedPairs": 6,
+            "medianPercentChange": -9.954501953070721
+          },
+          "caveat": "7 paired trials give an exploratory interval. Outlier flags are descriptive; no sample is removed from headline results. This does not quantify unrelated background load or prove all workloads improve.",
+          "observer": [
+            {
+              "label": "baseline",
+              "emptyClockIntervalUs": null,
+              "estimatedUsPerDraw": null
+            },
+            {
+              "label": "pipeline",
+              "emptyClockIntervalUs": null,
+              "estimatedUsPerDraw": null
+            }
+          ]
+        },
+        {
+          "mode": "alternating",
+          "count": 2000,
+          "reference": {
+            "n": 7,
+            "mean": 2.867003521428571,
+            "median": 2.864032172222222,
+            "min": 2.8429671277777775,
+            "max": 2.8968017249999978,
+            "q1": 2.8599331111111104,
+            "q3": 2.872678701388889,
+            "mad": 0.0070358583333338665,
+            "tukeyOutlierIndexes": [
+              6
+            ]
+          },
+          "candidate": {
+            "n": 7,
+            "mean": 2.8725899626984126,
+            "median": 2.8748475638888893,
+            "min": 2.82599768888889,
+            "max": 2.9166435361111103,
+            "q1": 2.8547755722222212,
+            "q3": 2.890544902777778,
+            "mad": 0.023917725,
+            "tukeyOutlierIndexes": []
+          },
+          "pairedPercentChanges": [
+            0.9000629568582941,
+            0.4284377935219741,
+            0.5506281667777113,
+            -1.0850075251865987,
+            -0.4574785667706638,
+            0.33233012454598754,
+            0.6849557889956115
+          ],
+          "medianPairedPercentChange": 0.4284377935219741,
+          "meanPairedPercentChange": 0.19341839124890228,
+          "exploratoryPairedBootstrap95Pct": [
+            -0.4574785667706638,
+            0.6849557889956115
+          ],
+          "sensitivityOnly": {
+            "flaggedPairIndexes": [
+              6
+            ],
+            "retainedPairs": 6,
+            "medianPercentChange": 0.3803839590339808
+          },
+          "caveat": "7 paired trials give an exploratory interval. Outlier flags are descriptive; no sample is removed from headline results. This does not quantify unrelated background load or prove all workloads improve.",
+          "observer": [
+            {
+              "label": "baseline",
+              "emptyClockIntervalUs": null,
+              "estimatedUsPerDraw": null
+            },
+            {
+              "label": "pipeline",
+              "emptyClockIntervalUs": null,
+              "estimatedUsPerDraw": null
+            }
+          ]
+        },
+        {
+          "mode": "single",
+          "count": 2000,
+          "reference": {
+            "n": 7,
+            "mean": 47.32931428571434,
+            "median": 47.35711800000108,
+            "min": 42.701458999999346,
+            "max": 54.87761999999964,
+            "q1": 44.863840499999895,
+            "q3": 48.32066100000024,
+            "mad": 2.368738000001869,
+            "tukeyOutlierIndexes": [
+              2
+            ]
+          },
+          "candidate": {
+            "n": 7,
+            "mean": 46.76972242857124,
+            "median": 46.84176000000039,
+            "min": 44.184207999999686,
+            "max": 50.25774699999809,
+            "q1": 44.39592750000019,
+            "q3": 48.65624350000007,
+            "mad": 2.4019739999995835,
+            "tukeyOutlierIndexes": []
+          },
+          "pairedPercentChanges": [
+            -6.699964301039863,
+            12.334671925244066,
+            -10.651892337895053,
+            1.8041977081303173,
+            -4.825255453515897,
+            -1.4143896712876747,
+            4.070884322714807
+          ],
+          "medianPairedPercentChange": -1.4143896712876747,
+          "meanPairedPercentChange": -0.7688211153784709,
+          "exploratoryPairedBootstrap95Pct": [
+            -6.699964301039863,
+            4.070884322714807
+          ],
+          "sensitivityOnly": {
+            "flaggedPairIndexes": [
+              2
+            ],
+            "retainedPairs": 6,
+            "medianPercentChange": 0.19490401842132132
+          },
+          "caveat": "7 paired trials give an exploratory interval. Outlier flags are descriptive; no sample is removed from headline results. This does not quantify unrelated background load or prove all workloads improve.",
+          "observer": [
+            {
+              "label": "baseline",
+              "emptyClockIntervalUs": null,
+              "estimatedUsPerDraw": null
+            },
+            {
+              "label": "pipeline",
+              "emptyClockIntervalUs": null,
+              "estimatedUsPerDraw": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "input": "docs/performance/2026-10-09-vgpu/pipeline-mock.json",
+      "workloads": [
+        {
+          "mode": "unique",
+          "count": 2000,
+          "reference": {
+            "n": 7,
+            "mean": 0.739152065079365,
+            "median": 0.7532376083333338,
+            "min": 0.7137471055555563,
+            "max": 0.7625488472222222,
+            "q1": 0.7182274833333326,
+            "q3": 0.7540379638888886,
+            "mad": 0.009311238888888407,
+            "tukeyOutlierIndexes": []
+          },
+          "candidate": {
+            "n": 7,
+            "mean": 0.7383737301587306,
+            "median": 0.7357836916666667,
+            "min": 0.6943003638888882,
+            "max": 0.8202790416666669,
+            "q1": 0.7044540527777785,
+            "q3": 0.7546724541666675,
+            "mad": 0.02654339722222332,
+            "tukeyOutlierIndexes": []
+          },
+          "pairedPercentChanges": [
+            -2.386137825634016,
+            -8.523893287200401,
+            1.2067215517382657,
+            -3.7484255462146177,
+            -0.33471200143960766,
+            14.705773773232389,
+            -0.9662432608097404
+          ],
+          "medianPairedPercentChange": -0.9662432608097404,
+          "meanPairedPercentChange": -0.006702370903961149,
+          "exploratoryPairedBootstrap95Pct": [
+            -3.7484255462146177,
+            1.2067215517382657
+          ],
+          "sensitivityOnly": {
+            "flaggedPairIndexes": [],
+            "retainedPairs": 7,
+            "medianPercentChange": -0.9662432608097404
+          },
+          "caveat": "7 paired trials give an exploratory interval. Outlier flags are descriptive; no sample is removed from headline results. This does not quantify unrelated background load or prove all workloads improve.",
+          "observer": [
+            {
+              "label": "baseline",
+              "emptyClockIntervalUs": null,
+              "estimatedUsPerDraw": null
+            },
+            {
+              "label": "pipeline",
+              "emptyClockIntervalUs": null,
+              "estimatedUsPerDraw": null
+            }
+          ]
+        },
+        {
+          "mode": "repeated",
+          "count": 2000,
+          "reference": {
+            "n": 7,
+            "mean": 0.3230839607142859,
+            "median": 0.3233902916666671,
+            "min": 0.31806261944444447,
+            "max": 0.3267280111111111,
+            "q1": 0.3216264375000002,
+            "q3": 0.32507696388888907,
+            "mad": 0.002110288888888756,
+            "tukeyOutlierIndexes": []
+          },
+          "candidate": {
+            "n": 7,
+            "mean": 0.32875596865079354,
+            "median": 0.32824792777777784,
+            "min": 0.3255747777777773,
+            "max": 0.33296514722222215,
+            "q1": 0.326912386111111,
+            "q3": 0.3303395777777778,
+            "mad": 0.0014406388888888455,
+            "tukeyOutlierIndexes": []
+          },
+          "pairedPercentChanges": [
+            1.0045690149064646,
+            1.9012102926247776,
+            0.6634589432377824,
+            1.5849464119340295,
+            2.9607739633149777,
+            0.8440375797588162,
+            3.367280672534889
+          ],
+          "medianPairedPercentChange": 1.5849464119340295,
+          "meanPairedPercentChange": 1.7608966969016768,
+          "exploratoryPairedBootstrap95Pct": [
+            0.8440375797588162,
+            2.9607739633149777
+          ],
+          "sensitivityOnly": {
+            "flaggedPairIndexes": [],
+            "retainedPairs": 7,
+            "medianPercentChange": 1.5849464119340295
+          },
+          "caveat": "7 paired trials give an exploratory interval. Outlier flags are descriptive; no sample is removed from headline results. This does not quantify unrelated background load or prove all workloads improve.",
+          "observer": [
+            {
+              "label": "baseline",
+              "emptyClockIntervalUs": null,
+              "estimatedUsPerDraw": null
+            },
+            {
+              "label": "pipeline",
+              "emptyClockIntervalUs": null,
+              "estimatedUsPerDraw": null
+            }
+          ]
+        },
+        {
+          "mode": "alternating",
+          "count": 2000,
+          "reference": {
+            "n": 7,
+            "mean": 0.3578401273809523,
+            "median": 0.36108009444444444,
+            "min": 0.34680416111111095,
+            "max": 0.366809838888889,
+            "q1": 0.3525094333333332,
+            "q3": 0.3625839652777774,
+            "mad": 0.005729744444444573,
+            "tukeyOutlierIndexes": []
+          },
+          "candidate": {
+            "n": 7,
+            "mean": 0.35909926904761896,
+            "median": 0.355187961111111,
+            "min": 0.34586215833333345,
+            "max": 0.3750670138888888,
+            "q1": 0.35346660277777764,
+            "q3": 0.36532227222222213,
+            "mad": 0.008230430555555779,
+            "tukeyOutlierIndexes": []
+          },
+          "pairedPercentChanges": [
+            0.03930181545730438,
+            4.08440140540145,
+            4.790666439043356,
+            -2.266876602704848,
+            3.8736334845498765,
+            -4.389704113100013,
+            -3.330930433209245
+          ],
+          "medianPairedPercentChange": 0.03930181545730438,
+          "meanPairedPercentChange": 0.40007028506255465,
+          "exploratoryPairedBootstrap95Pct": [
+            -3.330930433209245,
+            4.08440140540145
+          ],
+          "sensitivityOnly": {
+            "flaggedPairIndexes": [],
+            "retainedPairs": 7,
+            "medianPercentChange": 0.03930181545730438
+          },
+          "caveat": "7 paired trials give an exploratory interval. Outlier flags are descriptive; no sample is removed from headline results. This does not quantify unrelated background load or prove all workloads improve.",
+          "observer": [
+            {
+              "label": "baseline",
+              "emptyClockIntervalUs": null,
+              "estimatedUsPerDraw": null
+            },
+            {
+              "label": "pipeline",
+              "emptyClockIntervalUs": null,
+              "estimatedUsPerDraw": null
+            }
+          ]
+        },
+        {
+          "mode": "single",
+          "count": 2000,
+          "reference": {
+            "n": 7,
+            "mean": 6.623929142857206,
+            "median": 6.719617000000078,
+            "min": 6.237419000000116,
+            "max": 6.855091000000229,
+            "q1": 6.5358774999999305,
+            "q3": 6.741811000000077,
+            "mad": 0.1354740000001513,
+            "tukeyOutlierIndexes": []
+          },
+          "candidate": {
+            "n": 7,
+            "mean": 6.617022428571414,
+            "median": 6.491227999999971,
+            "min": 6.338723999999857,
+            "max": 7.168337999999956,
+            "q1": 6.43301150000007,
+            "q3": 6.7274219999999865,
+            "mad": 0.1525040000001141,
+            "tukeyOutlierIndexes": []
+          },
+          "pairedPercentChanges": [
+            2.245534887441014,
+            -3.5203361910593367,
+            2.426901255150171,
+            10.35769262921422,
+            -3.6071847547267666,
+            -1.8106834759763157,
+            -6.170029559433676
+          ],
+          "medianPairedPercentChange": -1.8106834759763157,
+          "meanPairedPercentChange": -0.011157887055812665,
+          "exploratoryPairedBootstrap95Pct": [
+            -3.6071847547267666,
+            2.426901255150171
+          ],
+          "sensitivityOnly": {
+            "flaggedPairIndexes": [],
+            "retainedPairs": 7,
+            "medianPercentChange": -1.8106834759763157
+          },
+          "caveat": "7 paired trials give an exploratory interval. Outlier flags are descriptive; no sample is removed from headline results. This does not quantify unrelated background load or prove all workloads improve.",
+          "observer": [
+            {
+              "label": "baseline",
+              "emptyClockIntervalUs": null,
+              "estimatedUsPerDraw": null
+            },
+            {
+              "label": "pipeline",
+              "emptyClockIntervalUs": null,
+              "estimatedUsPerDraw": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "input": "docs/performance/2026-10-09-vgpu/environment.json",
+      "scenarios": {
+        "sourceStableWithMaterialMotion": {
+          "cpuEncodeMs": {
+            "reference": {
+              "n": 7,
+              "mean": 0.6321368571427196,
+              "median": 0.6078329999991183,
+              "min": 0.5877080000000205,
+              "max": 0.7409160000001975,
+              "q1": 0.6017709999998715,
+              "q3": 0.642479499999979,
+              "mad": 0.007040999999389896,
+              "tukeyOutlierIndexes": [
+                1
+              ]
+            },
+            "candidate": {
+              "n": 7,
+              "mean": 0.43275000000007174,
+              "median": 0.4149999999999636,
+              "min": 0.3986670000003869,
+              "max": 0.4878750000000309,
+              "q1": 0.4054790000000139,
+              "q3": 0.4583750000000464,
+              "mad": 0.014000000000123691,
+              "tukeyOutlierIndexes": []
+            },
+            "pairedPercentChanges": [
+              -27.350039163584572,
+              -34.16932553759462,
+              -33.94248936692136,
+              -33.64309111962758,
+              -32.68353380341961,
+              -29.38670223989649,
+              -29.421403576194514
+            ],
+            "medianPairedPercentChange": -32.68353380341961,
+            "meanPairedPercentChange": -31.51379782960553,
+            "exploratoryPairedBootstrap95Pct": [
+              -33.94248936692136,
+              -29.38670223989649
+            ],
+            "sensitivityOnly": {
+              "flaggedPairIndexes": [
+                1
+              ],
+              "retainedPairs": 6,
+              "medianPercentChange": -31.05246868980706
+            },
+            "caveat": "7 paired trials give an exploratory interval. Outlier flags are descriptive; no sample is removed from headline results. This does not quantify unrelated background load or prove all workloads improve."
+          },
+          "gpuSegmentExtentMs": {
+            "reference": {
+              "n": 7,
+              "mean": 2.1065142857142853,
+              "median": 2.097152,
+              "min": 2.097152,
+              "max": 2.162688,
+              "q1": 2.097152,
+              "q3": 2.097152,
+              "mad": 0,
+              "tukeyOutlierIndexes": [
+                0
+              ]
+            },
+            "candidate": {
+              "n": 7,
+              "mean": 0.22469485714285714,
+              "median": 0.131072,
+              "min": 0.131072,
+              "max": 0.393216,
+              "q1": 0.131072,
+              "q3": 0.32767999999999997,
+              "mad": 0,
+              "tukeyOutlierIndexes": []
+            },
+            "pairedPercentChanges": [
+              -93.93939393939394,
+              -81.25,
+              -93.75,
+              -81.25,
+              -93.75,
+              -87.5,
+              -93.75
+            ],
+            "medianPairedPercentChange": -93.75,
+            "meanPairedPercentChange": -89.31277056277057,
+            "exploratoryPairedBootstrap95Pct": [
+              -93.75,
+              -81.25
+            ],
+            "sensitivityOnly": {
+              "flaggedPairIndexes": [
+                0
+              ],
+              "retainedPairs": 6,
+              "medianPercentChange": -90.625
+            },
+            "caveat": "7 paired trials give an exploratory interval. Outlier flags are descriptive; no sample is removed from headline results. This does not quantify unrelated background load or prove all workloads improve."
+          },
+          "caveat": "GPU timestamp quantization and segment boundaries limit interpretation of small timing differences."
+        },
+        "sourceChangingEveryFrame": {
+          "cpuEncodeMs": {
+            "reference": {
+              "n": 7,
+              "mean": 0.5902144285712764,
+              "median": 0.5916660000002594,
+              "min": 0.5770420000008016,
+              "max": 0.6015419999994265,
+              "q1": 0.5861464999998134,
+              "q3": 0.59447899999941,
+              "mad": 0.0037919999995210674,
+              "tukeyOutlierIndexes": []
+            },
+            "candidate": {
+              "n": 7,
+              "mean": 0.5422739999999716,
+              "median": 0.5405829999999696,
+              "min": 0.5289589999993041,
+              "max": 0.5541250000005675,
+              "q1": 0.5373749999998836,
+              "q3": 0.5487505000000965,
+              "mad": 0.006084000000555534,
+              "tukeyOutlierIndexes": []
+            },
+            "pairedPercentChanges": [
+              -9.12238879395847,
+              -5.12922798767026,
+              -8.916090985535908,
+              -8.181615718117518,
+              -7.343659560514116,
+              -10.598378139174436,
+              -7.494063393241679
+            ],
+            "medianPairedPercentChange": -8.181615718117518,
+            "meanPairedPercentChange": -8.112203511173197,
+            "exploratoryPairedBootstrap95Pct": [
+              -9.12238879395847,
+              -7.343659560514116
+            ],
+            "sensitivityOnly": {
+              "flaggedPairIndexes": [],
+              "retainedPairs": 7,
+              "medianPercentChange": -8.181615718117518
+            },
+            "caveat": "7 paired trials give an exploratory interval. Outlier flags are descriptive; no sample is removed from headline results. This does not quantify unrelated background load or prove all workloads improve."
+          },
+          "gpuSegmentExtentMs": {
+            "reference": {
+              "n": 7,
+              "mean": 2.097152,
+              "median": 2.097152,
+              "min": 2.097152,
+              "max": 2.097152,
+              "q1": 2.097152,
+              "q3": 2.097152,
+              "mad": 0,
+              "tukeyOutlierIndexes": []
+            },
+            "candidate": {
+              "n": 7,
+              "mean": 1.3388068571428575,
+              "median": 1.114112,
+              "min": 1.114112,
+              "max": 1.703936,
+              "q1": 1.114112,
+              "q3": 1.605632,
+              "mad": 0,
+              "tukeyOutlierIndexes": []
+            },
+            "pairedPercentChanges": [
+              -46.875,
+              -18.75,
+              -46.875,
+              -21.87499999999999,
+              -46.875,
+              -25,
+              -46.875
+            ],
+            "medianPairedPercentChange": -46.875,
+            "meanPairedPercentChange": -36.160714285714285,
+            "exploratoryPairedBootstrap95Pct": [
+              -46.875,
+              -21.87499999999999
+            ],
+            "sensitivityOnly": {
+              "flaggedPairIndexes": [],
+              "retainedPairs": 7,
+              "medianPercentChange": -46.875
+            },
+            "caveat": "7 paired trials give an exploratory interval. Outlier flags are descriptive; no sample is removed from headline results. This does not quantify unrelated background load or prove all workloads improve."
+          },
+          "caveat": "GPU timestamp quantization and segment boundaries limit interpretation of small timing differences."
+        }
+      }
+    }
+  ]
+}

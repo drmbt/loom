@@ -3000,6 +3000,7 @@ export const renderNode: NodeDefinition = {
           nodeId,
           shader,
           target: to.id,
+          preparation: { kind: "environment", source: environmentResource },
           topology: "triangle-list",
           instances: 1,
           vertexCount: 6,

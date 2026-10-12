@@ -1,0 +1,1020 @@
+{
+  "timestamp": "2026-10-09T19:35:42.147Z",
+  "runtime": "v24.11.1",
+  "platform": "darwin",
+  "arch": "arm64",
+  "cpu": "Apple M3 Max",
+  "capabilities": {
+    "tier": "B",
+    "features": [
+      "core-features-and-limits",
+      "indirect-first-instance",
+      "timestamp-query"
+    ],
+    "formats": [
+      "rgba8unorm",
+      "rgba8unorm-srgb",
+      "rgba16float",
+      "r32float",
+      "depth24plus"
+    ],
+    "timestampQuery": true,
+    "timestampQueryRequested": true,
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "apple-m3-max",
+      "description": "Metal driver on macOS Version 26.3.1 (a) (Build 25D771280a)"
+    },
+    "limits": {
+      "maxTextureDimension1D": 8192,
+      "maxTextureDimension2D": 8192,
+      "maxTextureArrayLayers": 256,
+      "maxBindGroups": 4,
+      "maxBindingsPerBindGroup": 1000,
+      "maxSampledTexturesPerShaderStage": 16,
+      "maxSamplersPerShaderStage": 16,
+      "maxStorageBuffersPerShaderStage": 10,
+      "maxStorageTexturesPerShaderStage": 4,
+      "maxUniformBuffersPerShaderStage": 12,
+      "maxUniformBufferBindingSize": 65536,
+      "maxStorageBufferBindingSize": 134217728,
+      "maxBufferSize": 268435456,
+      "maxColorAttachments": 8,
+      "maxComputeWorkgroupStorageSize": 16384,
+      "maxComputeInvocationsPerWorkgroup": 256,
+      "maxComputeWorkgroupSizeX": 256,
+      "maxComputeWorkgroupSizeY": 256,
+      "maxComputeWorkgroupSizeZ": 64,
+      "maxComputeWorkgroupsPerDimension": 65535
+    }
+  },
+  "settings": {
+    "outputResolution": {
+      "width": 512,
+      "height": 256
+    },
+    "workingFormat": "rgba16float",
+    "colorPolicy": {
+      "workingSpace": "linear",
+      "displayTransform": "none"
+    },
+    "randomSeed": 7,
+    "previewLongEdge": 64,
+    "previewFps": 30,
+    "limits": {
+      "maxResolution": 4096,
+      "maxDispatch": 65535,
+      "maxBufferBytes": 268435456,
+      "memoryBudgetBytes": 1073741824
+    }
+  },
+  "warmupFrames": 30,
+  "measuredFrames": 120,
+  "trials": 7,
+  "method": "Two devices; alternating run order; one-pixel completion readback outside CPU encode; per-logical-render GPU extent sums actual segment extents, excluding inter-segment gaps and readback. Final full output bytes compared exactly.",
+  "sourceHashes": {
+    "src/runtime/backend/vgpu/environment-preparation.ts": "7e21a077963f9661108950fbb271c8ad5f52ec7507ed96a92ee0ef15ca83cd5b",
+    "src/nodes/shaders/scene-render.wgsl.ts": "004e78d3d2ed7f3732b0531926d9a84de674b06fb17b2f9e6f972ef0b2376ae7",
+    "patches/vgpu.patch": "ac2565eca103ffbb8bda684990010a025494edd9a5b1bf0ca8bef6d66aa7b286",
+    "tools/environment-benchmark-fixture.ts": "f326dcad3a2d7a24dab5f6d2a6a797618c425b192ac7bcc425a75f8d229a2cb7",
+    "tools/bench-environment-preparation.ts": "658ba5119bf32a5a58d210f3549768f144b7b1417e6fd106c5108091f679c0f9"
+  },
+  "graphHash": "fc0ff5b0ebcce8283233a985d671332c324f02d4739805b0bb9845d08cc7bbbb",
+  "scenarios": {
+    "sourceStableWithMaterialMotion": {
+      "results": [
+        {
+          "trial": 0,
+          "order": [
+            "reference",
+            "candidate"
+          ],
+          "bytesEqual": true,
+          "reference": {
+            "cpuEncodeMs": {
+              "samples": 120,
+              "median": 0.6715419999999312,
+              "p90": 0.8076670000000377,
+              "min": 0.5663749999999936,
+              "max": 1.0769579999999905
+            },
+            "gpuRenderExtentMs": {
+              "samples": 120,
+              "median": 2.162688,
+              "p90": 2.555904,
+              "min": 1.9660799999999998,
+              "max": 2.818048
+            },
+            "preparationSpansPerFrame": {
+              "samples": 120,
+              "median": 12,
+              "p90": 12,
+              "min": 12,
+              "max": 12
+            },
+            "hashes": [
+              "5443fb158fb4488bdf513fe28d26a878012f69de68ddd6c77ea47067adc02d01",
+              "5443fb158fb4488bdf513fe28d26a878012f69de68ddd6c77ea47067adc02d01"
+            ]
+          },
+          "candidate": {
+            "cpuEncodeMs": {
+              "samples": 120,
+              "median": 0.4878750000000309,
+              "p90": 0.6331250000000637,
+              "min": 0.39658299999996416,
+              "max": 0.8097920000000158
+            },
+            "gpuRenderExtentMs": {
+              "samples": 120,
+              "median": 0.131072,
+              "p90": 0.262144,
+              "min": 0,
+              "max": 0.589824
+            },
+            "preparationSpansPerFrame": {
+              "samples": 120,
+              "median": 0,
+              "p90": 0,
+              "min": 0,
+              "max": 0
+            },
+            "hashes": [
+              "5443fb158fb4488bdf513fe28d26a878012f69de68ddd6c77ea47067adc02d01",
+              "5443fb158fb4488bdf513fe28d26a878012f69de68ddd6c77ea47067adc02d01"
+            ]
+          }
+        },
+        {
+          "trial": 1,
+          "order": [
+            "candidate",
+            "reference"
+          ],
+          "bytesEqual": true,
+          "reference": {
+            "cpuEncodeMs": {
+              "samples": 120,
+              "median": 0.7409160000001975,
+              "p90": 0.9525839999996606,
+              "min": 0.5721659999999247,
+              "max": 1.2488750000002256
+            },
+            "gpuRenderExtentMs": {
+              "samples": 120,
+              "median": 2.097152,
+              "p90": 2.228224,
+              "min": 1.9660799999999998,
+              "max": 2.490368
+            },
+            "preparationSpansPerFrame": {
+              "samples": 120,
+              "median": 12,
+              "p90": 12,
+              "min": 12,
+              "max": 12
+            },
+            "hashes": [
+              "5443fb158fb4488bdf513fe28d26a878012f69de68ddd6c77ea47067adc02d01",
+              "5443fb158fb4488bdf513fe28d26a878012f69de68ddd6c77ea47067adc02d01"
+            ]
+          },
+          "candidate": {
+            "cpuEncodeMs": {
+              "samples": 120,
+              "median": 0.48775000000000546,
+              "p90": 0.6033329999997932,
+              "min": 0.39612499999998363,
+              "max": 0.8375419999999849
+            },
+            "gpuRenderExtentMs": {
+              "samples": 120,
+              "median": 0.393216,
+              "p90": 0.5898239999999999,
+              "min": 0.262144,
+              "max": 0.720896
+            },
+            "preparationSpansPerFrame": {
+              "samples": 120,
+              "median": 0,
+              "p90": 0,
+              "min": 0,
+              "max": 0
+            },
+            "hashes": [
+              "5443fb158fb4488bdf513fe28d26a878012f69de68ddd6c77ea47067adc02d01",
+              "5443fb158fb4488bdf513fe28d26a878012f69de68ddd6c77ea47067adc02d01"
+            ]
+          }
+        },
+        {
+          "trial": 2,
+          "order": [
+            "reference",
+            "candidate"
+          ],
+          "bytesEqual": true,
+          "reference": {
+            "cpuEncodeMs": {
+              "samples": 120,
+              "median": 0.6134170000000267,
+              "p90": 0.8034159999997428,
+              "min": 0.5606669999997393,
+              "max": 0.9784589999999298
+            },
+            "gpuRenderExtentMs": {
+              "samples": 120,
+              "median": 2.097152,
+              "p90": 2.228224,
+              "min": 1.9660799999999998,
+              "max": 2.424832
+            },
+            "preparationSpansPerFrame": {
+              "samples": 120,
+              "median": 12,
+              "p90": 12,
+              "min": 12,
+              "max": 12
+            },
+            "hashes": [
+              "5443fb158fb4488bdf513fe28d26a878012f69de68ddd6c77ea47067adc02d01",
+              "5443fb158fb4488bdf513fe28d26a878012f69de68ddd6c77ea47067adc02d01"
+            ]
+          },
+          "candidate": {
+            "cpuEncodeMs": {
+              "samples": 120,
+              "median": 0.4052080000001297,
+              "p90": 0.5394160000000738,
+              "min": 0.36012499999969805,
+              "max": 0.7042500000002292
+            },
+            "gpuRenderExtentMs": {
+              "samples": 120,
+              "median": 0.131072,
+              "p90": 0.196608,
+              "min": 0,
+              "max": 0.393216
+            },
+            "preparationSpansPerFrame": {
+              "samples": 120,
+              "median": 0,
+              "p90": 0,
+              "min": 0,
+              "max": 0
+            },
+            "hashes": [
+              "5443fb158fb4488bdf513fe28d26a878012f69de68ddd6c77ea47067adc02d01",
+              "5443fb158fb4488bdf513fe28d26a878012f69de68ddd6c77ea47067adc02d01"
+            ]
+          }
+        },
+        {
+          "trial": 3,
+          "order": [
+            "candidate",
+            "reference"
+          ],
+          "bytesEqual": true,
+          "reference": {
+            "cpuEncodeMs": {
+              "samples": 120,
+              "median": 0.6007919999997284,
+              "p90": 0.7666669999998703,
+              "min": 0.5452910000003612,
+              "max": 0.959374999999909
+            },
+            "gpuRenderExtentMs": {
+              "samples": 120,
+              "median": 2.097152,
+              "p90": 2.228224,
+              "min": 1.9660799999999998,
+              "max": 2.490368
+            },
+            "preparationSpansPerFrame": {
+              "samples": 120,
+              "median": 12,
+              "p90": 12,
+              "min": 12,
+              "max": 12
+            },
+            "hashes": [
+              "5443fb158fb4488bdf513fe28d26a878012f69de68ddd6c77ea47067adc02d01",
+              "5443fb158fb4488bdf513fe28d26a878012f69de68ddd6c77ea47067adc02d01"
+            ]
+          },
+          "candidate": {
+            "cpuEncodeMs": {
+              "samples": 120,
+              "median": 0.3986670000003869,
+              "p90": 0.49949999999989814,
+              "min": 0.3736249999997199,
+              "max": 0.6751249999997526
+            },
+            "gpuRenderExtentMs": {
+              "samples": 120,
+              "median": 0.393216,
+              "p90": 0.524288,
+              "min": 0.131072,
+              "max": 0.720896
+            },
+            "preparationSpansPerFrame": {
+              "samples": 120,
+              "median": 0,
+              "p90": 0,
+              "min": 0,
+              "max": 0
+            },
+            "hashes": [
+              "5443fb158fb4488bdf513fe28d26a878012f69de68ddd6c77ea47067adc02d01",
+              "5443fb158fb4488bdf513fe28d26a878012f69de68ddd6c77ea47067adc02d01"
+            ]
+          }
+        },
+        {
+          "trial": 4,
+          "order": [
+            "reference",
+            "candidate"
+          ],
+          "bytesEqual": true,
+          "reference": {
+            "cpuEncodeMs": {
+              "samples": 120,
+              "median": 0.6027500000000146,
+              "p90": 0.7907500000001164,
+              "min": 0.5467909999997573,
+              "max": 1.1902920000002268
+            },
+            "gpuRenderExtentMs": {
+              "samples": 120,
+              "median": 2.097152,
+              "p90": 2.228224,
+              "min": 1.9660799999999998,
+              "max": 2.359296
+            },
+            "preparationSpansPerFrame": {
+              "samples": 120,
+              "median": 12,
+              "p90": 12,
+              "min": 12,
+              "max": 12
+            },
+            "hashes": [
+              "5443fb158fb4488bdf513fe28d26a878012f69de68ddd6c77ea47067adc02d01",
+              "5443fb158fb4488bdf513fe28d26a878012f69de68ddd6c77ea47067adc02d01"
+            ]
+          },
+          "candidate": {
+            "cpuEncodeMs": {
+              "samples": 120,
+              "median": 0.40574999999989814,
+              "p90": 0.5237909999996191,
+              "min": 0.3572920000005979,
+              "max": 0.6912079999992784
+            },
+            "gpuRenderExtentMs": {
+              "samples": 120,
+              "median": 0.131072,
+              "p90": 0.196608,
+              "min": 0,
+              "max": 0.32767999999999997
+            },
+            "preparationSpansPerFrame": {
+              "samples": 120,
+              "median": 0,
+              "p90": 0,
+              "min": 0,
+              "max": 0
+            },
+            "hashes": [
+              "5443fb158fb4488bdf513fe28d26a878012f69de68ddd6c77ea47067adc02d01",
+              "5443fb158fb4488bdf513fe28d26a878012f69de68ddd6c77ea47067adc02d01"
+            ]
+          }
+        },
+        {
+          "trial": 5,
+          "order": [
+            "candidate",
+            "reference"
+          ],
+          "bytesEqual": true,
+          "reference": {
+            "cpuEncodeMs": {
+              "samples": 120,
+              "median": 0.5877080000000205,
+              "p90": 0.6963750000004438,
+              "min": 0.5419590000001335,
+              "max": 0.8319579999997586
+            },
+            "gpuRenderExtentMs": {
+              "samples": 120,
+              "median": 2.097152,
+              "p90": 2.228224,
+              "min": 1.9660799999999998,
+              "max": 2.359296
+            },
+            "preparationSpansPerFrame": {
+              "samples": 120,
+              "median": 12,
+              "p90": 12,
+              "min": 12,
+              "max": 12
+            },
+            "hashes": [
+              "5443fb158fb4488bdf513fe28d26a878012f69de68ddd6c77ea47067adc02d01",
+              "5443fb158fb4488bdf513fe28d26a878012f69de68ddd6c77ea47067adc02d01"
+            ]
+          },
+          "candidate": {
+            "cpuEncodeMs": {
+              "samples": 120,
+              "median": 0.4149999999999636,
+              "p90": 0.5107500000003711,
+              "min": 0.36929200000031415,
+              "max": 0.6546250000001237
+            },
+            "gpuRenderExtentMs": {
+              "samples": 120,
+              "median": 0.262144,
+              "p90": 0.45875199999999994,
+              "min": 0,
+              "max": 0.589824
+            },
+            "preparationSpansPerFrame": {
+              "samples": 120,
+              "median": 0,
+              "p90": 0,
+              "min": 0,
+              "max": 0
+            },
+            "hashes": [
+              "5443fb158fb4488bdf513fe28d26a878012f69de68ddd6c77ea47067adc02d01",
+              "5443fb158fb4488bdf513fe28d26a878012f69de68ddd6c77ea47067adc02d01"
+            ]
+          }
+        },
+        {
+          "trial": 6,
+          "order": [
+            "reference",
+            "candidate"
+          ],
+          "bytesEqual": true,
+          "reference": {
+            "cpuEncodeMs": {
+              "samples": 120,
+              "median": 0.6078329999991183,
+              "p90": 0.7513330000001588,
+              "min": 0.5421670000005179,
+              "max": 0.980040999999801
+            },
+            "gpuRenderExtentMs": {
+              "samples": 120,
+              "median": 2.097152,
+              "p90": 2.228224,
+              "min": 1.9660799999999998,
+              "max": 2.359296
+            },
+            "preparationSpansPerFrame": {
+              "samples": 120,
+              "median": 12,
+              "p90": 12,
+              "min": 12,
+              "max": 12
+            },
+            "hashes": [
+              "5443fb158fb4488bdf513fe28d26a878012f69de68ddd6c77ea47067adc02d01",
+              "5443fb158fb4488bdf513fe28d26a878012f69de68ddd6c77ea47067adc02d01"
+            ]
+          },
+          "candidate": {
+            "cpuEncodeMs": {
+              "samples": 120,
+              "median": 0.4290000000000873,
+              "p90": 0.4964589999999589,
+              "min": 0.3647080000000642,
+              "max": 0.767667000000074
+            },
+            "gpuRenderExtentMs": {
+              "samples": 120,
+              "median": 0.131072,
+              "p90": 0.196608,
+              "min": 0,
+              "max": 0.32767999999999997
+            },
+            "preparationSpansPerFrame": {
+              "samples": 120,
+              "median": 0,
+              "p90": 0,
+              "min": 0,
+              "max": 0
+            },
+            "hashes": [
+              "5443fb158fb4488bdf513fe28d26a878012f69de68ddd6c77ea47067adc02d01",
+              "5443fb158fb4488bdf513fe28d26a878012f69de68ddd6c77ea47067adc02d01"
+            ]
+          }
+        }
+      ],
+      "baselineRepeat": {
+        "cpuEncodeMs": {
+          "samples": 120,
+          "median": 0.6041249999998399,
+          "p90": 0.729750000000422,
+          "min": 0.5584159999998519,
+          "max": 0.9524170000004233
+        },
+        "gpuRenderExtentMs": {
+          "samples": 120,
+          "median": 2.097152,
+          "p90": 2.228224,
+          "min": 1.9660799999999998,
+          "max": 2.555904
+        },
+        "preparationSpansPerFrame": {
+          "samples": 120,
+          "median": 12,
+          "p90": 12,
+          "min": 12,
+          "max": 12
+        },
+        "hashes": [
+          "5443fb158fb4488bdf513fe28d26a878012f69de68ddd6c77ea47067adc02d01",
+          "5443fb158fb4488bdf513fe28d26a878012f69de68ddd6c77ea47067adc02d01"
+        ]
+      }
+    },
+    "sourceChangingEveryFrame": {
+      "results": [
+        {
+          "trial": 0,
+          "order": [
+            "reference",
+            "candidate"
+          ],
+          "bytesEqual": true,
+          "reference": {
+            "cpuEncodeMs": {
+              "samples": 120,
+              "median": 0.6015419999994265,
+              "p90": 0.7269159999996191,
+              "min": 0.5490420000005543,
+              "max": 0.8735000000006039
+            },
+            "gpuRenderExtentMs": {
+              "samples": 120,
+              "median": 2.097152,
+              "p90": 2.228224,
+              "min": 1.9660799999999998,
+              "max": 2.4248320000000003
+            },
+            "preparationSpansPerFrame": {
+              "samples": 120,
+              "median": 12,
+              "p90": 12,
+              "min": 12,
+              "max": 12
+            },
+            "hashes": [
+              "b567f4ef3fd0fff497016d74f76c4fd4aaa67c907c5843b83a09ef9a27abe985",
+              "b567f4ef3fd0fff497016d74f76c4fd4aaa67c907c5843b83a09ef9a27abe985"
+            ]
+          },
+          "candidate": {
+            "cpuEncodeMs": {
+              "samples": 120,
+              "median": 0.5466670000005251,
+              "p90": 0.6742500000000291,
+              "min": 0.49162499999965803,
+              "max": 0.914332999999715
+            },
+            "gpuRenderExtentMs": {
+              "samples": 120,
+              "median": 1.114112,
+              "p90": 1.245184,
+              "min": 0.9830399999999999,
+              "max": 1.3762560000000001
+            },
+            "preparationSpansPerFrame": {
+              "samples": 120,
+              "median": 7,
+              "p90": 7,
+              "min": 7,
+              "max": 7
+            },
+            "hashes": [
+              "b567f4ef3fd0fff497016d74f76c4fd4aaa67c907c5843b83a09ef9a27abe985",
+              "b567f4ef3fd0fff497016d74f76c4fd4aaa67c907c5843b83a09ef9a27abe985"
+            ]
+          }
+        },
+        {
+          "trial": 1,
+          "order": [
+            "candidate",
+            "reference"
+          ],
+          "bytesEqual": true,
+          "reference": {
+            "cpuEncodeMs": {
+              "samples": 120,
+              "median": 0.5840840000000753,
+              "p90": 0.7241249999988213,
+              "min": 0.5349589999987074,
+              "max": 0.9819999999999709
+            },
+            "gpuRenderExtentMs": {
+              "samples": 120,
+              "median": 2.097152,
+              "p90": 2.228224,
+              "min": 1.9660799999999998,
+              "max": 2.555904
+            },
+            "preparationSpansPerFrame": {
+              "samples": 120,
+              "median": 12,
+              "p90": 12,
+              "min": 12,
+              "max": 12
+            },
+            "hashes": [
+              "b567f4ef3fd0fff497016d74f76c4fd4aaa67c907c5843b83a09ef9a27abe985",
+              "b567f4ef3fd0fff497016d74f76c4fd4aaa67c907c5843b83a09ef9a27abe985"
+            ]
+          },
+          "candidate": {
+            "cpuEncodeMs": {
+              "samples": 120,
+              "median": 0.5541250000005675,
+              "p90": 0.6642499999998108,
+              "min": 0.4937919999993028,
+              "max": 0.986417000000074
+            },
+            "gpuRenderExtentMs": {
+              "samples": 120,
+              "median": 1.703936,
+              "p90": 2.097152,
+              "min": 1.114112,
+              "max": 2.752512
+            },
+            "preparationSpansPerFrame": {
+              "samples": 120,
+              "median": 7,
+              "p90": 7,
+              "min": 7,
+              "max": 7
+            },
+            "hashes": [
+              "b567f4ef3fd0fff497016d74f76c4fd4aaa67c907c5843b83a09ef9a27abe985",
+              "b567f4ef3fd0fff497016d74f76c4fd4aaa67c907c5843b83a09ef9a27abe985"
+            ]
+          }
+        },
+        {
+          "trial": 2,
+          "order": [
+            "reference",
+            "candidate"
+          ],
+          "bytesEqual": true,
+          "reference": {
+            "cpuEncodeMs": {
+              "samples": 120,
+              "median": 0.5934999999990396,
+              "p90": 0.71441699999923,
+              "min": 0.5352919999986625,
+              "max": 0.9341669999994338
+            },
+            "gpuRenderExtentMs": {
+              "samples": 120,
+              "median": 2.097152,
+              "p90": 2.228224,
+              "min": 1.9660799999999998,
+              "max": 2.359296
+            },
+            "preparationSpansPerFrame": {
+              "samples": 120,
+              "median": 12,
+              "p90": 12,
+              "min": 12,
+              "max": 12
+            },
+            "hashes": [
+              "b567f4ef3fd0fff497016d74f76c4fd4aaa67c907c5843b83a09ef9a27abe985",
+              "b567f4ef3fd0fff497016d74f76c4fd4aaa67c907c5843b83a09ef9a27abe985"
+            ]
+          },
+          "candidate": {
+            "cpuEncodeMs": {
+              "samples": 120,
+              "median": 0.5405829999999696,
+              "p90": 0.7019159999999829,
+              "min": 0.4923749999998108,
+              "max": 1.1667919999999867
+            },
+            "gpuRenderExtentMs": {
+              "samples": 120,
+              "median": 1.114112,
+              "p90": 1.245184,
+              "min": 0.9830399999999999,
+              "max": 1.441792
+            },
+            "preparationSpansPerFrame": {
+              "samples": 120,
+              "median": 7,
+              "p90": 7,
+              "min": 7,
+              "max": 7
+            },
+            "hashes": [
+              "b567f4ef3fd0fff497016d74f76c4fd4aaa67c907c5843b83a09ef9a27abe985",
+              "b567f4ef3fd0fff497016d74f76c4fd4aaa67c907c5843b83a09ef9a27abe985"
+            ]
+          }
+        },
+        {
+          "trial": 3,
+          "order": [
+            "candidate",
+            "reference"
+          ],
+          "bytesEqual": true,
+          "reference": {
+            "cpuEncodeMs": {
+              "samples": 120,
+              "median": 0.5882089999995515,
+              "p90": 0.7322920000005979,
+              "min": 0.540791999999783,
+              "max": 0.997124999999869
+            },
+            "gpuRenderExtentMs": {
+              "samples": 120,
+              "median": 2.097152,
+              "p90": 2.228224,
+              "min": 1.9660799999999998,
+              "max": 2.4248320000000003
+            },
+            "preparationSpansPerFrame": {
+              "samples": 120,
+              "median": 12,
+              "p90": 12,
+              "min": 12,
+              "max": 12
+            },
+            "hashes": [
+              "b567f4ef3fd0fff497016d74f76c4fd4aaa67c907c5843b83a09ef9a27abe985",
+              "b567f4ef3fd0fff497016d74f76c4fd4aaa67c907c5843b83a09ef9a27abe985"
+            ]
+          },
+          "candidate": {
+            "cpuEncodeMs": {
+              "samples": 120,
+              "median": 0.5400840000002063,
+              "p90": 0.6708330000001297,
+              "min": 0.4885000000012951,
+              "max": 0.9117089999999735
+            },
+            "gpuRenderExtentMs": {
+              "samples": 120,
+              "median": 1.6384,
+              "p90": 1.900544,
+              "min": 1.245184,
+              "max": 2.29376
+            },
+            "preparationSpansPerFrame": {
+              "samples": 120,
+              "median": 7,
+              "p90": 7,
+              "min": 7,
+              "max": 7
+            },
+            "hashes": [
+              "b567f4ef3fd0fff497016d74f76c4fd4aaa67c907c5843b83a09ef9a27abe985",
+              "b567f4ef3fd0fff497016d74f76c4fd4aaa67c907c5843b83a09ef9a27abe985"
+            ]
+          }
+        },
+        {
+          "trial": 4,
+          "order": [
+            "reference",
+            "candidate"
+          ],
+          "bytesEqual": true,
+          "reference": {
+            "cpuEncodeMs": {
+              "samples": 120,
+              "median": 0.5770420000008016,
+              "p90": 0.7324580000004062,
+              "min": 0.5397909999992407,
+              "max": 1.357625000000553
+            },
+            "gpuRenderExtentMs": {
+              "samples": 120,
+              "median": 2.097152,
+              "p90": 2.228224,
+              "min": 1.9660799999999998,
+              "max": 2.4248320000000003
+            },
+            "preparationSpansPerFrame": {
+              "samples": 120,
+              "median": 12,
+              "p90": 12,
+              "min": 12,
+              "max": 12
+            },
+            "hashes": [
+              "b567f4ef3fd0fff497016d74f76c4fd4aaa67c907c5843b83a09ef9a27abe985",
+              "b567f4ef3fd0fff497016d74f76c4fd4aaa67c907c5843b83a09ef9a27abe985"
+            ]
+          },
+          "candidate": {
+            "cpuEncodeMs": {
+              "samples": 120,
+              "median": 0.5346659999995609,
+              "p90": 0.7003339999992022,
+              "min": 0.48325000000113505,
+              "max": 0.8788750000003347
+            },
+            "gpuRenderExtentMs": {
+              "samples": 120,
+              "median": 1.114112,
+              "p90": 1.245184,
+              "min": 0.9830399999999999,
+              "max": 1.441792
+            },
+            "preparationSpansPerFrame": {
+              "samples": 120,
+              "median": 7,
+              "p90": 7,
+              "min": 7,
+              "max": 7
+            },
+            "hashes": [
+              "b567f4ef3fd0fff497016d74f76c4fd4aaa67c907c5843b83a09ef9a27abe985",
+              "b567f4ef3fd0fff497016d74f76c4fd4aaa67c907c5843b83a09ef9a27abe985"
+            ]
+          }
+        },
+        {
+          "trial": 5,
+          "order": [
+            "candidate",
+            "reference"
+          ],
+          "bytesEqual": true,
+          "reference": {
+            "cpuEncodeMs": {
+              "samples": 120,
+              "median": 0.5916660000002594,
+              "p90": 0.6932920000017475,
+              "min": 0.5380000000004657,
+              "max": 0.9115830000009737
+            },
+            "gpuRenderExtentMs": {
+              "samples": 120,
+              "median": 2.097152,
+              "p90": 2.228224,
+              "min": 1.9660799999999998,
+              "max": 2.555904
+            },
+            "preparationSpansPerFrame": {
+              "samples": 120,
+              "median": 12,
+              "p90": 12,
+              "min": 12,
+              "max": 12
+            },
+            "hashes": [
+              "b567f4ef3fd0fff497016d74f76c4fd4aaa67c907c5843b83a09ef9a27abe985",
+              "b567f4ef3fd0fff497016d74f76c4fd4aaa67c907c5843b83a09ef9a27abe985"
+            ]
+          },
+          "candidate": {
+            "cpuEncodeMs": {
+              "samples": 120,
+              "median": 0.5289589999993041,
+              "p90": 0.6294999999990978,
+              "min": 0.4756249999991269,
+              "max": 0.8545830000002752
+            },
+            "gpuRenderExtentMs": {
+              "samples": 120,
+              "median": 1.572864,
+              "p90": 2.0316159999999996,
+              "min": 1.048576,
+              "max": 2.359296
+            },
+            "preparationSpansPerFrame": {
+              "samples": 120,
+              "median": 7,
+              "p90": 7,
+              "min": 7,
+              "max": 7
+            },
+            "hashes": [
+              "b567f4ef3fd0fff497016d74f76c4fd4aaa67c907c5843b83a09ef9a27abe985",
+              "b567f4ef3fd0fff497016d74f76c4fd4aaa67c907c5843b83a09ef9a27abe985"
+            ]
+          }
+        },
+        {
+          "trial": 6,
+          "order": [
+            "reference",
+            "candidate"
+          ],
+          "bytesEqual": true,
+          "reference": {
+            "cpuEncodeMs": {
+              "samples": 120,
+              "median": 0.5954579999997804,
+              "p90": 0.7187919999996666,
+              "min": 0.5494999999991705,
+              "max": 0.8586669999986043
+            },
+            "gpuRenderExtentMs": {
+              "samples": 120,
+              "median": 2.097152,
+              "p90": 2.228224,
+              "min": 1.9660799999999998,
+              "max": 2.424832
+            },
+            "preparationSpansPerFrame": {
+              "samples": 120,
+              "median": 12,
+              "p90": 12,
+              "min": 12,
+              "max": 12
+            },
+            "hashes": [
+              "b567f4ef3fd0fff497016d74f76c4fd4aaa67c907c5843b83a09ef9a27abe985",
+              "b567f4ef3fd0fff497016d74f76c4fd4aaa67c907c5843b83a09ef9a27abe985"
+            ]
+          },
+          "candidate": {
+            "cpuEncodeMs": {
+              "samples": 120,
+              "median": 0.5508339999996679,
+              "p90": 0.7243750000016007,
+              "min": 0.48954200000116543,
+              "max": 0.8277909999997064
+            },
+            "gpuRenderExtentMs": {
+              "samples": 120,
+              "median": 1.114112,
+              "p90": 1.245184,
+              "min": 0.9830399999999999,
+              "max": 1.31072
+            },
+            "preparationSpansPerFrame": {
+              "samples": 120,
+              "median": 7,
+              "p90": 7,
+              "min": 7,
+              "max": 7
+            },
+            "hashes": [
+              "b567f4ef3fd0fff497016d74f76c4fd4aaa67c907c5843b83a09ef9a27abe985",
+              "b567f4ef3fd0fff497016d74f76c4fd4aaa67c907c5843b83a09ef9a27abe985"
+            ]
+          }
+        }
+      ],
+      "baselineRepeat": {
+        "cpuEncodeMs": {
+          "samples": 120,
+          "median": 0.6043749999989814,
+          "p90": 0.7094579999993584,
+          "min": 0.5274580000004789,
+          "max": 1.024583000000348
+        },
+        "gpuRenderExtentMs": {
+          "samples": 120,
+          "median": 2.097152,
+          "p90": 2.228224,
+          "min": 1.9660799999999998,
+          "max": 2.29376
+        },
+        "preparationSpansPerFrame": {
+          "samples": 120,
+          "median": 12,
+          "p90": 12,
+          "min": 12,
+          "max": 12
+        },
+        "hashes": [
+          "b567f4ef3fd0fff497016d74f76c4fd4aaa67c907c5843b83a09ef9a27abe985",
+          "b567f4ef3fd0fff497016d74f76c4fd4aaa67c907c5843b83a09ef9a27abe985"
+        ]
+      }
+    }
+  },
+  "timingDrops": {
+    "reference": [],
+    "candidate": []
+  }
+}

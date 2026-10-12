@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 
+import { arePortsCompatible } from "../../domain/graph/port-compat.ts";
+import { portTypeSchema } from "../../domain/types/schemas.ts";
+import { DATA_TEXTURE, RGBA_TEXTURE } from "./common-ports.ts";
 import type { NodeDefinition } from "../../domain/types/node-definition.ts";
 import { createNodeRegistry, validateNodeDefinition } from "../registry/registry.ts";
 import {
@@ -280,5 +283,26 @@ describe("Premultiply (T281)", () => {
     expect(forward.uniforms?.["mode"]).toBe(0);
     expect(back.uniforms?.["mode"]).toBe(1);
     expect(back.shader).toBe(forward.shader);
+  });
+});
+
+describe("numerical-map arithmetic inputs", () => {
+  it.each([levelNode, thresholdNode, limitNode])("$title accepts data without relabelling colour or changing the input format", node => {
+    const input = node.inputs.find(port => port.id === "input");
+    if (input === undefined) throw new Error("Arithmetic input is missing");
+    expect(arePortsCompatible(DATA_TEXTURE, input.type)).toBe(true);
+    expect(arePortsCompatible(RGBA_TEXTURE, input.type)).toBe(true);
+    expect(node.formatPolicy).toEqual({ kind: "inherit", input: "input" });
+    expect(portTypeSchema.parse(input.type)).toEqual(input.type);
+    if (input.type.kind !== "texture2d") throw new Error("Arithmetic input is not a texture");
+    expect(input.type.space).toBeUndefined();
+    expect(arePortsCompatible({ kind: "texture2d", sample: "depth", channels: 4, space: "data" }, input.type)).toBe(false);
+    expect(arePortsCompatible({ kind: "texture2d", sample: "float", channels: 1, space: "data" }, input.type)).toBe(false);
+    expect(arePortsCompatible({ kind: "texture2d", sample: "float", channels: 4, space: "encoded" }, input.type)).toBe(false);
+  });
+
+  it("keeps ordinary colour-only inputs strict", () => {
+    expect(arePortsCompatible(DATA_TEXTURE, hsvNode.inputs[0]!.type)).toBe(false);
+    expect(arePortsCompatible(DATA_TEXTURE, RGBA_TEXTURE)).toBe(false);
   });
 });

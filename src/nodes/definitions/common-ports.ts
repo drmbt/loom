@@ -18,6 +18,11 @@ export const RGBA_TEXTURE: PortType = { kind: "texture2d", sample: "float", chan
  */
 export const DATA_TEXTURE: PortType = { kind: "texture2d", sample: "float", channels: 4, space: "data" };
 
+/** Arithmetic texture input: colour stays colour, numerical fields stay data.
+ * Nodes using this input must preserve the input format and provide unfiltered
+ * sampling for r32float; ordinary colour-only operators keep RGBA_TEXTURE. */
+export const ARITHMETIC_TEXTURE: PortType = { ...RGBA_TEXTURE, acceptsData: true };
+
 /**
  * The value-graph port (§V179): a CPU-side channel bag, never a texture.
  *
