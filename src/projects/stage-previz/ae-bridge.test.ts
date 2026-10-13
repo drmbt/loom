@@ -19,7 +19,7 @@ import { createNodeRegistry } from "../../nodes/registry/registry.ts";
  * Read back where the consumers read it: the switch passes' uniforms and bound textures.
  */
 const FILE = "projects/stage-previz/stage-previz-13.loom.json";
-const SONG_SECONDS = 144.73;
+const SONG_SECONDS = 144.733;
 const text = readFileSync(FILE, "utf8");
 const system = createComponentSystem(createNodeRegistry(allNodeDefinitions).view());
 const loaded = loadProject(text, { nodes: system.nodes, components: system.components });

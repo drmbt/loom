@@ -15635,7 +15635,7 @@
         "id": "noteAE",
         "label": "note_aeBridge",
         "parameters": {
-          "body": "The feeds and the song come from the After Effects project ~/Documents/Loom AE Bridge/Loom AE Bridge.aep: its render queue writes renders/DS.mp4 (the DS projector), renders/SIDES.mp4 (both side projectors) and renders/AUDIO.aif; the song here is its source, cloud-9.wav (144.73 s, 147.99 BPM).\nLoom reads them from public/media/ae-bridge/ (movie_dsFeed and movie_sidesFeed inside stagefeeds1, audiofile_reference here), all locked to the timeline: 30 fps, the range is the song.\nTo refresh: re-render in After Effects (same file names), copy the renders into public/media/ae-bridge/, then reload the page (or Reload on each movie node).",
+          "body": "The feeds and the song come from the After Effects project ~/Documents/Loom AE Bridge/Loom AE Bridge.aep: its render queue writes renders/DS.mp4 (the DS projector), renders/SIDES.mp4 (both side projectors) and renders/AUDIO.wav (the song, cloud-9: 144.73 s, 147.99 BPM).\nLoom reads them from public/media/ae-bridge/ (movie_dsFeed and movie_sidesFeed inside stagefeeds1, audiofile_reference here), all locked to the timeline: 30 fps, the range is the song.\nTo refresh: re-render in After Effects (same file names), copy the renders into public/media/ae-bridge/, then reload the page (or Reload on each movie node).",
           "color": "input",
           "title": "After Effects bridge"
         },
@@ -15876,7 +15876,7 @@
           "beatsPerBar": 4,
           "bpm": 147.99,
           "extend": "hold",
-          "file": "media/ae-bridge/cloud-9.wav",
+          "file": "media/ae-bridge/AUDIO.wav",
           "monitor": true,
           "play": true,
           "playMode": "timeline",
