@@ -1,0 +1,282 @@
+{
+  "protocol": 1,
+  "name": "stage-previz-13",
+  "project": "project.loom.json",
+  "fps": 30,
+  "durationSeconds": 144.733,
+  "defaultSize": [
+    1920,
+    1080
+  ],
+  "inputs": [
+    {
+      "id": "ds",
+      "label": "DS Layer",
+      "mediaKey": "media:stageFeeds/dsFeed"
+    },
+    {
+      "id": "sides",
+      "label": "Sides Layer",
+      "mediaKey": "media:stageFeeds/sidesFeed"
+    }
+  ],
+  "params": [
+    {
+      "id": "slider_source",
+      "label": "Source: live/test/grid",
+      "type": "float",
+      "min": 0,
+      "max": 2,
+      "default": 0,
+      "step": 1,
+      "group": "Feeds and view"
+    },
+    {
+      "id": "slider_shot",
+      "label": "Shot: FOH/iso/wing/proj/wide",
+      "type": "float",
+      "min": 0,
+      "max": 4,
+      "default": 4,
+      "step": 1,
+      "group": "Feeds and view"
+    },
+    {
+      "id": "slider_orbit",
+      "label": "Orbit, deg",
+      "type": "float",
+      "min": -180,
+      "max": 180,
+      "default": -3,
+      "step": 1,
+      "group": "Feeds and view"
+    },
+    {
+      "id": "slider_zoom",
+      "label": "Zoom, ft",
+      "type": "float",
+      "min": -80,
+      "max": 80,
+      "default": -50,
+      "step": 0.5,
+      "group": "Feeds and view"
+    },
+    {
+      "id": "slider_kabuki",
+      "label": "Kabuki: in -> out",
+      "type": "float",
+      "min": 0,
+      "max": 1,
+      "default": 1,
+      "step": 0,
+      "group": "Stage"
+    },
+    {
+      "id": "slider_leds",
+      "label": "LEDs",
+      "type": "float",
+      "min": 0,
+      "max": 1,
+      "default": 1,
+      "step": 0,
+      "group": "Stage"
+    },
+    {
+      "id": "slider_strobes",
+      "label": "Strobe level",
+      "type": "float",
+      "min": 0,
+      "max": 1,
+      "default": 0.5,
+      "step": 0.01,
+      "group": "Stage"
+    },
+    {
+      "id": "slider_deckTone",
+      "label": "Deck tone",
+      "type": "float",
+      "min": 0,
+      "max": 1,
+      "default": 0.6,
+      "step": 0.01,
+      "group": "Stage"
+    },
+    {
+      "id": "slider_scrim",
+      "label": "Scrim",
+      "type": "float",
+      "min": 0,
+      "max": 1,
+      "default": 0.35,
+      "step": 0.01,
+      "group": "Stage"
+    },
+    {
+      "id": "slider_work",
+      "label": "Work light",
+      "type": "float",
+      "min": 0,
+      "max": 1,
+      "default": 0,
+      "step": 0,
+      "group": "Stage"
+    },
+    {
+      "id": "toggle_talent",
+      "label": "Talent stand-ins",
+      "type": "bool",
+      "default": true,
+      "group": "Stage"
+    },
+    {
+      "id": "slider_haze",
+      "label": "Haze",
+      "type": "float",
+      "min": 0,
+      "max": 1,
+      "default": 0.6306061921296297,
+      "step": 0,
+      "group": "Atmosphere"
+    },
+    {
+      "id": "slider_fog",
+      "label": "Low fog",
+      "type": "float",
+      "min": 0,
+      "max": 1,
+      "default": 0.6036603009259259,
+      "step": 0,
+      "group": "Atmosphere"
+    },
+    {
+      "id": "slider_beams",
+      "label": "Beam visibility",
+      "type": "float",
+      "min": 0,
+      "max": 1,
+      "default": 0.4200303819444444,
+      "step": 0,
+      "group": "Atmosphere"
+    },
+    {
+      "id": "slider_trussTrim",
+      "label": "Truss trim, ft over deck",
+      "type": "float",
+      "min": 10,
+      "max": 35,
+      "default": 22.5833,
+      "step": 0.0833,
+      "group": "Projectors"
+    },
+    {
+      "id": "slider_dsTrim",
+      "label": "DS truss trim, ft over deck",
+      "type": "float",
+      "min": 10,
+      "max": 35,
+      "default": 22.5833,
+      "step": 0.0833,
+      "group": "Projectors"
+    },
+    {
+      "id": "slider_dsThrow",
+      "label": "DS throw ratio",
+      "type": "float",
+      "min": 0.3,
+      "max": 2.5,
+      "default": 0.74,
+      "step": 0.01,
+      "group": "Projectors"
+    },
+    {
+      "id": "slider_dsOffset",
+      "label": "DS truss Z, ft",
+      "type": "float",
+      "min": -10,
+      "max": 40,
+      "default": 0,
+      "step": 0.5,
+      "group": "Projectors"
+    },
+    {
+      "id": "slider_dsTilt",
+      "label": "DS tilt, deg down",
+      "type": "float",
+      "min": -20,
+      "max": 60,
+      "default": 19.083,
+      "step": 0.1,
+      "group": "Projectors"
+    },
+    {
+      "id": "slider_dsKeyV",
+      "label": "DS keystone V, deg",
+      "type": "float",
+      "min": -45,
+      "max": 45,
+      "default": 8.312,
+      "step": 0.1,
+      "group": "Projectors"
+    },
+    {
+      "id": "slider_dsKeyH",
+      "label": "DS keystone H, deg",
+      "type": "float",
+      "min": -30,
+      "max": 30,
+      "default": 0,
+      "step": 0.1,
+      "group": "Projectors"
+    },
+    {
+      "id": "slider_sideTilt",
+      "label": "Side tilt, deg down",
+      "type": "float",
+      "min": 10,
+      "max": 89,
+      "default": 39.5573,
+      "step": 0.01,
+      "group": "Projectors"
+    },
+    {
+      "id": "slider_sideThrow",
+      "label": "Side throw ratio",
+      "type": "float",
+      "min": 0.5,
+      "max": 4,
+      "default": 1.1603,
+      "step": 0.01,
+      "group": "Projectors"
+    },
+    {
+      "id": "slider_sideRoll",
+      "label": "Side roll, deg",
+      "type": "float",
+      "min": -180,
+      "max": 180,
+      "default": 90,
+      "step": 1,
+      "group": "Projectors"
+    },
+    {
+      "id": "slider_sideKeyV",
+      "label": "Side keystone V, deg",
+      "type": "float",
+      "min": -30,
+      "max": 30,
+      "default": 0,
+      "step": 0.1,
+      "group": "Projectors"
+    },
+    {
+      "id": "slider_sideKeyH",
+      "label": "Side keystone H, deg",
+      "type": "float",
+      "min": -45,
+      "max": 45,
+      "default": 27.5506,
+      "step": 0.01,
+      "group": "Projectors"
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+# VN118: built or downloaded; nothing here is committed.
+.cache/
+dist/
+out/
+package/project.loom.json
+package/media/
