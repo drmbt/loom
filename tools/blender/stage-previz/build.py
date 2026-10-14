@@ -1,7 +1,11 @@
 """Stage previz generator (Blender 5.x, headless). Builds the stage as one GLB for Loom.
 
   Blender --background --factory-startup --python tools/blender/stage-previz/build.py -- \
-      --out <path.glb> [--blend <path.blend>] [--preview <png dir>]
+      --out <path.glb> [--blend <path.blend>] [--preview <png dir>] [--layout r2|r3]
+
+`--layout r3` builds layout_r3.py: revision 2 plus every patched fixture from the MA3 export
+(pixel-bar housings in `led.*`, Burst bodies in `strobe.*`, movers, ColorStrobes and the house
+trusses in `grid.*`), with no emitter quads and no FX pixel map.
 
 Every exported mesh object is named `<area>.<name>`, one Mesh File In per area in Loom:
 
@@ -34,7 +38,25 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
-import layout as L  # noqa: E402
+
+
+def _layout_name():
+    """`--layout r2|r3` (default r2), read before the layout module is imported."""
+    argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
+    for i, arg in enumerate(argv):
+        if arg == "--layout" and i + 1 < len(argv):
+            return argv[i + 1]
+        if arg.startswith("--layout="):
+            return arg.split("=", 1)[1]
+    return "r2"
+
+
+LAYOUT = _layout_name()
+R3 = LAYOUT == "r3"
+if R3:
+    import layout_r3 as L  # noqa: E402
+else:
+    import layout as L  # noqa: E402
 
 Z = Vector((0.0, 0.0, 1.0))
 X = Vector((1.0, 0.0, 0.0))
@@ -385,6 +407,109 @@ def mannequin(mb, base):
     mb.sphere((x, y, z + 1.63), 0.11, "talent")
 
 
+# ---- revision 3: the patched fixtures (layout_r3.py) -------------------------------------
+
+def _basis(f):
+    """A fixture's (u, v, w) as unit Vectors, right-handed."""
+    u, v, w = (Vector(f[k]).normalized() for k in ("u", "v", "w"))
+    if u.cross(v).dot(w) < 0:
+        v = -v
+    return u, v, w
+
+
+def r3_pixel_bars():
+    """One Acme Pixel Line IP housing per CSV bar: centred on its position, long along u."""
+    mb = MB()
+    for f in L.of_kind("pixelbar"):
+        mb.box(f["p"], L.PIXEL_BAR_BODY, "fixture_black", axes=_basis(f))
+    return mb
+
+
+def r3_bursts():
+    """One GLP JDC Burst 1 per CSV row, beam up (-w). Under a grate, its top face sits just under
+    the grating on a stand from the CSV position (its base on the floor); elsewhere it stands on
+    the CSV position."""
+    mb = MB()
+    bh = L.BURST_BODY[2]
+    for f in L.of_kind("burst"):
+        u, v, w = _basis(f)
+        up = -w
+        p = Vector(f["p"])
+        grate = L.grate_over(*f["p"])
+        rise = (grate - L.GRATE_T - 0.005 - p.z) / max(up.z, 1e-6) if grate is not None else bh
+        rise = max(rise, bh)
+        centre = p + up * (rise - bh / 2)
+        mb.box(p + up * 0.01, (0.30, 0.17, 0.02), "fixture_black", axes=(u, v, w))
+        if rise - bh > 0.02:
+            mb.cylinder(p + up * 0.02, centre - up * (bh / 2), 0.025, "truss_black", seg=8, caps=False)
+        mb.box(centre, L.BURST_BODY, "fixture_black", axes=(u, v, w))
+        mb.box(centre + up * (bh / 2 + 0.002), (L.BURST_BODY[0] - 0.04, L.BURST_BODY[1] - 0.03, 0.004), "lens_glass", axes=(u, v, w))
+    return mb
+
+
+def _nearest_on_truss(p, truss):
+    _, x0, x1, ty, tz, _ = truss
+    h = L.HOUSE_TRUSS_W / 2
+    return Vector((min(max(p.x, x0), x1), min(max(p.y, ty - h), ty + h), min(max(p.z, tz - h), tz + h)))
+
+
+def r3_house_rig():
+    """The house trusses (layout_r3.house_trusses), a moving head hung under each mover's CSV
+    position and a ColorStrobe on each strobe's, each on a drop or bracket to its truss."""
+    trusses, movers, strobes = MB(), MB(), MB()
+    by_fid = {}
+    for t in L.house_trusses():
+        _, x0, x1, ty, tz, fids = t
+        trusses.box_truss((x0, ty, tz), (x1, ty, tz), L.HOUSE_TRUSS_W, "truss_black")
+        for x in (x0 + 0.3, x1 - 0.3):
+            trusses.cylinder((x, ty, tz + L.HOUSE_TRUSS_W / 2), (x, ty, 17.0), 0.012, "truss_black", seg=5, caps=False)
+        for fid in fids:
+            by_fid[fid] = t
+    for f in L.fixtures():
+        if f["kind"] not in ("mover", "strobe"):
+            continue
+        u, v, w = _basis(f)
+        p = Vector(f["p"])
+        q = _nearest_on_truss(p, by_fid[f["fid"]])
+        mb = movers if f["kind"] == "mover" else strobes
+        if (q - p).length > 0.01:
+            mb.cylinder(p, q, 0.022, "truss_black", seg=8, caps=False)
+        mb.box(q, (0.08, 0.08, 0.06), "truss_black")
+        if f["kind"] == "mover":
+            # base on the hang point, the yoke's arms down from it, the head between them, lens down (-w)
+            arm = L.MOVER_YOKE / 2 - 0.02
+            head = L.MOVER_HEAD
+            mb.box(p - w * 0.06, (0.36, 0.30, 0.12), "fixture_black", axes=(u, v, w))
+            for s in (-1, 1):
+                mb.box(p - w * 0.27 + u * s * arm, (0.04, 0.12, 0.30), "fixture_black", axes=(u, v, w))
+            c = p - w * 0.36
+            mb.cylinder(c + w * (head * 0.45), c - w * (head * 0.55), head / 2 - 0.005, "fixture_black", seg=14)
+            mb.cylinder(c - w * (head * 0.55), c - w * (head * 0.55 + 0.01), head / 2 - 0.05, "lens_glass", seg=14)
+        else:
+            # mounted on its CSV position, the body out along -w (its face toward the audience)
+            d = L.COLOR_STROBE_BODY[2]
+            mb.box(p - w * (d / 2), L.COLOR_STROBE_BODY, "fixture_black", axes=(u, v, w))
+            mb.box(p - w * (d + 0.002), (L.COLOR_STROBE_BODY[0] - 0.04, L.COLOR_STROBE_BODY[1] - 0.04, 0.004), "lens_glass", axes=(u, v, w))
+    return trusses, movers, strobes
+
+
+def r3_report():
+    from collections import Counter
+    print(f"[r3] {L.FIXTURES_CSV}: " + ", ".join(f"{k} {n}" for k, n in sorted(Counter(f['kind'] for f in L.fixtures()).items())))
+    for name, x0, x1, y, z, fids in L.house_trusses():
+        print(f"[r3] truss {name:8s} x {x0:+.2f}..{x1:+.2f}  y {y:+.3f}  z {z:.3f}  ({len(fids)} fixtures: {fids[0]}..{fids[-1]})")
+    misfits = L.pixel_bar_misfits()
+    print(f"[r3] pixel bars further than 0.15 m from a truss/rack line: {len(misfits)}")
+    for fid, p, line, d in misfits:
+        print(f"[r3]   {fid} at {tuple(round(c, 3) for c in p)}: {d:.3f} m from {line}")
+    worst = max((min(((f['p'][1] - ly) ** 2 + (f['p'][2] - lz) ** 2) ** 0.5 for _, ly, lz in L.pixel_lines_r2()), f['fid'])
+                for f in L.of_kind("pixelbar"))
+    print(f"[r3] pixel bars: worst {worst[0] * 1000:.0f} mm off an r2 bar line ({worst[1]})")
+    for f in L.of_kind("burst"):
+        if L.grate_over(*f["p"]) is None:
+            print(f"[r3] burst {f['fid']} at {f['p']} is under no grate: stood on its position")
+
+
 def build_stage(mats, coll):
     objs = []
     d0, d1 = L.DECK_Y0, L.DECK_Y1
@@ -488,18 +613,22 @@ def build_stage(mats, coll):
     # strobes (GLP JDC Burst 1) in the grates' cavities, and the light each throws up through its
     # grate: a window on the grated top that shows the FX feed's bottom half at the strobe's
     # place in plan (`strobe.*`, unlit in Loom).
-    bodies = MB()
-    windows = MB()
-    bl, bw, bh = L.STROBE_BODY
-    wl, ww = L.STROBE_WINDOW
-    for _, (x, y), floor_z, top_z in L.strobes():
-        bodies.box((x, y, floor_z + bh / 2), (bl, bw, bh), "fixture_black")
-        bodies.box((x, y, floor_z + bh + 0.004), (wl, ww, 0.008), "lens_glass")
-        z = top_z + 0.004
-        windows.emitter([(x - wl / 2, y - ww / 2, z), (x + wl / 2, y - ww / 2, z), (x + wl / 2, y + ww / 2, z), (x - wl / 2, y + ww / 2, z)],
-                        "emitter", L.fx_texel_strobe(x, y))
-    objs.append(to_object("stage.strobes", bodies, mats, coll))
-    objs.append(to_object("strobe.windows", windows, mats, coll))
+    if R3:
+        # revision 3: one JDC Burst body per patched fixture, no windows (Loom draws the light)
+        objs.append(to_object("strobe.bursts", r3_bursts(), mats, coll))
+    else:
+        bodies = MB()
+        windows = MB()
+        bl, bw, bh = L.STROBE_BODY
+        wl, ww = L.STROBE_WINDOW
+        for _, (x, y), floor_z, top_z in L.strobes():
+            bodies.box((x, y, floor_z + bh / 2), (bl, bw, bh), "fixture_black")
+            bodies.box((x, y, floor_z + bh + 0.004), (wl, ww, 0.008), "lens_glass")
+            z = top_z + 0.004
+            windows.emitter([(x - wl / 2, y - ww / 2, z), (x + wl / 2, y - ww / 2, z), (x + wl / 2, y + ww / 2, z), (x - wl / 2, y + ww / 2, z)],
+                            "emitter", L.fx_texel_strobe(x, y))
+        objs.append(to_object("stage.strobes", bodies, mats, coll))
+        objs.append(to_object("strobe.windows", windows, mats, coll))
 
     # the flown frame (layout revision 2): the scrim's truss and the front truss, 50' each across
     # the stage at one trim, a motor over each end and the third points between; the scrim's
@@ -591,18 +720,24 @@ def build_stage(mats, coll):
         mb.cylinder((x, post_y, L.GRATE_TOP), (x, post_y, rack_top), 0.024, "trim", seg=10)
     for z in L.PIXEL_RACK_Z:
         mb.cylinder((-half_row - 0.1, post_y, H + z), (half_row + 0.1, post_y, H + z), 0.024, "trim", seg=10)
-    n = L.PIXELS_PER_BAR
-    for _, _, x0, x1, zc, y in L.pixel_bars():
-        mb.span((x0, y - depth / 2, zc - height / 2), (x1, y + depth / 2, zc + height / 2), "fixture_black")
-        face = y - depth / 2 - 0.002
-        lo, hi = x0 + 0.01, x1 - 0.01
-        for k in range(n):
-            a = lo + (hi - lo) * k / n
-            b = lo + (hi - lo) * (k + 1) / n
-            pixels.emitter([(a, face, zc - 0.018), (b, face, zc - 0.018), (b, face, zc + 0.018), (a, face, zc + 0.018)],
-                           "emitter", L.fx_texel_bar((a + b) / 2, zc))
-    objs.append(to_object("grid.pixel_lines", mb, mats, coll))
-    objs.append(to_object("led.pixels", pixels, mats, coll))
+    if R3:
+        # revision 3: the rigging as revision 2, one housing per patched bar, no pixel quads
+        # (Loom draws the pixels itself from the same CSV)
+        objs.append(to_object("grid.pixel_lines", mb, mats, coll))
+        objs.append(to_object("led.pixel_bars", r3_pixel_bars(), mats, coll))
+    else:
+        n = L.PIXELS_PER_BAR
+        for _, _, x0, x1, zc, y in L.pixel_bars():
+            mb.span((x0, y - depth / 2, zc - height / 2), (x1, y + depth / 2, zc + height / 2), "fixture_black")
+            face = y - depth / 2 - 0.002
+            lo, hi = x0 + 0.01, x1 - 0.01
+            for k in range(n):
+                a = lo + (hi - lo) * k / n
+                b = lo + (hi - lo) * (k + 1) / n
+                pixels.emitter([(a, face, zc - 0.018), (b, face, zc - 0.018), (b, face, zc + 0.018), (a, face, zc + 0.018)],
+                               "emitter", L.fx_texel_bar((a + b) / 2, zc))
+        objs.append(to_object("grid.pixel_lines", mb, mats, coll))
+        objs.append(to_object("led.pixels", pixels, mats, coll))
 
     # the drapes
     mb = MB()
@@ -617,6 +752,12 @@ def build_stage(mats, coll):
     for base in L.TALENT:
         mannequin(mb, base)
     objs.append(to_object("talent.figures", mb, mats, coll))
+
+    if R3:
+        trusses, movers, strobes = r3_house_rig()
+        objs.append(to_object("grid.house_trusses", trusses, mats, coll))
+        objs.append(to_object("grid.movers", movers, mats, coll))
+        objs.append(to_object("grid.color_strobes", strobes, mats, coll))
     return [o for o in objs if o is not None]
 
 
@@ -796,6 +937,7 @@ def main():
     ap.add_argument("--blend", default=None)
     ap.add_argument("--preview", default=None)
     ap.add_argument("--fxmap", default=None, help="folder for fx-pixel-map.{png,svg,csv}")
+    ap.add_argument("--layout", default="r2", choices=("r2", "r3"), help="layout revision (r3: layout_r3.py, every patched fixture)")
     a = ap.parse_args(argv)
 
     bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -832,7 +974,11 @@ def main():
     if a.blend:
         bpy.ops.wm.save_as_mainfile(filepath=os.path.abspath(a.blend))
         print(f"[blend] {a.blend}")
-    if a.fxmap:
+    if R3:
+        r3_report()
+    if a.fxmap and R3:
+        print("[fxmap] skipped: revision 3 has no FX texels (Loom draws the emitters from the CSV)")
+    elif a.fxmap:
         write_fx_map(os.path.abspath(a.fxmap))
     if a.preview:
         preview(a.preview, objs)

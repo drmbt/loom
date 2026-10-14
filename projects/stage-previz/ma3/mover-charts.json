@@ -1,0 +1,1130 @@
+{
+ "Proteus Lucius@Standard": {
+  "footprint": 43,
+  "source": "Elation 'PROTEUS LUCIUS DMX Traits' 2023-03-17 (Standard/Extended columns), https://goknight.com/content/documentation/ELATION%20PROTEUS%20LUCIUS%20-%20DMX%20Traits%202023-03-17.pdf pp.1-10; same table in Proteus Lucius User Manual p.31-41 https://goknight.com/content/documentation/Proteus%20Lucius%20User%20Manual.pdf (spec p.42: zoom 5.5-50°); pan/tilt angles from https://www.elationlighting.com/products/proteus-lucius ('Pan Angle: 540°/630°', 'Tilt Angle: 250°')",
+  "confidence": "manual",
+  "channels": [
+   {
+    "offset": [
+     1,
+     2
+    ],
+    "attribute": "Pan",
+    "physFrom": -270,
+    "physTo": 270,
+    "default": [
+     128,
+     0
+    ],
+    "notes": "16-bit, 128/0 = centre. Product page: 'Pan Angle: 540°/630°' (menu 'Pan Degree' selectable); 540 assumed (show default). Manual menu text says 360/540."
+   },
+   {
+    "offset": [
+     3,
+     4
+    ],
+    "attribute": "Tilt",
+    "physFrom": -125,
+    "physTo": 125,
+    "default": [
+     128,
+     0
+    ],
+    "notes": "16-bit. Product page: 'Tilt Angle: 250°' (manual/traits give no tilt angle)."
+   },
+   {
+    "offset": [
+     5
+    ],
+    "attribute": "ColorSub_C",
+    "physFrom": 0,
+    "physTo": 1,
+    "notes": "0-255 = 0-100% cyan (8-bit in Standard; fine only in Extended)"
+   },
+   {
+    "offset": [
+     6
+    ],
+    "attribute": "ColorSub_M",
+    "physFrom": 0,
+    "physTo": 1
+   },
+   {
+    "offset": [
+     7
+    ],
+    "attribute": "ColorSub_Y",
+    "physFrom": 0,
+    "physTo": 1
+   },
+   {
+    "offset": [
+     8
+    ],
+    "attribute": "CTO",
+    "physFrom": 0,
+    "physTo": 1,
+    "notes": "0-100% linear CTO; Kelvin endpoint not stated"
+   },
+   {
+    "offset": [
+     9
+    ],
+    "attribute": "Color1",
+    "notes": "Colour wheel (dichroic): 0-7 Open, 8-31 Red, 32-55 Green, 56-79 High CRI, 80-103 Orange, 104-127 Medium Blue, 128-189 CW scroll fast->slow, 190-193 stop, 194-255 CCW slow->fast"
+   },
+   {
+    "offset": [
+     10
+    ],
+    "attribute": "Gobo1",
+    "notes": "Rotating gobo wheel 1 (6 gobos): 0-9 open, 10-69 gobos 1-6 (10 each), 70-189 shakes, 190-221 scroll CW, 222-223 stop, 224-255 scroll CCW"
+   },
+   {
+    "offset": [
+     11,
+     12
+    ],
+    "attribute": "Gobo1Pos",
+    "notes": "ch11: 0-127 index, 128-189 CW rot fast->slow, 190-193 stop, 194-255 CCW slow->fast; ch12 fine indexing"
+   },
+   {
+    "offset": [
+     13
+    ],
+    "attribute": "Gobo2",
+    "notes": "Rotating gobo wheel 2 (7 gobos): 0-9 open, 10-77 gobos 1-7, 78-189 shakes, 190-221 scroll CW, 222-223 stop, 224-255 CCW"
+   },
+   {
+    "offset": [
+     14,
+     15
+    ],
+    "attribute": "Gobo2Pos",
+    "notes": "as ch11/12"
+   },
+   {
+    "offset": [
+     16
+    ],
+    "attribute": "Gobo3",
+    "notes": "Fixed (static) gobo wheel, 7 gobos: 0-9 open, 10-77 gobos, 78-189 shakes, 190-255 scroll"
+   },
+   {
+    "offset": [
+     17
+    ],
+    "attribute": "Prism1",
+    "notes": "0-63 open, 64-127 4-facet circular prism, 128-255 prism/gobo macros 1-16 (8 each)"
+   },
+   {
+    "offset": [
+     18
+    ],
+    "attribute": "Prism1Pos",
+    "notes": "0-127 index, 128-189 CW fast->slow, 190-193 stop, 194-255 CCW (8-bit in Standard)"
+   },
+   {
+    "offset": [
+     19
+    ],
+    "attribute": "Prism2",
+    "notes": "0-63 open, 64-255 4-facet linear prism"
+   },
+   {
+    "offset": [
+     20
+    ],
+    "attribute": "Prism2Pos",
+    "notes": "0-127 index, 128-189 CW, 190-193 stop, 194-255 CCW"
+   },
+   {
+    "offset": [
+     21,
+     22
+    ],
+    "attribute": "Focus1",
+    "default": [
+     127,
+     0
+    ],
+    "notes": "focus edge adjustment"
+   },
+   {
+    "offset": [
+     23,
+     24
+    ],
+    "attribute": "Zoom",
+    "physFrom": 5.5,
+    "physTo": 50,
+    "default": [
+     127,
+     0
+    ],
+    "notes": "'Zoom adjustment from small to big': DMX 0 = 5.5°, 255 = 50° (spec 5.5-50° motorized zoom). Direction per traits text; linearity of degrees vs DMX not stated."
+   },
+   {
+    "offset": [
+     25
+    ],
+    "attribute": "Shutter1",
+    "default": 50,
+    "ranges": [
+     [
+      0,
+      31,
+      "Closed"
+     ],
+     [
+      32,
+      63,
+      "Open"
+     ],
+     [
+      64,
+      95,
+      "Strobe slow->fast"
+     ],
+     [
+      96,
+      127,
+      "Open"
+     ],
+     [
+      128,
+      159,
+      "Pulse in sequences"
+     ],
+     [
+      160,
+      191,
+      "Open"
+     ],
+     [
+      192,
+      223,
+      "Random strobe slow->fast"
+     ],
+     [
+      224,
+      255,
+      "Open"
+     ]
+    ]
+   },
+   {
+    "offset": [
+     26,
+     27
+    ],
+    "attribute": "Dimmer",
+    "physFrom": 0,
+    "physTo": 1,
+    "default": [
+     0,
+     0
+    ],
+    "notes": "16-bit intensity 0-100%"
+   },
+   {
+    "offset": [
+     28
+    ],
+    "attribute": "DimmerMode",
+    "default": 0,
+    "notes": "0-20 Standard, 21-40 Stage, 41-60 TV, 61-80 Architectural, 81-100 Theatre, 101-120 Stage 2; 121-141 dimmer delay 0-10s; 142-255 idle. grandMA3 may label this 'DimmerMode'/'DimmerCurve'."
+   },
+   {
+    "offset": [
+     29
+    ],
+    "attribute": "Iris",
+    "notes": "0-191 max->min diameter, 192-223 pulse open fast->slow, 224-255 pulse close slow->fast (8-bit in Standard)"
+   },
+   {
+    "offset": [
+     30
+    ],
+    "attribute": "Frost1",
+    "physFrom": 0,
+    "physTo": 1,
+    "notes": "0-100% linear frost 1 (light)"
+   },
+   {
+    "offset": [
+     31
+    ],
+    "attribute": "Frost2",
+    "physFrom": 0,
+    "physTo": 1,
+    "notes": "0-100% linear frost 2 (wash)"
+   },
+   {
+    "offset": [
+     32
+    ],
+    "attribute": "AnimationWheel1",
+    "notes": "0-7 open, 8-255 animation min->max"
+   },
+   {
+    "offset": [
+     33
+    ],
+    "attribute": "AnimationIndexRotate1",
+    "notes": "0-127 index, 128-189 CW fast->slow, 190-193 stop, 194-255 CCW"
+   },
+   {
+    "offset": [
+     34
+    ],
+    "attribute": "Blade1A",
+    "notes": "framing blade 1A open->close"
+   },
+   {
+    "offset": [
+     35
+    ],
+    "attribute": "Blade1B"
+   },
+   {
+    "offset": [
+     36
+    ],
+    "attribute": "Blade2A"
+   },
+   {
+    "offset": [
+     37
+    ],
+    "attribute": "Blade2B"
+   },
+   {
+    "offset": [
+     38
+    ],
+    "attribute": "Blade3A"
+   },
+   {
+    "offset": [
+     39
+    ],
+    "attribute": "Blade3B"
+   },
+   {
+    "offset": [
+     40
+    ],
+    "attribute": "Blade4A"
+   },
+   {
+    "offset": [
+     41
+    ],
+    "attribute": "Blade4B"
+   },
+   {
+    "offset": [
+     42
+    ],
+    "attribute": "ShaperRot",
+    "physFrom": -45,
+    "physTo": 45,
+    "notes": "0-126 -45°, 127-128 parallel 0°, 129-255 +45°"
+   },
+   {
+    "offset": [
+     43
+    ],
+    "attribute": "Control1",
+    "default": 0,
+    "notes": "Control/reset/fan/refresh-rate/dimmer-curve macros (resets 80-99 need 3 s hold)"
+   }
+  ]
+ },
+ "Robin ColorStrobe@Mode 1": {
+  "footprint": 9,
+  "source": "Robe 'Robin ColorStrobe - DMX protocol' v1.0, https://www.robe.cz/res/downloads/dmx_charts/Robin_ColourStrobe_DMX_charts.pdf p.1-2 (Mode 1 column); mode list in User_manual_Robin_ColorStrobe v1.5 §6.1 ('Mode 1 - 9 control channels (default)'); strobe 0.3-30 Hz / 13-860 ms from https://robe.cz/api/robe/pdfs/en/product/692",
+  "confidence": "manual",
+  "channels": [
+   {
+    "offset": [
+     1
+    ],
+    "attribute": "ColorRGB_R",
+    "physFrom": 0,
+    "physTo": 1,
+    "notes": "Red (or Cyan if fixture in CMY colour-mixing mode) foreground, all zones, 8-bit"
+   },
+   {
+    "offset": [
+     2
+    ],
+    "attribute": "ColorRGB_G",
+    "physFrom": 0,
+    "physTo": 1,
+    "notes": "Green/Magenta foreground"
+   },
+   {
+    "offset": [
+     3
+    ],
+    "attribute": "ColorRGB_B",
+    "physFrom": 0,
+    "physTo": 1,
+    "notes": "Blue/Yellow foreground"
+   },
+   {
+    "offset": [
+     4
+    ],
+    "attribute": "ColorRGB_W",
+    "physFrom": 0,
+    "physTo": 1,
+    "notes": "White foreground (RGBW mode only)"
+   },
+   {
+    "offset": [
+     5
+    ],
+    "attribute": "CTC",
+    "physFrom": 8000,
+    "physTo": 2700,
+    "notes": "0 = no function; 1-255 colour temperature correction 8000K -> 2700K. MA3/GDTF may call it CTC or CTO."
+   },
+   {
+    "offset": [
+     6
+    ],
+    "attribute": "ColorMacro1",
+    "notes": "Virtual colour wheel: 0 none; 1-15 whites 2700/3200/4200/5600/8000K; 16-247 hue sweep (16 blue, 56 light blue, 96 green, 135 yellow, 175 red, 215 magenta, 247 blue); 248-251 rainbow with fade slow->fast; 252-255 rainbow no fade. Overrides ch1-5 (assumed)."
+   },
+   {
+    "offset": [
+     7
+    ],
+    "attribute": "Dimmer",
+    "physFrom": 0,
+    "physTo": 1,
+    "notes": "Intensity foreground, all zones, 8-bit (Mode 1 has no fine)"
+   },
+   {
+    "offset": [
+     8
+    ],
+    "attribute": "StrobeDuration",
+    "notes": "Flash duration min->max (spec: 13-860 ms). MA3 may call it 'StrobeDuration' or 'Shutter1StrobeDuration'"
+   },
+   {
+    "offset": [
+     9
+    ],
+    "attribute": "StrobeRate",
+    "ranges": [
+     [
+      0,
+      5,
+      "No flash"
+     ],
+     [
+      6,
+      255,
+      "Flash frequency min->max (spec 0.3-30 Hz)"
+     ]
+    ],
+    "notes": "Duration < period: flashing; Duration >= period: light continuously on. With Rate 0-5 the output follows intensity (no flash)."
+   }
+  ]
+ },
+ "Robin iForte FS@Mode 1 - Standard 16 bit": {
+  "footprint": 54,
+  "source": "Robe 'Robin iForte/Robin iForte FS - DMX protocol' v1.6, https://www.robe.cz/res/downloads/dmx_charts/Robin_iForte_iForte_FS_DMX_charts.pdf pp.1-15 (Mode 1 column); zoom 5°-55° from https://www.robe.cz/iforte-fs",
+  "confidence": "manual",
+  "channels": [
+   {
+    "offset": [
+     1,
+     2
+    ],
+    "attribute": "Pan",
+    "physFrom": -270,
+    "physTo": 270,
+    "default": [
+     128,
+     0
+    ],
+    "notes": "'Pan movement by 540° (128=default)'"
+   },
+   {
+    "offset": [
+     3,
+     4
+    ],
+    "attribute": "Tilt",
+    "physFrom": -135,
+    "physTo": 135,
+    "default": [
+     128,
+     0
+    ],
+    "notes": "'Tilt movement by 270° (128=default)'"
+   },
+   {
+    "offset": [
+     5
+    ],
+    "attribute": "PanTiltSpeed",
+    "default": 0,
+    "notes": "0 standard, 1 max speed, 2-255 speed max->min or time 0.2-25.5 s (MA3: PositionMSpeed)"
+   },
+   {
+    "offset": [
+     6
+    ],
+    "attribute": "Control1",
+    "default": 0,
+    "notes": "Power/special functions (standby, display, fan, dimmer curve, resets 130-212 with 3 s hold and shutter closed)"
+   },
+   {
+    "offset": [
+     7
+    ],
+    "attribute": "LEDFrequency",
+    "default": 10,
+    "notes": "PWM: 0-4 menu, 5-9 300Hz, 10-14 600Hz, 15-19 1200Hz, 20-24 2400Hz. MA3 likely 'LEDFrequency'/Control"
+   },
+   {
+    "offset": [
+     8
+    ],
+    "attribute": "LEDFrequencyFine",
+    "default": 128,
+    "notes": "PWM fine adjust"
+   },
+   {
+    "offset": [
+     9
+    ],
+    "attribute": "MaxLightIntensity",
+    "default": 0,
+    "notes": "Max. light intensity indication and setting (output limiter/white mode); not a dimmer"
+   },
+   {
+    "offset": [
+     10,
+     11
+    ],
+    "attribute": "Color1",
+    "notes": "Colour wheel 1: continual 0 open, 21 deep red, 43 deep blue, 64 orange, 86 green, 107 Congo blue; 128-129 open; slots 130-141 deep red, 142-153 deep blue, 154-165 orange, 166-177 green, 178-189 Congo blue; 190-215 fwd rainbow fast->slow; 216-217 stop; 218-243 bwd rainbow; 250-255 random. ch11 = fine"
+   },
+   {
+    "offset": [
+     12,
+     13
+    ],
+    "attribute": "Color2",
+    "notes": "Colour wheel 2: continual 0 open, 21 multicolour, 43 laser green, 64 lavender, 86 CRI80 filter, 107 CRI90 filter; 128-129 open; slots 130-189 (12 each, same order); 190-255 as wheel 1. ch13 = fine"
+   },
+   {
+    "offset": [
+     14
+    ],
+    "attribute": "ColorSub_C",
+    "physFrom": 0,
+    "physTo": 1,
+    "default": 0
+   },
+   {
+    "offset": [
+     15
+    ],
+    "attribute": "ColorSub_M",
+    "physFrom": 0,
+    "physTo": 1,
+    "default": 0
+   },
+   {
+    "offset": [
+     16
+    ],
+    "attribute": "ColorSub_Y",
+    "physFrom": 0,
+    "physTo": 1,
+    "default": 0
+   },
+   {
+    "offset": [
+     17
+    ],
+    "attribute": "CTO",
+    "physFrom": 6700,
+    "physTo": 3000,
+    "default": 0,
+    "notes": "HP white engine: 6700K -> 3000K; HCF engine: 6000K -> 2200K"
+   },
+   {
+    "offset": [
+     18
+    ],
+    "attribute": "CTB",
+    "default": 128,
+    "notes": "Green correction: 1-127 minus green -> uncorrected, 128 uncorrected (default), 129-255 plus green. MA3 attribute probably 'Tint'/'MinusGreen'"
+   },
+   {
+    "offset": [
+     19
+    ],
+    "attribute": "ColorMacro1",
+    "default": 0,
+    "notes": "Virtual colour wheel (Lee filter emulations, 2 DMX each, 1-132); when >0 channels 9-18 disabled; 133-255 reserved"
+   },
+   {
+    "offset": [
+     20
+    ],
+    "attribute": "EffectsSpeed",
+    "default": 0,
+    "notes": "Speed of CMY/CTO movement and rot. gobo selection max->min"
+   },
+   {
+    "offset": [
+     21
+    ],
+    "attribute": "ColorMixMSpeed",
+    "default": 0,
+    "notes": "CMY+CTO+colour wheels time: 0 off, 1-255 0.1-25.5 s"
+   },
+   {
+    "offset": [
+     22
+    ],
+    "attribute": "BeamMSpeed",
+    "default": 0,
+    "notes": "Framing/zoom/focus/iris/frost/prism time: 0 off, 1-255 0.1-25.5 s"
+   },
+   {
+    "offset": [
+     23
+    ],
+    "attribute": "AnimationWheel1",
+    "default": 0,
+    "notes": "Effect wheel positioning: 0-19 none, 20-127 index (73 centre), 128-255 ramps"
+   },
+   {
+    "offset": [
+     24
+    ],
+    "attribute": "AnimationIndexRotate1",
+    "default": 128,
+    "notes": "Effect wheel rotation: 0 stop, 1-127 fwd fast->slow, 128 stop, 129-255 bwd slow->fast"
+   },
+   {
+    "offset": [
+     25
+    ],
+    "attribute": "AnimationWheel1Macro",
+    "default": 0,
+    "notes": "Effect wheel animations: 0-7 none, 8-27 macros 1-10"
+   },
+   {
+    "offset": [
+     26
+    ],
+    "attribute": "Gobo1",
+    "default": 0,
+    "notes": "Rotating gobo wheel 1 (8-bit in Mode 1; fine only in Mode 2). Index/rotate mode chosen by range; see Robe chart"
+   },
+   {
+    "offset": [
+     27,
+     28
+    ],
+    "attribute": "Gobo1Pos",
+    "default": [
+     128,
+     0
+    ],
+    "notes": "Indexing 0-255 (when ch26 in index range) or rotation: 0 stop, 1-127 fwd fast->slow, 128 stop, 129-255 bwd; ch28 fine"
+   },
+   {
+    "offset": [
+     29
+    ],
+    "attribute": "Gobo2",
+    "default": 0,
+    "notes": "Rotating gobo wheel 2: 0-4 open, 5-8 gobo1, 9-13 gobo2, ... (see chart)"
+   },
+   {
+    "offset": [
+     30,
+     31
+    ],
+    "attribute": "Gobo2Pos",
+    "default": [
+     128,
+     0
+    ]
+   },
+   {
+    "offset": [
+     32
+    ],
+    "attribute": "Prism1",
+    "default": 0,
+    "notes": "6-facet linear: 0-19 open, 20-73 prism indexing, 74-127 prism rotation, 128-255 prism/gobo macros 1-16"
+   },
+   {
+    "offset": [
+     33
+    ],
+    "attribute": "Prism1Pos",
+    "default": 128,
+    "notes": "index 0-255 or rotation 0 stop/1-127 fwd/128 stop/129-255 bwd"
+   },
+   {
+    "offset": [
+     34
+    ],
+    "attribute": "Prism2",
+    "default": 0,
+    "notes": "6-facet circular: 0-19 open, 20-127 prism, 128-255 macros 1-16"
+   },
+   {
+    "offset": [
+     35
+    ],
+    "attribute": "Prism2Pos",
+    "default": 128,
+    "notes": "rotation only"
+   },
+   {
+    "offset": [
+     36
+    ],
+    "attribute": "Frost1",
+    "default": 0,
+    "notes": "0 open, 1-50 light frost 0-100%, 51-53 100%, 54-83 pulses/ramps, 84-86 open, 87-136 medium frost 0-100%, 137-139 100%, 140-169 pulses, 170-255 open"
+   },
+   {
+    "offset": [
+     37,
+     38
+    ],
+    "attribute": "Iris",
+    "default": [
+     0,
+     0
+    ],
+    "notes": "0 open, 1-179 max->min diameter, 180-191 closed, 192-255 pulse effects"
+   },
+   {
+    "offset": [
+     39,
+     40
+    ],
+    "attribute": "Zoom",
+    "physFrom": 55,
+    "physTo": 5,
+    "default": [
+     128,
+     0
+    ],
+    "notes": "'Zoom from max. to min. beam angle' -> DMX 0 = 55°, 65535 = 5° (spec 5°-55°). Degrees-vs-DMX curve not stated."
+   },
+   {
+    "offset": [
+     41,
+     42
+    ],
+    "attribute": "Focus1",
+    "default": [
+     128,
+     0
+    ],
+    "notes": "far -> near"
+   },
+   {
+    "offset": [
+     43
+    ],
+    "attribute": "ShaperRot",
+    "physFrom": 0,
+    "physTo": 120,
+    "default": 128,
+    "notes": "0-127 0°->60°, 128 centre (60°), 129-255 60°->120° (i.e. ±60°)"
+   },
+   {
+    "offset": [
+     44
+    ],
+    "attribute": "Blade1A",
+    "default": 0,
+    "notes": "framing shutter 1 movement out->in"
+   },
+   {
+    "offset": [
+     45
+    ],
+    "attribute": "Blade1Rot",
+    "default": 128,
+    "physFrom": -30,
+    "physTo": 30,
+    "notes": "swivel ±30°, 128 = 0°"
+   },
+   {
+    "offset": [
+     46
+    ],
+    "attribute": "Blade2A",
+    "default": 0
+   },
+   {
+    "offset": [
+     47
+    ],
+    "attribute": "Blade2Rot",
+    "default": 128,
+    "physFrom": -30,
+    "physTo": 30
+   },
+   {
+    "offset": [
+     48
+    ],
+    "attribute": "Blade3A",
+    "default": 0
+   },
+   {
+    "offset": [
+     49
+    ],
+    "attribute": "Blade3Rot",
+    "default": 128,
+    "physFrom": -30,
+    "physTo": 30
+   },
+   {
+    "offset": [
+     50
+    ],
+    "attribute": "Blade4A",
+    "default": 0
+   },
+   {
+    "offset": [
+     51
+    ],
+    "attribute": "Blade4Rot",
+    "default": 128,
+    "physFrom": -30,
+    "physTo": 30
+   },
+   {
+    "offset": [
+     52
+    ],
+    "attribute": "Shutter1",
+    "default": 32,
+    "ranges": [
+     [
+      0,
+      31,
+      "Closed"
+     ],
+     [
+      32,
+      63,
+      "Open"
+     ],
+     [
+      64,
+      95,
+      "Strobe slow->fast"
+     ],
+     [
+      96,
+      127,
+      "Open"
+     ],
+     [
+      128,
+      143,
+      "Opening pulse slow->fast"
+     ],
+     [
+      144,
+      159,
+      "Closing pulse fast->slow"
+     ],
+     [
+      160,
+      191,
+      "Open"
+     ],
+     [
+      192,
+      223,
+      "Random strobe slow->fast"
+     ],
+     [
+      224,
+      255,
+      "Open"
+     ]
+    ]
+   },
+   {
+    "offset": [
+     53,
+     54
+    ],
+    "attribute": "Dimmer",
+    "physFrom": 0,
+    "physTo": 1,
+    "default": [
+     0,
+     0
+    ],
+    "notes": "16-bit 0-100%"
+   }
+  ]
+ },
+ "Mac Aura XB@Standard - RGB": {
+  "footprint": 14,
+  "source": "Martin MAC Aura XB User Manual, https://www.martin.com/en/site_elements/mac-aura-xb-user-manual p.15 (STD = 14 ch), p.17 (zoom 53°->11°, pan 540°, tilt 232°), pp.23-25 Table 2 DMX protocol",
+  "confidence": "manual",
+  "channels": [
+   {
+    "offset": [
+     1
+    ],
+    "attribute": "Shutter1",
+    "default": 22,
+    "ranges": [
+     [
+      0,
+      19,
+      "Closed"
+     ],
+     [
+      20,
+      24,
+      "Open"
+     ],
+     [
+      25,
+      64,
+      "Strobe 1 fast->slow"
+     ],
+     [
+      65,
+      69,
+      "Open"
+     ],
+     [
+      70,
+      84,
+      "Opening pulse fast->slow"
+     ],
+     [
+      85,
+      89,
+      "Open"
+     ],
+     [
+      90,
+      104,
+      "Closing pulse"
+     ],
+     [
+      105,
+      109,
+      "Open"
+     ],
+     [
+      110,
+      124,
+      "Random strobe"
+     ],
+     [
+      125,
+      129,
+      "Open"
+     ],
+     [
+      130,
+      144,
+      "Random opening pulse"
+     ],
+     [
+      145,
+      149,
+      "Open"
+     ],
+     [
+      150,
+      164,
+      "Random closing pulse"
+     ],
+     [
+      165,
+      169,
+      "Open"
+     ],
+     [
+      170,
+      184,
+      "Burst pulse"
+     ],
+     [
+      185,
+      189,
+      "Open"
+     ],
+     [
+      190,
+      204,
+      "Random burst pulse"
+     ],
+     [
+      205,
+      209,
+      "Open"
+     ],
+     [
+      210,
+      224,
+      "Sine wave"
+     ],
+     [
+      225,
+      229,
+      "Open"
+     ],
+     [
+      230,
+      244,
+      "Burst"
+     ],
+     [
+      245,
+      255,
+      "Open"
+     ]
+    ],
+    "notes": "Beam electronic shutter; in STD mode drives both Beam and Aura"
+   },
+   {
+    "offset": [
+     2
+    ],
+    "attribute": "Dimmer",
+    "physFrom": 0,
+    "physTo": 1,
+    "default": 0,
+    "notes": "Beam dimmer 0-100%, 8-bit (no fine in STD)"
+   },
+   {
+    "offset": [
+     3
+    ],
+    "attribute": "Zoom",
+    "physFrom": 53,
+    "physTo": 11,
+    "default": 255,
+    "notes": "'Wide -> narrow'; manual: 'zoomed from 53° to 11° one-tenth peak angles'. DMX 0 = 53°, 255 = 11°. Aura auto-dims above 90% zoom."
+   },
+   {
+    "offset": [
+     4,
+     5
+    ],
+    "attribute": "Pan",
+    "physFrom": -270,
+    "physTo": 270,
+    "default": [
+     128,
+     0
+    ],
+    "notes": "'Pan 0° - 540°'"
+   },
+   {
+    "offset": [
+     6,
+     7
+    ],
+    "attribute": "Tilt",
+    "physFrom": -116,
+    "physTo": 116,
+    "default": [
+     128,
+     0
+    ],
+    "notes": "'Tilt 0° - 232°'"
+   },
+   {
+    "offset": [
+     8
+    ],
+    "attribute": "Control1",
+    "default": 0,
+    "notes": "Fixture control: 10-14 reset, PT speed, fans, 75-89 RGB colour mode, 90-94 EXTENDED, 95-99 RAW colour mode (3 s hold), dimming modes, 250-255 display"
+   },
+   {
+    "offset": [
+     9
+    ],
+    "attribute": "Color1",
+    "default": 0,
+    "notes": "Colour wheel (virtual Lee filters): 0-9 open (RGBW mixing enabled), 10-179 Lee 790...164 (5 each), 180-201 open, 202-207 CW, 208-229 ... rotation/stop/CCW, 230-234 open, 235-249 random fast/med/slow, 250-255 open (see manual table)"
+   },
+   {
+    "offset": [
+     10
+    ],
+    "attribute": "ColorRGB_R",
+    "physFrom": 0,
+    "physTo": 1,
+    "default": 255
+   },
+   {
+    "offset": [
+     11
+    ],
+    "attribute": "ColorRGB_G",
+    "physFrom": 0,
+    "physTo": 1,
+    "default": 255
+   },
+   {
+    "offset": [
+     12
+    ],
+    "attribute": "ColorRGB_B",
+    "physFrom": 0,
+    "physTo": 1,
+    "default": 255
+   },
+   {
+    "offset": [
+     13
+    ],
+    "attribute": "ColorRGB_W",
+    "physFrom": 0,
+    "physTo": 1,
+    "default": 0,
+    "notes": "'Only available when the fixture is set to RAW mode' - ignored in RGB/EXTENDED colour modes (so 'Standard - RGB' = W channel present but inactive)"
+   },
+   {
+    "offset": [
+     14
+    ],
+    "attribute": "CTO",
+    "physFrom": 10000,
+    "physTo": 2500,
+    "default": 0,
+    "notes": "Beam CTC: 0-19 disabled, 20-255 CTC 10000K -> 2500K. MA3 likely 'CTC'"
+   }
+  ]
+ }
+}

@@ -121,6 +121,7 @@ import type { RenderJobSettings } from "./use-render-range.ts";
 import { RenderVideoDialog } from "./render-video-dialog.tsx";
 import { PhotoMappingHost } from "./photo-mapping-host.tsx";
 import { useFloatMapSources } from "./use-float-map-sources.ts";
+import { useMa3ShowSources } from "./use-ma3-show-sources.ts";
 // T949: the ONE synchronous answer to "is a take running", read per frame by the OSC pump.
 import { renderRangeHolderFor } from "./render-range.ts";
 
@@ -874,6 +875,8 @@ export function App({
   useMediaCommands(runtime.bus, mediaControls);
   const fileReferences = useFileReferences(compile.flatGraph);
   const floatMaps = useFloatMapSources(backend, fileReferences.graph, compile.compiled);
+  // VN131: MA3 show files played on the timeline, written to their DMX textures per frame.
+  const ma3Shows = useMa3ShowSources(backend, fileReferences.graph, compile.compiled);
   // T1519b: a file arriving (open, import, paste) that does not open in this browser.
   const unopenedFiles = useArrivingFiles(runtime);
   const fileGraphRef = useRef(fileReferences.graph);
@@ -975,6 +978,7 @@ export function App({
       // DRIVEN speed or trim reads this frame's channels rather than the last one's
       // (§V179, the same order contract the animator is held to).
       media.sync(inputs.frame, valueGraph.resolver);
+      ma3Shows.sync(inputs.frame);
       audioInput.sync(inputs.frame, valueGraph.resolver);
       // Immediately after the ONE evaluation, so the plot and the parameter read the same
       // frame's numbers (§V275) and no stateful stage is advanced twice.
@@ -1473,6 +1477,7 @@ export function App({
     },
     beforeRender: async () => {
       await floatMaps.settle();
+      await ma3Shows.settle();
       await Promise.all([nativeOutputs.suspend(), drainNativeViewerOutputs(backend ?? null), vision.prepareForRender()]);
       return depth.prepareForRender();
     },
@@ -1537,6 +1542,7 @@ export function App({
       { id: "media", read: () => media.diagnostics, clear: () => media.clearDiagnostics() },
       { id: "fileReferences", read: () => fileReferences.diagnostics },
       { id: "floatMaps", read: () => floatMaps.diagnostics },
+      { id: "ma3Shows", read: () => ma3Shows.diagnostics },
       { id: "screenCapture", read: () => screenCapture.diagnostics },
       { id: "meshes", read: () => meshes.diagnostics },
       { id: "nativeInputs", read: () => nativeInputs.diagnostics },

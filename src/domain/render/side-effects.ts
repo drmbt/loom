@@ -329,6 +329,7 @@ export const NODE_SIDE_EFFECTS: Readonly<Record<string, SideEffect>> = {
   movieFileIn: "none",
   // Saved scalar numerical assets are decoded inside this process.
   floatMapIn: "none",
+  ma3ShowIn: "none",
   audioFileIn: "none",
   depth: "none",
   pose: "none",

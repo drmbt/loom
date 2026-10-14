@@ -126,6 +126,7 @@ export const NODE_KINDS: Readonly<Record<string, string>> = {
   text: "text",
   matte: "matte",
   floatMapIn: "floatmap",
+  ma3ShowIn: "show",
   personMask: "personmask",
 
   // shaders: one family, the multi-input form is a variant of the same thing
