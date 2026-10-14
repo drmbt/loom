@@ -5,6 +5,7 @@ import { createMemoryStorage, installDomStubs } from "@ui/testing/install-dom-st
 import { installFlowStubs } from "@editor/graph-canvas/testing.tsx";
 import type { BackendCapabilities, CompiledExecutionPlan } from "@domain/types/backend.ts";
 import type { GraphPatchOperation } from "@domain/types/patch.ts";
+import { DEFAULT_PROJECT_SETTINGS } from "@domain/types/graph.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
 import type { PixelWindow, PreviewOutputRef, ReadbackImage } from "@runtime/previews/index.ts";
 import { App } from "./app.tsx";
@@ -193,7 +194,8 @@ describe("T1346b — the viewer readout is one line, and the probe joins it only
     expect(probed.querySelectorAll("dd").length).toBe(3);
     // Narrow panes may elide a field visually, but its full value remains available.
     const facts = probed.querySelectorAll("dd");
-    expect(facts[0]?.getAttribute("title")).toBe("1280 × 720 · rgba16float");
+    // A new project's working format (`rgba8unorm-srgb` since v0.2), which the solid renders in.
+    expect(facts[0]?.getAttribute("title")).toBe(`1280 × 720 · ${DEFAULT_PROJECT_SETTINGS.workingFormat}`);
     expect(facts[2]?.getAttribute("title")).toBe(facts[2]?.textContent);
     expect(facts[2]?.textContent).toContain("0.5020");
     // The gates that read the viewer's resolution find it on this one element (§V349).

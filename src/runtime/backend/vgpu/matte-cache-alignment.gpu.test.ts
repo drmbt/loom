@@ -136,9 +136,10 @@ it.each([false, true])("matches captured model input through skipped and wrapped
     await step();
     await step();
     await runnerStarted;
-    // Open-frame compute captures the previous source; direct segmented compute
-    // captures the current one. The expected pixels come from the ACTUAL readback.
-    expect(captured).toBe(open ? 1 / 8 : 2 / 8);
+    // §T1707b: the preprocess kernel runs in plan order inside the frame on both paths, so
+    // it captures the source this frame rendered. Through vgpu 0.5.0 the open frame captured
+    // the previous one (1/8). The expected pixels come from the ACTUAL readback.
+    expect(captured).toBe(2 / 8);
     await step();
     release();
     await sources.drain();

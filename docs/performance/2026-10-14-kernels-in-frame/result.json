@@ -1,0 +1,128 @@
+{
+ "isolated": true,
+ "out": {
+  "5": {
+   "selfSubmit": {
+    "cpuUs": 71,
+    "wallMs": 0.546,
+    "cpuTrials": [
+     88,
+     81,
+     73,
+     69,
+     71,
+     69,
+     70
+    ]
+   },
+   "passPerKernel": {
+    "cpuUs": 37,
+    "wallMs": 0.469,
+    "cpuTrials": [
+     43,
+     38,
+     37,
+     34,
+     37,
+     36,
+     39
+    ]
+   },
+   "reference": {
+    "cpuUs": 11,
+    "wallMs": 0.39,
+    "cpuTrials": [
+     15,
+     11,
+     10,
+     11,
+     9,
+     9,
+     12
+    ]
+   }
+  },
+  "20": {
+   "selfSubmit": {
+    "cpuUs": 231,
+    "wallMs": 1.015,
+    "cpuTrials": [
+     231,
+     235,
+     222,
+     226,
+     236,
+     238,
+     231
+    ]
+   },
+   "passPerKernel": {
+    "cpuUs": 89,
+    "wallMs": 0.579,
+    "cpuTrials": [
+     87,
+     90,
+     95,
+     89,
+     89,
+     88,
+     88
+    ]
+   },
+   "reference": {
+    "cpuUs": 10,
+    "wallMs": 0.386,
+    "cpuTrials": [
+     10,
+     9,
+     11,
+     11,
+     11,
+     9,
+     9
+    ]
+   }
+  },
+  "80": {
+   "selfSubmit": {
+    "cpuUs": 972,
+    "wallMs": 3.682,
+    "cpuTrials": [
+     972,
+     972,
+     994,
+     983,
+     955,
+     1025,
+     940
+    ]
+   },
+   "passPerKernel": {
+    "cpuUs": 313,
+    "wallMs": 1.308,
+    "cpuTrials": [
+     339,
+     316,
+     313,
+     341,
+     313,
+     312,
+     299
+    ]
+   },
+   "reference": {
+    "cpuUs": 10,
+    "wallMs": 0.411,
+    "cpuTrials": [
+     10,
+     10,
+     9,
+     15,
+     10,
+     11,
+     12
+    ]
+   }
+  }
+ }
+}

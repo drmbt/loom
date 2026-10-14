@@ -233,11 +233,16 @@ describe("T46 — what the real catalogue asks the GPU for", () => {
       });
       driver.setPlan(compiled);
 
-      for (let i = 0; i < 3; i += 1) driver.step();
+      // T1705b: vgpu 0.6.0 captures a frame's managed uniforms into a pooled page that returns
+      // when the frame completes, so a frame loop (one frame per tick) allocates nothing once
+      // warm, while frames encoded back to back in one turn each take a page. Each step here
+      // is a tick of its own.
+      const tick = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+      for (let i = 0; i < 3; i += 1) { driver.step(); await tick(); }
       const before = { ...instrumentation().calls };
       const buildsBefore = backend.status.resourceBuilds;
 
-      for (let i = 0; i < 20; i += 1) driver.step();
+      for (let i = 0; i < 20; i += 1) { driver.step(); await tick(); }
       const after = { ...instrumentation().calls };
 
       for (const key of Object.keys(before) as Array<keyof typeof before>) {
@@ -339,16 +344,21 @@ describe("T46 — what the real catalogue asks the GPU for", () => {
    * the classic slow leak: nothing looks wrong, nothing fails, and the cost multiplies with
    * graph size. Two passes, two distinct shaders, one uniform buffer (Output takes no
    * parameters), one bind group each, one command encoder for the one frame.
+   *
+   * T1705b: vgpu 0.6.0 builds the fullscreen vertex stage every effect shares as a module of
+   * its own, once, so the modules are the two fragment programs plus that one.
    */
   it("costs exactly two programs and two bind groups for Solid -> Output", async () => {
     const { passCount, calls } = await renderAndCount(solidGraph());
     expect(passCount).toBe(2);
-    expect(calls.createShaderModule).toBe(2);
+    expect(calls.createShaderModule).toBe(3);
     expect(calls.createRenderPipeline).toBe(2);
     expect(calls.createBindGroupLayout).toBe(2);
     expect(calls.createBindGroup).toBe(2);
     // Solid declares `color`; Output declares nothing. One parameterised pass, one buffer.
-    expect(calls.createBuffer).toBe(1);
+    // T1705b: plus the one page vgpu 0.6.0 captures a frame's managed uniforms into
+    // ("vgpu.frame.uniforms"), returned to its pool when the frame completes.
+    expect(calls.createBuffer).toBe(2);
     expect(calls.createCommandEncoder).toBe(1);
     // Nothing in v1 emits a compute pass or a query set (§V58).
     expect(calls.createComputePipeline).toBe(0);

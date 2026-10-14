@@ -2,7 +2,6 @@ import v8 from "node:v8";
 import vm from "node:vm";
 
 import { describe, expect, it } from "vitest";
-import { effect } from "vgpu";
 
 import { mockGpuHost } from "./mock-gpu-host.ts";
 import { createVgpuBackend } from "./vgpu-backend.ts";
@@ -28,19 +27,24 @@ import type { FrameEvaluationInput } from "../../../domain/types/frame.ts";
  * ever handed, and that harness-only growth is what sold §T1174's first run a 2.65x curve
  * that was 100% artefact.
  *
- * Both tests carry a SAME-RUN CONTROL (§V929): the identical scenario runs once with the
- * patched `evictBindGroups` removed from the Effect prototype and once with it. The control
- * must grow, or the scenario is not exercising the leak and the green means nothing; the
- * treatment must be flat. That pairing is also what fails if `patches/vgpu.patch` is ever
- * dropped on a version bump — the method vanishes and the treatment starts growing too.
+ * Both tests carry a SAME-RUN CONTROL (§V929): the identical scenario runs once with every
+ * bind group PINNED by the harness, which is what a cache that never lets go looks like to
+ * this measurement. The control must grow, or the WeakRef count cannot see a leak and the
+ * green means nothing; the real run must be flat while it keeps minting bind groups.
+ *
+ * T1705b: through vgpu 0.5.0 the control was vgpu itself with Loom's `evictBindGroups` patch
+ * removed, and it leaked. vgpu 0.6.0 keeps its bind groups per consumer in a weak, bounded
+ * cache and drops an entry when a resource it names is destroyed, so the patch and the
+ * backend's eviction calls are gone and this gate now holds upstream to that behaviour.
  *
  * The two leak shapes are different and both are here:
  *
  *  - a LIVE drawable whose binding slot ROTATES (the tile blit, re-pointed at every tile of
- *    every composite). vgpu's eviction subscription follows the SLOT, so `set()`ing the next
- *    tile unsubscribes the previous one and its cache entry outlives the target's destroy.
+ *    every composite). Through 0.5.0 the eviction subscription followed the SLOT, so
+ *    `set()`ing the next tile unsubscribed the previous one and its cache entry outlived the
+ *    target's destroy.
  *  - a DISCARDED drawable whose bound resources SURVIVE (a shader edit on a pass with no
- *    uniform block). Nothing it names is destroyed, so nothing evicts it.
+ *    uniform block). Nothing it names is destroyed, so through 0.5.0 nothing evicted it.
  */
 
 /**
@@ -58,32 +62,30 @@ function exposeGc(): () => void {
   return gc as () => void;
 }
 
-/** The prototype `evictBindGroups` lives on, taken from a real instance on a throwaway device. */
-async function effectPrototype(): Promise<Record<string, unknown>> {
-  const session = await mockGpuHost().create({} as never);
-  const probe = effect(session.gpu, `@fragment fn fs(@location(0) uv: vec2f) -> @location(0) vec4f { return vec4f(uv, 0.0, 1.0); }`);
-  return Object.getPrototypeOf(probe) as Record<string, unknown>;
-}
-
 interface Retention {
   /** Live GPUBindGroups after each measured step. */
   readonly samples: readonly number[];
   readonly created: number;
 }
 
-/** Wraps the live mock device so every bind group it mints is held ONLY by a WeakRef. */
-function trackBindGroups(host: ReturnType<typeof mockGpuHost>): {
+/**
+ * Wraps the live mock device so every bind group it mints is held ONLY by a WeakRef. With
+ * `pin`, the harness holds each one strongly as well: the control, a cache that keeps all.
+ */
+function trackBindGroups(host: ReturnType<typeof mockGpuHost>, pin: boolean): {
   retained: (gc: () => void) => Promise<number>;
   created: () => number;
 } {
   const device = host.device as unknown as { createBindGroup: (descriptor: unknown) => object };
   const original = device.createBindGroup.bind(device);
   const refs: Array<WeakRef<object>> = [];
+  const pinned: object[] = [];
   let created = 0;
   device.createBindGroup = (descriptor: unknown): object => {
     const bindGroup = original(descriptor);
     created += 1;
     refs.push(new WeakRef(bindGroup));
+    if (pin) pinned.push(bindGroup);
     return bindGroup;
   };
   return {
@@ -158,11 +160,11 @@ function previewCanvas(host: ReturnType<typeof mockGpuHost>): Parameters<ReturnT
 }
 
 /** Pans the closed-loop camera for `cycles` identical cycles, sampling retention per cycle. */
-async function panScenario(gc: () => void, cycles: number): Promise<Retention> {
+async function panScenario(gc: () => void, cycles: number, pin = false): Promise<Retention> {
   const host = mockGpuHost();
   const backend = createVgpuBackend({ host });
   await backend.initialize({});
-  const track = trackBindGroups(host);
+  const track = trackBindGroups(host, pin);
   const plan = await backend.compile(fixturePlan());
   backend.render(plan, { frame: frameInput(0), pointer: { x: 0, y: 0, buttons: 0 }, resolution: [64, 64] } as never);
   const system = createPreviewSystem({ host: backend.previewHost(previewCanvas(host)), capacity: 16 });
@@ -195,11 +197,11 @@ async function panScenario(gc: () => void, cycles: number): Promise<Retention> {
  * cannot show this: its per-pass uniform block dies with the pass and vgpu reclaims the
  * entry as a side effect of that destroy.
  */
-async function editScenario(gc: () => void, edits: number): Promise<Retention> {
+async function editScenario(gc: () => void, edits: number, pin = false): Promise<Retention> {
   const host = mockGpuHost();
   const backend = createVgpuBackend({ host });
   await backend.initialize({});
-  const track = trackBindGroups(host);
+  const track = trackBindGroups(host, pin);
 
   const samples: number[] = [];
   for (let edit = 0; edit < edits; edit += 1) {
@@ -217,48 +219,33 @@ async function editScenario(gc: () => void, edits: number): Promise<Retention> {
   return { samples, created: track.created() };
 }
 
-/** Runs `scenario` twice: once with the patched method removed (control), once with it. */
-async function withControl(run: () => Promise<Retention>): Promise<{ control: Retention; treatment: Retention }> {
-  const prototype = await effectPrototype();
-  const saved = prototype["evictBindGroups"];
-  if (typeof saved !== "function") {
-    throw new Error("vgpu Effect has no evictBindGroups(): patches/vgpu.patch (T1180) is not applied");
-  }
-  delete prototype["evictBindGroups"];
-  let control: Retention;
-  try {
-    control = await run();
-  } finally {
-    prototype["evictBindGroups"] = saved;
-  }
-  return { control, treatment: await run() };
+/** The retention a run would show if nothing were ever released: every sample after the first grows. */
+function growth(retention: Retention): number {
+  return retention.samples[retention.samples.length - 1]! - retention.samples[1]!;
 }
 
 describe("bind-group cache entries do not accumulate over a session (T1180, §T1174)", () => {
   it("a live blit re-pointed at every tile keeps a BOUNDED set of bind groups across identical camera cycles", async () => {
     const gc = exposeGc();
-    const { control, treatment } = await withControl(() => panScenario(gc, 5));
+    // The control must LEAK, or the measurement proves nothing. §T1174's camera loop makes
+    // every cycle byte-identical, so any growth after the first is objects nothing released.
+    expect(growth(await panScenario(gc, 3, true))).toBeGreaterThan(0);
 
-    // The control must LEAK, or the scenario proves nothing. §T1174's camera loop makes
-    // every cycle byte-identical, so any growth after the first is unreachable objects.
-    const controlGrowth = control.samples[control.samples.length - 1]! - control.samples[1]!;
-    expect(controlGrowth).toBeGreaterThan(0);
-
-    // Flat. Not "grows more slowly" — cycle N holds what cycle 2 held.
-    expect(treatment.samples.slice(1)).toEqual(
-      Array.from({ length: treatment.samples.length - 1 }, () => treatment.samples[1]!),
-    );
+    const run = await panScenario(gc, 5);
+    // Not "grows more slowly": no cycle after the second holds more than the second did. It may
+    // hold one fewer: vgpu keeps a captured entry until a page's frame AND the one before it
+    // left it unused (fork PR #9), so cycle 2's last frame can still hold one cycle 3 has let go.
+    expect(Math.max(...run.samples.slice(2))).toBeLessThanOrEqual(run.samples[1]!);
+    // And flat while minting: a scenario that stopped creating bind groups would be flat too.
+    expect(run.created).toBeGreaterThan(run.samples[1]! * 5);
   }, 60_000);
 
   it("an effect discarded while every resource it bound survives takes its bind groups with it", async () => {
     const gc = exposeGc();
-    const { control, treatment } = await withControl(() => editScenario(gc, 12));
+    expect(growth(await editScenario(gc, 6, true))).toBeGreaterThan(0);
 
-    const controlGrowth = control.samples[control.samples.length - 1]! - control.samples[1]!;
-    expect(controlGrowth).toBeGreaterThan(0);
-
-    expect(treatment.samples.slice(1)).toEqual(
-      Array.from({ length: treatment.samples.length - 1 }, () => treatment.samples[1]!),
-    );
+    const run = await editScenario(gc, 12);
+    expect(Math.max(...run.samples.slice(2))).toBeLessThanOrEqual(run.samples[1]!);
+    expect(run.created).toBeGreaterThan(run.samples[1]!);
   }, 60_000);
 });

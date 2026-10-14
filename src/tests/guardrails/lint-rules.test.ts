@@ -148,6 +148,13 @@ describe("guardrail bypasses are closed", () => {
     expect(messages).toEqual([]);
   });
 
+  it("§V3 — a scoped @vgpu package is behind the same boundary (T1705b)", async () => {
+    const source = `import { prepareShader } from "@vgpu/wgsl/prepare";\nvoid prepareShader;\n`;
+    expect((await lint(source, "src/compiler/sneaky.ts")).messages.length).toBeGreaterThan(0);
+    expect((await lint(`const m = await import("@vgpu/wgsl");\nvoid m;\n`, "src/compiler/sneaky.ts")).messages.length).toBeGreaterThan(0);
+    expect((await lint(source, "src/runtime/backend/vgpu/ok.ts")).messages).toEqual([]);
+  });
+
   it("§V44 — performance.now() via a global object is caught", async () => {
     const { messages: viaWindow } = await lint(`export const t = window.performance.now();\n`, "src/nodes/definitions/a.ts");
     const { messages: viaGlobal } = await lint(`export const t = globalThis.performance.now();\n`, "src/nodes/definitions/b.ts");

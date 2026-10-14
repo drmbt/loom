@@ -16,6 +16,10 @@ async function setup(plan = preparationFixture()) {
   const render = async () => {
     const counted = during(calls, () => backend.render(compiled, input));
     await backend.readOutput("a:out");
+    // T1705b: a prepared atlas is reusable once its frame has COMPLETED, and vgpu 0.6.0's
+    // `frame.done` resolves a few microtasks after the mock's readback does. The next frame
+    // of a loop starts a turn later, which is what this waits for.
+    await new Promise((resolve) => setTimeout(resolve, 0));
     return counted.renderPasses;
   };
   return { backend, host, compiled, calls, render };

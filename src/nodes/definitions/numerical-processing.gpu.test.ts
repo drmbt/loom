@@ -95,3 +95,74 @@ describe("numerical masks remain editable in the graph", () => {
     expect(values[3]).toBeCloseTo(0.5, 2);
   }, 60_000);
 });
+
+/**
+ * T1708b: Displace FILTERS its field, and a device need not filter 32-bit floats (§V57), so a
+ * Float Map In field used to be refused at compile on baseline WebGPU
+ * (`compiler/binding-unfilterable`). The field is now read with textureLoad and filtered in
+ * the shader. Through the real stack on Dawn without `float32-filterable`, exactly: a
+ * constant field of 0.75 at weight 0.25 moves uv by 0.0625 in x, one texel of a 16-wide
+ * picture, so the displaced ramp is the undisplaced one shifted one pixel, its last column
+ * held. A constant field is also the one bilinear filtering cannot change.
+ */
+describe("Displace reads a 32-bit float field on baseline WebGPU (T1708b)", () => {
+  const SIDE = 16;
+  const projectSettings = settings({ outputResolution: { width: SIDE, height: SIDE },
+    colorPolicy: { workingSpace: "linear", displayTransform: "none" } });
+  const node = (id: string, type: string, parameters: Record<string, unknown>) =>
+    ({ id, type, definitionVersion: 1, position: { x: 0, y: 0 }, parameters });
+  const edge = (id: string, from: string, to: string, port: string) =>
+    ({ id, source: { nodeId: from, portId: "out" }, target: { nodeId: to, portId: port } });
+  /** A horizontal ramp displaced by a field of red = `value`, green = 0. */
+  const graphWith = (value: number) => ({
+    revision: 1,
+    nodes: {
+      ramp: node("ramp", "ramp", { type: "horizontal" }),
+      field: node("field", "floatMapIn", { file: "", emptySource: "constant", emptyValue: value, interpretation: "mask" }),
+      push: node("push", "displace", { weight: [0.25, 0.25], extend: "hold" }),
+      out: node("out", "output", {}),
+    },
+    edges: {
+      a: edge("a", "ramp", "push", "source"),
+      b: edge("b", "field", "push", "disp"),
+      c: edge("c", "push", "out", "input"),
+    },
+    groups: {},
+  });
+  const render = async (graph: ReturnType<typeof graphWith>, outputNodeId: string): Promise<Uint8Array> => {
+    const result = await renderHeadless({ host: nodeGpuHost(), graph: graph as never, settings: projectSettings,
+      frames: 1, outputNodeId });
+    expect(result.diagnostics.filter(d => d.severity === "error").map(d => d.message)).toEqual([]);
+    const frame = result.frames[0];
+    if (frame === undefined) throw new Error("No displaced frame captured");
+    return frame.bytes;
+  };
+
+  it("compiles the r32float field as an unfiltered read on Tier B", () => {
+    const registry = createNodeRegistry(allNodeDefinitions).view();
+    const plan = compileGraph({ graph: graphWith(0.75) as never, settings: projectSettings,
+      registry, capabilities: TIER_B_CAPABILITIES });
+    expect(plan.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+    const pass = plan.passes.find(entry => entry.kind === "effect" && entry.nodeId === "push");
+    if (pass?.kind !== "effect") throw new Error("Displace did not emit an effect");
+    expect(pass.textures?.find(binding => binding.binding === "displaceTexture")?.sampled).toBe("unfiltered");
+  });
+
+  it("moves the picture by exactly the field's value", async () => {
+    if (dawnError !== undefined) throw new Error(`Dawn did not start: ${dawnError}`);
+    const shifted = await render(graphWith(0.75), "push");
+    const ramp = await render(graphWith(0.75), "ramp");
+    const texel = shifted.byteLength / (SIDE * SIDE);
+    const pixel = (bytes: Uint8Array, x: number, y: number) =>
+      Array.from(bytes.subarray((y * SIDE + x) * texel, (y * SIDE + x + 1) * texel));
+    // Green 0 sits below the 0.5 midpoint, so y moves too, but a horizontal ramp is the same
+    // down every column: only red's one texel is visible.
+    for (let y = 0; y < SIDE; y += 1) {
+      for (let x = 0; x < SIDE; x += 1) {
+        expect({ x, y, value: pixel(shifted, x, y) }).toEqual({ x, y, value: pixel(ramp, Math.min(x + 1, SIDE - 1), y) });
+      }
+    }
+    // The ramp is not flat, or a shift would be invisible.
+    expect(pixel(ramp, 0, 0)).not.toEqual(pixel(ramp, 1, 0));
+  }, 60_000);
+});

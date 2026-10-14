@@ -137,13 +137,9 @@ const NOT_CONSTRUCTED: ReadonlyArray<{ name: string; reason: string }> = [
       "the Dawn tests that hold the device to it word for word (point-rope.gpu.test.ts).",
   },
   {
-    name: "createComponentRegistry",
-    reason:
-      "Composed by `createComponentSystem` in the same module, which the composition root does construct. The registry and its component-aware node view are two halves of one seam.",
-  },
-  {
     name: "createComponentAwareRegistry",
-    reason: "The other half of `createComponentSystem`. Same reason.",
+    reason:
+      "Composed by `createComponentSystem` in the same module, which the composition root does construct. The component registry and this component-aware node view are two halves of one seam.",
   },
   {
     name: "createPreviewViewStore",

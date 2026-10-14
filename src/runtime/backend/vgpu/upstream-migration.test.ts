@@ -1,45 +1,46 @@
-import { describe, expect, it, vi } from "vitest";
-import { compute, frame, storage } from "vgpu";
+import { describe, expect, it } from "vitest";
+import { compute, storage } from "vgpu";
 
 import { mockGpuHost } from "./mock-gpu-host.ts";
+import { preparedShader } from "./prepared-shader.ts";
 
-const KERNEL = `@group(0) @binding(0) var<storage, read_write> values: array<u32>;
-@compute @workgroup_size(1) fn main() { values[0] += 1u; }`;
-
-describe("vgpu 0.5.0 patch migration", () => {
-  it("evicts compute bind groups using upstream's compute owner key", async () => {
-    const host = mockGpuHost();
-    const session = await host.create({});
-    try {
-      const values = storage(session.gpu, 4, "read-write");
-      const kernel = compute(session.gpu, KERNEL, { set: { values } });
-      const createBindGroup = vi.spyOn(session.gpu.gpu, "createBindGroup");
-      const created = () => createBindGroup.mock.calls.length;
-      kernel.dispatch(1);
-      const first = created();
-      expect(first).toBeGreaterThan(0);
-      kernel.dispatch(1);
-      expect(created()).toBe(first);
-      (kernel as typeof kernel & { evictBindGroups(): void }).evictBindGroups();
-      kernel.dispatch(1);
-      expect(created()).toBe(first + 1);
-    } finally {
-      session.dispose();
-    }
-  });
-
-  it("rejects a destroyed binding before reserving an external timing query", async () => {
+describe("vgpu patch migration", () => {
+  /**
+   * T1076, carried onto 0.6.0 (T1705b): packed point storage binds several attributes of ONE
+   * buffer to one kernel, each as its own range. Upstream refuses every second binding of an
+   * allocation a kernel writes; the patch lets through exactly the case WebGPU allows.
+   */
+  it("lets a kernel write disjoint regions of one buffer, and still refuses the aliases", async () => {
     const session = await mockGpuHost().create({});
     try {
-      const values = storage(session.gpu, 4, "read-write");
-      const kernel = compute(session.gpu, KERNEL, { set: { values } });
-      const currentFrame = frame(session.gpu);
-      const attach = vi.spyOn(currentFrame, "attachExternalSpan");
-      (values as typeof values & { destroy(): void }).destroy();
-      expect(() => kernel.dispatch(1, 1, 1, { frame: currentFrame, timer: {} as never }))
-        .toThrow(/destroyed/i);
-      expect(attach).not.toHaveBeenCalled();
-      currentFrame.cancel();
+      const packed = (storage(session.gpu, 1024, "read-write") as unknown as { gpu: GPUBuffer }).gpu;
+      const region = (offset: number) => ({ buffer: packed, offset, size: 256 });
+      const kernel = (first: string) =>
+        compute(
+          session.gpu,
+          preparedShader(
+            `@group(0) @binding(0) var<storage, ${first}> a: array<u32>;
+@group(0) @binding(1) var<storage, read_write> b: array<u32>;
+@compute @workgroup_size(1) fn main() { b[0] = a[0]; }`,
+            "packed",
+          ),
+        );
+
+      /** The code vgpu refuses the dispatch with, or undefined when it runs. */
+      const refusal = (first: string, a: number, b: number): unknown => {
+        try {
+          kernel(first).set({ a: region(a), b: region(b) }).dispatch(1);
+          return undefined;
+        } catch (error) {
+          return (error as { code?: unknown }).code;
+        }
+      };
+
+      expect(refusal("read_write", 0, 256)).toBeUndefined();
+      // The same two writable bindings on ONE range are the alias the preflight exists for.
+      expect(refusal("read_write", 0, 0)).toBe("VGPU-R1-STORAGE-ALIASING");
+      // Reading one region while writing another is a whole-buffer usage conflict on a device.
+      expect(refusal("read", 0, 256)).toBe("VGPU-R1-STORAGE-ALIASING");
     } finally {
       session.dispose();
     }

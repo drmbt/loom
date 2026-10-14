@@ -4,6 +4,7 @@ import { compute, createMockAdapter, frame, init, storage, uniforms } from "vgpu
 import { generateKernelModule } from "../../../points/codegen.ts";
 import type { PointAttributeSchema } from "../../../points/attributes.ts";
 import { packAttributes } from "../../../points/packing.ts";
+import { preparedShader } from "./prepared-shader.ts";
 
 /**
  * T117, the half string tests cannot cover: the generated point-kernel module must be
@@ -80,7 +81,7 @@ describe("generated point WGSL against real reflection (T117)", () => {
 
       // compute() runs vgpu's WGSL reflection immediately: a syntax error or a binding
       // the shader does not declare throws here.
-      const pipeline = compute(gpu, module.wgsl, { set: buffers });
+      const pipeline = compute(gpu, preparedShader(module.wgsl, "kernel"), { set: buffers });
       frame(gpu, () => {
         pipeline.dispatch(Math.ceil(capacity / module.workgroupSize));
       });

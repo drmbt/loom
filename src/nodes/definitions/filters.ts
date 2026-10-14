@@ -16,6 +16,7 @@ import {
   CONVOLVE_FRAGMENT_WGSL,
   EDGE_FRAGMENT_WGSL,
   BLUR_FRAGMENT_WGSL,
+  DISPLACE_FLOAT_FRAGMENT_WGSL,
   DISPLACE_FRAGMENT_WGSL,
   REMAP_FRAGMENT_WGSL,
   SLOPE_FRAGMENT_WGSL,
@@ -177,7 +178,9 @@ export const blurNode: NodeDefinition = {
  * §V56 exists to prevent. Under §V57c the data input accepts ANY source space (a linear
  * noise driving displacement is the canonical wiring; reading it as offsets converts
  * nothing), and §V57a deliberately does NOT ride along: this node FILTERS its field —
- * low-res noise driving smooth full-res displacement is the point.
+ * low-res noise driving smooth full-res displacement is the point. An r32float field
+ * (Float Map In) is filtered in the shader instead, because a device need not filter
+ * 32-bit floats (§V57, T1708b).
  *
  * Resolution and format inherit `source`: the displaced image keeps the shape of the image
  * being displaced, not of the field doing the displacing, which may legitimately be a
@@ -251,14 +254,15 @@ export const displaceNode: NodeDefinition = {
             : 'input port "disp"';
       return { passes: [], diagnostics: [missingCompileResource(nodeId, what)] };
     }
+    const scalar = field.format === "r32float";
     const pass: EffectPassDescriptor = {
       kind: "effect",
-      id: `${nodeId}:displace`,
-      shader: DISPLACE_FRAGMENT_WGSL,
+      id: `${nodeId}:displace${scalar ? ":float" : ""}`,
+      shader: scalar ? DISPLACE_FLOAT_FRAGMENT_WGSL : DISPLACE_FRAGMENT_WGSL,
       target,
       textures: [
         { binding: "inputTexture", resourceId: source.resource },
-        { binding: "displaceTexture", resourceId: field.resource },
+        { binding: "displaceTexture", resourceId: field.resource, ...(scalar ? { sampled: "unfiltered" as const } : {}) },
       ],
       samplers: [{ binding: "inputSampler", resourceId: source.sampler }],
       uniformBinding: "params",

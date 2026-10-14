@@ -75,6 +75,7 @@ import type { DispatchStep } from "../shared-uniforms.ts";
 import { authoredPosition, type AuthoredPosition, type WgslSourceMap } from "../wgsl-source-map.ts";
 import { describeCapabilities, meetsBaseline } from "./capabilities.ts";
 import { browserGpuHost, type GpuHost, type GpuSession } from "./gpu-host.ts";
+import { preparedShader } from "./prepared-shader.ts";
 import { BLIT_WGSL, RGBA_BLIT_WGSL } from "./presentation-shaders.ts";
 import {
   ResourceBuildError,
@@ -177,8 +178,6 @@ interface Program {
    * Building resources from the expanded list would build the same pipeline fifty times.
    */
   encodePasses: ReadonlyArray<PassDescriptor> | undefined;
-  /** Direct-path submit boundaries for encodePasses; no GPU objects are retained here. */
-  encodeSegments: ReadonlyArray<ReadonlyArray<PassDescriptor>> | undefined;
   /**
    * T425: live per-loop iteration counts, keyed by loopId. Seeded from the plan's
    * declared counts; `updateUniforms` on a loop-begin pass overwrites one, and the
@@ -480,6 +479,19 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       if (compileErrorWindow && isPipelineCompileError(error)) return;
       // T1523b: a build that collects its own verdicts says this one on the pass's node.
       if (isPipelineCompileError(error) && claimedPipelineLabels.has(failedPipelineLabel(error))) return;
+      // T1705b: vgpu's timer lost a timestamp readback (its staging buffer went with a lost
+      // device, say). That is GPU timing gone missing, not a pass that failed: told as such,
+      // and not as the error that says the failing pass renders nothing.
+      if ((error as { code?: unknown } | null)?.code === "VGPU-QUERY-READBACK") {
+        hub.report(
+          backendDiagnostic(
+            "warning",
+            BackendDiagnosticCode.frameError,
+            `GPU timing readback dropped: ${describeError(error)}`,
+          ),
+        );
+        return;
+      }
       hub.report(
         backendDiagnostic(
           "error",
@@ -977,7 +989,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
           );
         }
         program.preparations?.invalidate();
-        program.preparations = createEnvironmentPreparation(next.gpu, program.passes, program.resourceDescriptors, program.resources, evictBindGroups);
+        program.preparations = createEnvironmentPreparation(next.gpu, program.passes, program.resourceDescriptors, program.resources);
         program.textureConsumers = indexBindingConsumers(program.resources.dynamicTextures);
         program.bufferConsumers = indexBindingConsumers(program.resources.dynamicBuffers);
         resourceBuilds += 1;
@@ -1365,9 +1377,8 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       // T1261: this catch is ALSO what decides the queue. vgpu ≥ 0.4 cancels a frame
       // whose callback throws and stops a `frameLoop` whose tick throws; caught here,
       // the callback returns normally and the passes encoded before the throw are
-      // submitted (partial submit — consistent with the CPU-side swaps and dispatches
-      // that already happened, and the same state `encodeSegmented` leaves). Gate:
-      // frame-throw.gpu.test.ts.
+      // submitted (partial submit — consistent with the CPU-side swaps that already
+      // happened, and the same state `encodeDirect` leaves). Gate: frame-throw.gpu.test.ts.
       consecutiveFrameErrors += 1;
       hub.report(
         backendDiagnostic(
@@ -1397,35 +1408,42 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
   }
 
   /**
-   * Encodes one dispatch pass. vgpu computes have no frame-level pass API (upstream
-   * gap): `dispatch()` builds its own command buffer and SUBMITS IMMEDIATELY, so where
-   * this call happens relative to open frames IS the execution order.
+   * Encodes one dispatch pass into the open frame, as a compute pass of its own.
    *
-   * T1247 (§V86): `timing` is what puts the dispatch's GPU timestamp pair in the OPEN
-   * FRAME's span set. Without it a compute dispatch and an indirect draw carried no GPU
-   * span at all, so the per-pass column was render-only AND the frame extent — earliest
-   * begin to latest end over the frame's pairs — stopped at the last render pass. Both
-   * under-reported every points/particles, scan/compact and audio-analysis document by
-   * exactly the compute work. The span is billed to the frame, not to this command
-   * buffer: the compute submits while the frame is still open, so its timestamps are
-   * written before the frame's single resolve executes (vgpu patch theme 5).
+   * §T1707b: through vgpu 0.5.0 a compute had no frame-level pass, so `dispatch()` built and
+   * submitted its own command buffer. Every kernel then ran before every render pass of its
+   * frame, and the direct path split a render into one frame per run of render passes to
+   * keep plan order. `Frame.computePass` encodes the kernel into the frame's encoder: plan
+   * order on both paths, one submit, and a frame that is cancelled takes its kernels with it.
+   *
+   * T1247 (§V86): `timer` is the pass's GPU span, exactly as a render pass's. Without it the
+   * per-pass column was render-only and the frame extent stopped at the last render pass,
+   * under-reporting every points, scan/compact and audio-analysis document by exactly the
+   * compute work. A pass of its own per kernel is what gives each one its own span.
    */
   function encodeDispatch(
+    f: Frame,
     active: Program,
     pass: PassDescriptor & { kind: "dispatch" },
-    timing?: { readonly timer: TimerSpan; readonly frame: Frame },
+    timer: TimerSpan | undefined,
   ): void {
-    // T172: kernels run in the frame. Indirect counts come from a GPU buffer the
-    // lifecycle wrote — the CPU never knows the number, and does not need to.
+    // T172: indirect counts come from a GPU buffer the lifecycle wrote — the CPU never
+    // knows the number, and does not need to.
     const pipeline = active.resources.computes.get(pass.id);
     if (!pipeline) return;
+    let counter: StorageBuffer | undefined;
     if ("indirect" in (pass.workgroups as object)) {
-      const counter = active.resources.buffers.get((pass.workgroups as { indirect: string }).indirect);
-      if (counter) pipeline.dispatch({ indirect: counter, ...timing });
-    } else {
-      const [x, y, z] = pass.workgroups as readonly [number, number, number];
-      pipeline.dispatch(x, y, z, timing);
+      counter = active.resources.buffers.get((pass.workgroups as { indirect: string }).indirect);
+      if (!counter) return;
     }
+    f.computePass({ label: pass.id, ...(timer === undefined ? {} : { timer }) }, (encoder) => {
+      if (counter !== undefined) {
+        encoder.dispatch(pipeline, { indirect: counter });
+      } else {
+        const [x, y, z] = pass.workgroups as readonly [number, number, number];
+        encoder.dispatch(pipeline, x, y, z);
+      }
+    });
   }
 
   /** T1583b: the plan whose timer shortfall has been reported — see `encode`. */
@@ -1443,7 +1461,6 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
     if (active.loopCounts.get(loopId) === count) return;
     active.loopCounts.set(loopId, count);
     active.encodePasses = undefined;
-    active.encodeSegments = undefined;
   }
 
   /**
@@ -1568,9 +1585,8 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
     f: Frame,
     active: Program,
     input: FrameEvaluationInput,
-    passes: ReadonlyArray<PassDescriptor> = expandedPasses(active),
-    withPresentations = true,
   ): void {
+    const passes = expandedPasses(active);
     guard.duringFrame(() => {
       /**
        * T387: how many times each pass has already been encoded THIS call. Substeps make
@@ -1579,9 +1595,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
        * onto the pass. Dropping them would report a 50-substep loop as costing one substep.
        */
       const iterations = new Map<string, number>();
-      // T1243: `render()` counts this frame as submit N+1 once encoding returns; the
-      // loop path encodes every pass into the one open frame, the direct path may split
-      // a render across several frames that then share the number.
+      // T1243: `render()` counts this frame as submit N+1 once encoding returns.
       if (gpuTimer !== undefined) timedFrames.set(f, framesSubmitted + 1);
       /*
        * T1583b (assessment risk 10): the timer holds 2048 spans per frame and vgpu throws on
@@ -1713,6 +1727,9 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
           // encoding, rather than again after a model may have finished asynchronously.
           const demand = dispatchGates.get(pass.id);
           if (demand !== undefined) {
+            // §T1707b: the passes before this one in the plan have rendered THIS frame by the
+            // time the kernel runs, so their targets carry this frame's stamp here.
+            stampRenderedTextures(active, passes.slice(0, index), input);
             const resourceId = pass.textures?.[0]?.resourceId;
             const source = resourceId !== undefined && active.resources.externalTextures.has(resourceId)
               ? { renderIndex: framesSubmitted + 1, frameIndex: input.frameIndex,
@@ -1729,28 +1746,17 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
               throw new Error(`Demanded dispatch ${pass.id} has no indirect workgroup buffer.`);
             }
           }
-          // Inside an OPEN frame (the loop path) a dispatch cannot be ordered after
-          // this frame's render passes — vgpu submits it now, the frame submits later.
-          // Kernel→draw chains are therefore correct here; an effect→dispatch read
-          // (Analyze, the TOP→POP bridge) sees the PREVIOUS frame's texture — one
-          // frame of latency, which §V144 embraces. The no-open-frame path
-          // (`encodeSegmented`) honours plan order exactly.
+          // §T1707b: encoded into this frame in plan order, so an effect→dispatch read
+          // (Analyze, the TOP→POP bridge) sees the texture this frame rendered.
           //
           // T1583b: a kernel region's dispatch arrives here once per run. Each run after
           // the first swaps the pair and binds its own uniform block first.
           const stepping = active.stepped.get(pass.id);
           if (stepping !== undefined && !beginStepRun(active, pass.id, stepping)) continue;
-          // T1247: the GPU span rides on THIS frame, keyed exactly like a render pass's
-          // (same `spanFor`, same substep numbering), so the compute lands in both the
-          // per-pass column and the frame extent instead of being invisible to both.
+          // T1247: the GPU span is keyed exactly like a render pass's (same `spanFor`, same
+          // substep numbering), so the compute lands in the per-pass column and the extent.
           const dispatchSpan = spanFor(pass.id);
-          timed(pass.id, () =>
-            encodeDispatch(
-              active,
-              pass,
-              dispatchSpan === undefined ? undefined : { timer: dispatchSpan, frame: f },
-            ),
-          );
+          timed(pass.id, () => encodeDispatch(f, active, pass, dispatchSpan));
           continue;
         }
         if (pass.kind === "draw") {
@@ -1846,7 +1852,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
           ),
         );
       }
-      if (withPresentations) encodePresentations(f);
+      encodePresentations(f);
       // Presentations are not a plan pass and get no row; publishing after them keeps the
       // emission on the same edge as the frame rather than mid-encode.
       if (cpuSpans !== undefined) {
@@ -1855,24 +1861,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
     });
   }
 
-  /**
-   * Plan-order-exact encoding for the direct (no open frame) path. vgpu computes
-   * submit the moment they are called, while a frame's render passes submit when the
-   * frame closes — so inside ONE frame a dispatch always runs first, whatever the plan
-   * said. Here the passes are split into segments instead: consecutive render-family
-   * passes share a frame, and a dispatch that follows them starts the NEXT frame, so it
-   * runs exactly where the plan put it. This is what makes an effect→dispatch read
-   * (Analyze reducing a texture rendered THIS frame) correct on the offline/export path.
-   *
-   * T1247: a dispatch is no longer executed BETWEEN frames but as the LEADING pass of the
-   * next frame, which changes nothing about when its command buffer reaches the queue —
-   * `encode` still calls `dispatch()` in plan order and vgpu still submits it there and
-   * then, while the frame it opened submits afterwards. What it changes is that a frame is
-   * open when the compute is encoded, and a compute can only be timestamped against an open
-   * frame (see `encodeDispatch`). Hence the split rule: a dispatch closes the current
-   * segment only once that segment holds something the FRAME will submit — everything
-   * before it has already run.
-   */
+  /** Records, for a demanded dispatch's gate, which render produced each target `passes` write. */
   function stampRenderedTextures(active: Program, passes: ReadonlyArray<PassDescriptor>, input: FrameEvaluationInput): void {
     if (dispatchGates.size === 0) return;
     const stamp: DispatchSourceFrame = { renderIndex: framesSubmitted + 1,
@@ -1882,63 +1871,35 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
     }
   }
 
-  function encodeSegmented(gpu: GpuSession["gpu"], active: Program, input: FrameEvaluationInput): void {
-    let segments = active.encodeSegments;
-    if (segments === undefined) {
-      const next: PassDescriptor[][] = [];
-      let current: PassDescriptor[] = [];
-      /**
-       * Does `current` hold a pass a later dispatch would overtake? Only `f.pass` work
-       * really waits for the frame's submit — an indirect draw self-submits like a
-       * dispatch — but every non-dispatch kind sets this, because an unnecessary split
-       * costs one empty command buffer and a missing one reorders the plan.
-       */
-      let deferred = false;
-      // T387: the EXPANDED order — the offline/export path runs the same number of substeps
-      // the live path does, or the same project renders two different pictures (§V47).
-      for (const pass of expandedPasses(active)) {
-        if (pass.kind === "dispatch" && deferred) {
-          next.push(current);
-          current = [];
-          deferred = false;
-        }
-        // T1623b: a `write` pass encodes nothing, so there is nothing for a dispatch to overtake.
-        if (pass.kind !== "dispatch" && pass.kind !== "write") deferred = true;
-        current.push(pass);
-      }
-      // The final frame always runs, even empty: it carries the presentations.
-      next.push(current);
-      segments = next;
-      active.encodeSegments = segments;
-    }
-
-    segments.forEach((passes, index) => {
-      const final = index === segments.length - 1;
-      const submitted = frame(gpu, (f) => {
+  /**
+   * The direct (no open frame) path: export, offline renders, a paused app. One frame,
+   * the same encode the loop path runs, so both paths execute the same order (§V47).
+   * Through vgpu 0.5.0 this split a render into one frame per run of render passes before
+   * a kernel, because a kernel submitted on its own (§T1707b).
+   */
+  function encodeDirect(gpu: GpuSession["gpu"], active: Program, input: FrameEvaluationInput): void {
+    const submitted = frame(gpu, (f) => {
+      try {
+        encode(f, active, input);
+      } catch (error) {
+        // T1261: PARTIAL SUBMIT, on purpose. vgpu ≥ 0.4 cancels a frame whose callback
+        // throws (nothing encoded reaches the queue); 0.3.1 submitted what was there.
+        // The passes before the throw stay on the queue here because the CPU-side
+        // state they belong to — a pair swapped after its write, a ring rotated — is
+        // not rolled back by anyone, and because the loop path (`runFrame` catches
+        // inside its callback) submits exactly the same partial frame: the same failing
+        // plan must leave the same state on both paths (§V47). `render()` still rethrows
+        // below. Gate: frame-throw.gpu.test.ts.
         try {
-          encode(f, active, input, passes, final);
-        } catch (error) {
-          // T1261: PARTIAL SUBMIT, on purpose. vgpu ≥ 0.4 cancels a frame whose callback
-          // throws (nothing encoded reaches the queue); 0.3.1 submitted what was there.
-          // The passes before the throw stay on the queue here because the CPU-side
-          // state they belong to — a pair swapped after its write, a ring rotated, a
-          // dispatch that already self-submitted — is not rolled back by anyone, and
-          // because the loop path (`runFrame` catches inside its callback) submits
-          // exactly the same partial frame: the same failing plan must leave the same
-          // state on both paths (§V47). `render()` still rethrows below. Gate:
-          // frame-throw.gpu.test.ts.
-          try {
-            f.submit();
-          } catch {
-            // The encode's own error is the one the caller must see.
-          }
-          active.preparations?.invalidate();
-          throw error;
+          f.submit();
+        } catch {
+          // The encode's own error is the one the caller must see.
         }
-      });
-      active.preparations?.submitted(submitted, reportPreparationFailure);
-      stampRenderedTextures(active, passes, input);
+        active.preparations?.invalidate();
+        throw error;
+      }
     });
+    active.preparations?.submitted(submitted, reportPreparationFailure);
   }
 
   /**
@@ -2093,7 +2054,6 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
         if (bindings.length === 0) continue;
         const drawable = active.resources.effects.get(pass.id) ?? active.resources.draws.get(pass.id) ?? active.resources.computes.get(pass.id);
         if (drawable === undefined) continue;
-        evictBindGroups(drawable);
         drawable.set(Object.fromEntries(bindings.map(binding => [binding.binding, texture])));
       }
       active.preparations?.invalidate();
@@ -2306,11 +2266,10 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
         if (!source) { p.boundSource = undefined; return; }
         if (source.size !== width * height * 16) throw new Error("Native model input must be a tightly packed vec4f image");
         if (!p.blit) {
-          p.blit = effect(active.gpu, NATIVE_INPUT_PACK_WGSL, {
+          p.blit = effect(active.gpu, preparedShader(NATIVE_INPUT_PACK_WGSL, `model-input:${p.id}`), {
             set: { modelInput: source, shape: uniforms(active.gpu, { width, height }) }, label: `model-input:${p.id}`,
           });
         } else if (p.boundSource !== source) {
-          evictBindGroups(p.blit);
           p.blit.set({ modelInput: source });
         }
         p.boundSource = source;
@@ -2334,7 +2293,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       if (isPair(source)) preparePresentationView(source.write);
       const bindValue = presentationBinding(readTarget);
       if (!p.blit) {
-        p.blit = effect(active.gpu, p.alphaDisplay === "rgba" ? RGBA_BLIT_WGSL : BLIT_WGSL, {
+        p.blit = effect(active.gpu, preparedShader(p.alphaDisplay === "rgba" ? RGBA_BLIT_WGSL : BLIT_WGSL, `present:${p.id}`), {
           set: { blitSampler: presentSampler, blitSource: bindValue },
           label: `present:${p.id}`,
         });
@@ -2342,11 +2301,6 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
         // (VGPU-SURFACE-NOT-IN-FRAME), so the blit pipeline compiles lazily on its
         // first encode. One-time cost on the first presented frame, not per frame.
       } else if (p.boundSource !== source || presentationBindings.get(p) !== bindValue) {
-        // T1180: the blit outlives the source it was pointed at, and vgpu's eviction
-        // subscription follows the SLOT, not the entry it built — so the entry naming the
-        // outgoing target would survive that target's destroy with nothing listening. One
-        // orphan per recompile, for the life of the device.
-        evictBindGroups(p.blit);
         p.blit.set({ blitSource: bindValue });
       }
       p.boundSource = source;
@@ -2540,16 +2494,6 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       // replaced ones are destroyed. The shared block is kept iff it is the main
       // program's (whose lifecycle owns it) or carried forward.
       if (previous) releaseResourcesExcept(previous, h.set);
-      // T1180: THE tile blit is one long-lived Effect whose single texture slot is
-      // re-pointed at every tile of every composite, so it holds one cached bind group per
-      // tile target it has EVER been shown — and vgpu's eviction subscription follows the
-      // slot, so the entries naming the tiles just destroyed above are now orphans. This is
-      // where the leak actually was: §T1174's camera loop retained +12 unreachable
-      // GPUBindGroups per identical five-second cycle, all of them this blit's, for as long
-      // as the session ran. Evicting here caps it at the tiles currently live; each is
-      // rebuilt on its next composite pass.
-      if (previous) evictBindGroups(h.blit);
-
       // Bindings that live in the MAIN program get re-pointed after its recompiles.
       h.externalBindings = [];
       for (const pass of h.program.passes) {
@@ -2565,7 +2509,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       const firstTile = h.set.targets.values().next().value as Target | undefined;
       if (!h.blit && firstTile !== undefined) {
         presentSampler ??= sampler(active.gpu, { magFilter: "linear", minFilter: "linear" });
-        h.blit = effect(active.gpu, BLIT_WGSL, {
+        h.blit = effect(active.gpu, preparedShader(BLIT_WGSL, "preview-composite"), {
           set: { blitSampler: presentSampler, blitSource: firstTile },
           label: "preview-composite",
         });
@@ -2840,7 +2784,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       const stats: BuildStats = { resourcesCreated: 0, resourcesReused: 0, effectsBuilt: 0, effectsReused: 0 };
 
       let resources!: ResourceSet;
-      let preparations: ReturnType<typeof createEnvironmentPreparation> = undefined;
+      let preparations: ReturnType<typeof createEnvironmentPreparation>;
       // B9 (T217, §V9): Dawn does not throw on invalid WGSL. `compileSync()` returns; the
       // validation error surfaces ASYNCHRONOUSLY through vgpu's pipeline error scope and
       // lands on `gpu.onError` (or stderr, when nobody listens). So the try/catch below
@@ -2869,7 +2813,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
           verdicts,
           warmEffects?.gpu === active.gpu ? warmEffects : undefined,
         );
-        preparations = createEnvironmentPreparation(active.gpu, read.passes, read.resources, resources, evictBindGroups);
+        preparations = createEnvironmentPreparation(active.gpu, read.passes, read.resources, resources);
         // Twice, deliberately: the first settle drains the tracked error-scope pops, whose
         // handlers only THEN enqueue the listener delivery; the second drains those.
         await active.gpu.settled();
@@ -2884,8 +2828,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
           await passBuildErrors(verdicts),
           read.passes,
         );
-      } catch (error) {
-        for (const copy of preparations?.copies() ?? []) evictBindGroups(copy);
+      } catch (caught) {
         if (resources !== undefined) releaseResourcesExcept(resources, program?.resources);
         // §T1528b: a build that failed on a device which has since been replaced says
         // nothing about this plan; it is tried again against what is installed now.
@@ -2895,6 +2838,11 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
         // retained and keeps rendering, flagged stale. Carried objects still belong to
         // the retained program, which is why nothing is released on this path.
         stale = program !== undefined;
+        // §T1706b: a pass the CPU refused is put to the device's compiler, which says where.
+        const error =
+          caught instanceof ResourceBuildError
+            ? await refusalsOnTheDevice((active.gpu.device as { gpu?: GPUDevice }).gpu, caught, read.passes)
+            : caught;
         if (error instanceof ResourceBuildError) {
           for (const diagnostic of error.diagnostics) hub.report(diagnostic);
         } else {
@@ -2924,7 +2872,6 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       // is everything, and destroying a dead device's objects is a no-op. The verdicts the
       // window collected are dropped with it: they are about objects nobody will draw.
       if (outlived()) {
-        for (const copy of preparations?.copies() ?? []) evictBindGroups(copy);
         releaseResourcesExcept(resources, program?.resources);
         return backend.compile(plan);
       }
@@ -2944,7 +2891,6 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
         // The half-built resources are released — except objects carried from (and still
         // owned by) the retained program.
         stale = program !== undefined;
-        for (const copy of preparations?.copies() ?? []) evictBindGroups(copy);
         releaseResourcesExcept(resources, program?.resources);
         for (const diagnostic of failureDiagnostics) hub.report(diagnostic);
         throw new ResourceBuildError(failureDiagnostics);
@@ -2958,7 +2904,6 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
         passes: read.passes,
         textureFrames: new Map(),
         encodePasses: expandLoops(read.passes),
-        encodeSegments: undefined,
         loopCounts: new Map(
           read.passes.flatMap((pass) =>
             pass.kind === "loop" && pass.edge === "begin" ? [[pass.loopId, pass.count ?? 1] as const] : [],
@@ -2998,7 +2943,6 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
         flushUniforms(next);
       } catch (error) {
         stale = program !== undefined;
-        for (const copy of preparations?.copies() ?? []) evictBindGroups(copy);
         releaseResourcesExcept(resources, program?.resources);
         hub.report(
           backendDiagnostic(
@@ -3014,7 +2958,6 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       planCounter += 1;
       const previous = program;
       program = next;
-      for (const copy of previous?.preparations?.copies() ?? []) evictBindGroups(copy);
       if (previous) releaseResourcesExcept(previous.resources, resources);
       lastBuildStats = stats;
       stale = false;
@@ -3180,10 +3123,9 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
       const open = currentFrame;
       if (open) {
         encode(open, active, frameInputs.frame);
-        stampRenderedTextures(active, expandedPasses(active), frameInputs.frame);
       } else {
         try {
-          encodeSegmented(session.gpu, active, frameInputs.frame);
+          encodeDirect(session.gpu, active, frameInputs.frame);
         } catch (error) {
           // Direct (non-loop) render: the caller sees the throw, the problems tab sees
           // the diagnostic. Loop renders get the same treatment inside runFrame().
@@ -3197,6 +3139,7 @@ export function createVgpuBackend(options: VgpuBackendOptions = {}): VgpuBackend
           throw error;
         }
       }
+      stampRenderedTextures(active, expandedPasses(active), frameInputs.frame);
       framesSubmitted += 1;
       // T510: the seeding frame is spent — the next dispatch of every pass reads 0u
       // until storage is created or cleared again.
@@ -4162,28 +4105,6 @@ function computeCarryOver(
  * declare it, but the concrete implementations have it, and without it every shader edit
  * leaks the replaced objects until `gpu.dispose()` (§T49's stable-resource-count gate).
  */
-/**
- * Drops one drawable's entries from the gpu's shared bind-group cache (T1180).
- *
- * vgpu keys that cache on `drawId:group:identities`, mints a fresh id per Effect/Draw/
- * Compute, and reclaims an entry ONLY when a resource the entry names is destroyed — and
- * that subscription is per binding SLOT, so re-`set()`ing a slot unsubscribes the previous
- * resource and orphans the entry that named it. Both shapes are live here: a rebuilt
- * program discards Effects (§T1174 measured 13-14 rebuilds per five seconds of panning),
- * and the tile blit re-points one texture slot at every tile of every frame. Nothing
- * upstream can reach the cache, so `evictBindGroups` comes from `patches/vgpu.patch`,
- * which calls vgpu's own `clearDraw`.
- *
- * Safe by construction: the id prefix is unique per drawable, and an entry still wanted is
- * rebuilt on the next encode. Over-evicting costs a `createBindGroup`, never a wrong bind
- * group. `bind-group-eviction.test.ts` is the gate; it fails if the patch is dropped.
- */
-function evictBindGroups(drawable: unknown): void {
-  const candidate = drawable as { evictBindGroups?: () => void };
-  if (typeof candidate?.evictBindGroups !== "function") return;
-  candidate.evictBindGroups();
-}
-
 /** Releases `previous`'s objects except those shared (by identity) with `next`. An
  * absent `next` releases everything — the failed-build cleanup path (B9), where the
  * half-built set shares only what it CARRIED from the retained program. */
@@ -4199,23 +4120,11 @@ function releaseResourcesExcept(previous: ResourceSet, next?: ResourceSet): void
     }
   };
 
-  // T1180: the drawables go FIRST — vgpu reclaims a bind-group cache entry only when a
-  // resource the entry NAMES is destroyed, so a replaced Effect that rebound surviving
-  // targets (a shader edit) would otherwise leave its entries unreachable for the life of
-  // the device. Doing it before the resources also shrinks the map every `evictIdentity`
-  // below has to scan.
-  for (const [id, item] of previous.effects) {
-    if (next?.effects.get(id) !== item) evictBindGroups(item);
-  }
   for (const [id, item] of previous.computes) {
     if (next?.computes.get(id) === item) continue;
-    evictBindGroups(item);
     // T1583b: a stepped kernel's per-run uniform blocks belong to its pipeline and go with it.
     for (const block of stepSlotsOf.get(item)?.blocks ?? []) destroy(block);
     stepSlotsOf.delete(item);
-  }
-  for (const [id, item] of previous.draws) {
-    if (next?.draws.get(id) !== item) evictBindGroups(item);
   }
   for (const [id, target] of previous.targets) {
     if (next?.targets.get(id) !== target) destroy(target);
@@ -4295,18 +4204,26 @@ async function askPassesSharingAFailedShader(
   resources: ResourceSet,
   asyncErrors: readonly unknown[],
 ): Promise<void> {
-  // Only what goes through vgpu's shared pipeline cache: a dispatch builds its own module.
+  // Everything that goes through vgpu's shared caches. T1705b: a dispatch too. Through
+  // vgpu 0.5.0 a compute built a module and a pipeline of its own; since 0.6.0 it takes
+  // both from the caches an effect uses, so a kernel pasted onto two nodes is one entry.
   const shaderOf = (pass: PassDescriptor): string | undefined =>
-    pass.kind === "effect" || pass.kind === "draw" ? pass.shader : undefined;
+    pass.kind === "effect" || pass.kind === "draw" || pass.kind === "dispatch" ? pass.shader : undefined;
   const failed = new Set(asyncErrors.filter(isPipelineCompileError).map(failedPipelineLabel));
   const failedShaders = new Set(passes.filter((pass) => failed.has(pass.id)).map(shaderOf));
   for (const pass of passes) {
     const shader = shaderOf(pass);
     if (shader === undefined || !failedShaders.has(shader) || failed.has(pass.id)) continue;
-    const pipeline = resources.effects.get(pass.id) ?? resources.draws.get(pass.id);
-    const target = resources.renderTargets.get(pass.id);
-    if (pipeline === undefined || target === undefined) continue;
-    pipeline.compileSync(target());
+    if (pass.kind === "dispatch") {
+      const kernel = resources.computes.get(pass.id);
+      if (kernel === undefined) continue;
+      kernel.compileSync();
+    } else {
+      const pipeline = resources.effects.get(pass.id) ?? resources.draws.get(pass.id);
+      const target = resources.renderTargets.get(pass.id);
+      if (pipeline === undefined || target === undefined) continue;
+      pipeline.compileSync(target());
+    }
     // Twice, for the reason `compile()` gives: the pop, then the listener delivery.
     await gpu.settled();
     await gpu.settled();
@@ -4375,6 +4292,37 @@ interface WgslError {
  * line 19; compiled alone, the positions are the ones the pass counts in — and the editor
  * too, for a node that emits its author's text as written (§V27).
  */
+/**
+ * §T1706b — A PASS THE CPU REFUSED IS STILL PUT TO THE DEVICE'S COMPILER.
+ *
+ * vgpu 0.6.0 validates a prepared shader's reflection on the CPU, harder than its own parser
+ * reads it: `@align(3)` is accepted by `prepareShader` and then refused by `draw()`, so the
+ * device is never asked and the row read `Draw pass "…" failed to compile: …` on the pass's
+ * node, with no line. The device's compiler refuses the same source with a line, and through
+ * the pass's source map that is the author's parameter, line and node (§T1535b). Its messages,
+ * when it has any, replace the CPU's sentence; a refusal the compiler does not share (a
+ * binding the CPU rejects) keeps it.
+ */
+async function refusalsOnTheDevice(
+  raw: GPUDevice | undefined,
+  error: ResourceBuildError,
+  passes: readonly PassDescriptor[],
+): Promise<ResourceBuildError> {
+  if (error.refused.size === 0) return error;
+  const diagnostics = [...error.diagnostics];
+  for (const [passId, index] of error.refused) {
+    const pass = passes.find((candidate) => candidate.id === passId);
+    if (pass === undefined || !(pass.kind === "effect" || pass.kind === "draw" || pass.kind === "dispatch")) continue;
+    const described = describeWgslErrors(await wgslErrorsOf(raw, pass.shader), "sourceMap" in pass ? pass.sourceMap : undefined);
+    if (described === undefined) continue;
+    diagnostics[index] = deviceFailureDiagnostic(passId, described.reason, passes, {
+      ...(described.source === undefined ? {} : { source: described.source }),
+      ...(described.nodeId === undefined ? {} : { nodeId: described.nodeId }),
+    });
+  }
+  return new ResourceBuildError(diagnostics, error.refused);
+}
+
 async function wgslErrorsOf(raw: GPUDevice | undefined, source: string): Promise<readonly WgslError[]> {
   if (raw === undefined || typeof raw.createShaderModule !== "function") return [];
   // Scoped as `compileShader` scopes its own: this module is EXPECTED to be invalid, and
@@ -4441,11 +4389,11 @@ async function deviceVerdictDiagnostics(
     if (built !== undefined && (reason === built || wgsl.some((entry) => built.includes(entry.message)))) {
       told.add(label);
     }
-    // T1523b(c): the device states an error that lives only in vgpu's combined module (a name
-    // colliding with its fullscreen vertex stage) ONCE — vgpu then keeps the invalid module
-    // under the pass's source and every later build fails with "invalid due to a previous
-    // error" and nothing else. So the reason the scope caught is kept against those bytes,
-    // for as long as that device (and so vgpu's copy of the module) lives.
+    // T1523b(c): the device states an error that is not in the pass's WGSL (a layout over a
+    // device limit) ONCE. vgpu then keeps the object the device refused and hands it to
+    // every later build that asks for the same one, which fails with "invalid due to a
+    // previous error" and nothing else. So the reason the scope caught is kept against
+    // those bytes, for as long as that device (and so vgpu's copy of the object) lives.
     if (wgsl.length === 0 && built !== undefined && pass !== undefined && "shader" in pass) {
       rememberReason(raw, pass.shader, built);
     }

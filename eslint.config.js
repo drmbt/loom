@@ -158,17 +158,20 @@ const vgpuRestrictedPaths = ["vgpu", "vgpu/node", "vgpu/mock", "vgpu/scene", "vg
 // ImportDeclaration nodes. These selectors close both. The regex is anchored at
 // the start, so a relative `./vgpu/vgpu-backend.ts` still cannot match it —
 // which was the original reason for avoiding glob patterns.
+//
+// T1705b: `@vgpu/*` is behind the same boundary. vgpu 0.6.0 takes prepared shaders, and
+// `prepareShader` comes from `@vgpu/wgsl`, a direct dependency since then.
 const vgpuRestrictedSyntax = [
   {
-    selector: "ImportExpression[source.value=/^vgpu(\\/|$)/]",
+    selector: "ImportExpression[source.value=/^@?vgpu(\\/|$)/]",
     message: `${V3_MESSAGE} (dynamic import)`,
   },
   {
-    selector: "ImportDeclaration[source.value=/^vgpu\\//]",
+    selector: "ImportDeclaration[source.value=/^@?vgpu\\//]",
     message: `${V3_MESSAGE} (subpath import)`,
   },
   {
-    selector: "CallExpression[callee.name='require'][arguments.0.value=/^vgpu(\\/|$)/]",
+    selector: "CallExpression[callee.name='require'][arguments.0.value=/^@?vgpu(\\/|$)/]",
     message: `${V3_MESSAGE} (require)`,
   },
 ];

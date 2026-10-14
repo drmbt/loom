@@ -8,8 +8,8 @@ patchedDependencies:
   node-pty@1.1.0:
     hash: xh5dy42iw5u23zofbzpxrbc42a
     path: patches/node-pty@1.1.0.patch
-  vgpu@0.5.0:
-    hash: g4toiidip5o4bqijelrij3q2re
+  vgpu@0.6.0:
+    hash: wzbpmq5ndne4oobhdn5q5g464a
     path: patches/vgpu.patch
 
 importers:
@@ -64,6 +64,9 @@ importers:
       '@radix-ui/react-tooltip':
         specifier: ^1.2.16
         version: 1.2.16(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@vgpu/wgsl':
+        specifier: 0.6.0
+        version: 0.6.0(@vgpu/adapter-node@0.6.0)
       '@xterm/addon-fit':
         specifier: 0.11.0
         version: 0.11.0
@@ -92,8 +95,8 @@ importers:
         specifier: ^2.1.7
         version: 2.1.9(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       vgpu:
-        specifier: 0.5.0
-        version: 0.5.0(patch_hash=g4toiidip5o4bqijelrij3q2re)
+        specifier: 0.6.0
+        version: 0.6.0(patch_hash=wzbpmq5ndne4oobhdn5q5g464a)
       zod:
         specifier: ^3.24.1
         version: 3.25.76
@@ -1428,22 +1431,22 @@ packages:
     resolution: {integrity: sha512-YR65gGdGvTUAWLldC3xLOvOzamdGzB4A5/N8rehEaHs3Zvoe39BhgY+u0SPch1OvrVTfLcc55wsSgK2NcnTS/A==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
 
-  '@vgpu/adapter-mock@0.5.0':
-    resolution: {integrity: sha512-YtgXOFn1qI+8oTJenG2wWbQPA28V0CfE5UJs5Xqbt6qyR/xaZ5LHH2XWTwFcjnqn2b1xQCyTatJCMyyOdweUnw==}
+  '@vgpu/adapter-mock@0.6.0':
+    resolution: {integrity: sha512-xLzDbi0satAaY1z8a+9mVLBX5XXsoaGFiyPqR+T/QWKTXeYWLKloMHzJ2eIhHWeGEJJmpqhpYM/TMssjZjXbNA==}
 
-  '@vgpu/adapter-node@0.5.0':
-    resolution: {integrity: sha512-lgzqFcLDejwRgwlaNStzkwLNU9b4aN2OoPpWqT1UyPmK521BSw2OIQKzAuDIkzNlREla6KNC12G6bthhOzZKzw==}
+  '@vgpu/adapter-node@0.6.0':
+    resolution: {integrity: sha512-A/ZvkZV+vWMQOtaKyK+G2VlYWMwr7hce2AlpnkVouLKfsJ3TR+VeIKZC/OXgDYtEQ6fANmHEmHuTFge5kjSyaA==}
 
-  '@vgpu/core@0.5.0':
-    resolution: {integrity: sha512-z80DHRHViv6+FKKkPzggEtT1ZZs/WCKRQbzJuwYdA135DZaSbCMoRK4anhM+I/nOHuDpf7H3xjkwE6rfolWZUw==}
+  '@vgpu/core@0.6.0':
+    resolution: {integrity: sha512-0ihBJl1kiFl5sBidv4dmoDepR7TCCaeSxy+EzJWz8zX/C4lw4jDGsN/ThgO/p79QGRUgRSW5J21erG2a6AtuWg==}
 
-  '@vgpu/wgsl-std@0.5.0':
-    resolution: {integrity: sha512-NjMyJxwy4evFNCSqFQy4EqAbZ7iU+NUyJYyG9tLUhbdDLzBmfZlk1S3PyRZ9olBFFfEiVW2JNVw10maPKLEs1A==}
+  '@vgpu/wgsl-std@0.6.0':
+    resolution: {integrity: sha512-C2C52G40p+54FKPAVzaXlffi4hLKK5xViTuINVH/CfBWb70qOL2WJ7cBiEpY5guvXAWHCJ1wyg+n6RSy92XnsA==}
 
-  '@vgpu/wgsl@0.5.0':
-    resolution: {integrity: sha512-PDlDJem7J28C9bk+vPy2kYZEoW8+nYIx2oN4nu7/WF2V7ETx32BtmWcawwMbhiu/CVsobFafML0h0eqLRBNa3Q==}
+  '@vgpu/wgsl@0.6.0':
+    resolution: {integrity: sha512-/TlncdEz8hS5JvUI4lKDOK4irYgnfWrrox9sspc5Kt8xl6E3nqHjWfJw9iaAT9nDir8RuzPUNSxrCV8t3IDNmw==}
     peerDependencies:
-      '@vgpu/adapter-node': '>=0.1.6 <1.0.0 || ^0.5.0-rc.0'
+      '@vgpu/adapter-node': '>=0.1.6 <1.0.0 || ^0.5.0-rc.0 || ^0.6.0-rc.0'
     peerDependenciesMeta:
       '@vgpu/adapter-node':
         optional: true
@@ -2402,8 +2405,8 @@ packages:
     peerDependencies:
       react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
-  vgpu@0.5.0:
-    resolution: {integrity: sha512-isQfMHRTysYFfT8UWTzqQI/ROw2L7lVkj7xoUJlvIF6FjYxBNS/YNG7qp3tZ7ZvZZ3uwYjso+geQv/bEq5Hl3w==}
+  vgpu@0.6.0:
+    resolution: {integrity: sha512-st7Sc40nNnRHoWFguP7sGOeziLtO/bF+YL/Tn1fn2h9cGmSpWq4gxEQp0/T6Z7Xz3zH66ZS3qBp+ZLMBrUSxug==}
     hasBin: true
     peerDependencies:
       three: '>=0.180.0 <0.200.0'
@@ -3762,32 +3765,32 @@ snapshots:
       '@typescript-eslint/types': 8.68.0
       eslint-visitor-keys: 5.0.1
 
-  '@vgpu/adapter-mock@0.5.0(@vgpu/adapter-node@0.5.0)':
+  '@vgpu/adapter-mock@0.6.0(@vgpu/adapter-node@0.6.0)':
     dependencies:
-      '@vgpu/core': 0.5.0(@vgpu/adapter-node@0.5.0)
+      '@vgpu/core': 0.6.0(@vgpu/adapter-node@0.6.0)
     transitivePeerDependencies:
       - '@vgpu/adapter-node'
 
-  '@vgpu/adapter-node@0.5.0':
+  '@vgpu/adapter-node@0.6.0':
     dependencies:
-      '@vgpu/core': 0.5.0(@vgpu/adapter-node@0.5.0)
+      '@vgpu/core': 0.6.0(@vgpu/adapter-node@0.6.0)
       webgpu: 0.4.0
     transitivePeerDependencies:
       - supports-color
 
-  '@vgpu/core@0.5.0(@vgpu/adapter-node@0.5.0)':
+  '@vgpu/core@0.6.0(@vgpu/adapter-node@0.6.0)':
     dependencies:
-      '@vgpu/wgsl': 0.5.0(@vgpu/adapter-node@0.5.0)
+      '@vgpu/wgsl': 0.6.0(@vgpu/adapter-node@0.6.0)
     transitivePeerDependencies:
       - '@vgpu/adapter-node'
 
-  '@vgpu/wgsl-std@0.5.0': {}
+  '@vgpu/wgsl-std@0.6.0': {}
 
-  '@vgpu/wgsl@0.5.0(@vgpu/adapter-node@0.5.0)':
+  '@vgpu/wgsl@0.6.0(@vgpu/adapter-node@0.6.0)':
     dependencies:
-      '@vgpu/wgsl-std': 0.5.0
+      '@vgpu/wgsl-std': 0.6.0
     optionalDependencies:
-      '@vgpu/adapter-node': 0.5.0
+      '@vgpu/adapter-node': 0.6.0
 
   '@vitejs/plugin-react@4.7.0(vite@6.4.3(@types/node@22.20.1))':
     dependencies:
@@ -4777,14 +4780,14 @@ snapshots:
     dependencies:
       react: 19.2.8
 
-  vgpu@0.5.0(patch_hash=g4toiidip5o4bqijelrij3q2re):
+  vgpu@0.6.0(patch_hash=wzbpmq5ndne4oobhdn5q5g464a):
     dependencies:
       '@modelcontextprotocol/server': 2.0.0
-      '@vgpu/adapter-mock': 0.5.0(@vgpu/adapter-node@0.5.0)
-      '@vgpu/adapter-node': 0.5.0
-      '@vgpu/core': 0.5.0(@vgpu/adapter-node@0.5.0)
-      '@vgpu/wgsl': 0.5.0(@vgpu/adapter-node@0.5.0)
-      '@vgpu/wgsl-std': 0.5.0
+      '@vgpu/adapter-mock': 0.6.0(@vgpu/adapter-node@0.6.0)
+      '@vgpu/adapter-node': 0.6.0
+      '@vgpu/core': 0.6.0(@vgpu/adapter-node@0.6.0)
+      '@vgpu/wgsl': 0.6.0(@vgpu/adapter-node@0.6.0)
+      '@vgpu/wgsl-std': 0.6.0
       '@webgpu/types': 0.1.72
       pixelmatch: 7.2.0
       pngjs: 7.0.0

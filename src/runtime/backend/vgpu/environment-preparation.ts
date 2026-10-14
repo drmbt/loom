@@ -1,6 +1,7 @@
 import { effect, type Effect, type Frame, type Gpu, type Target } from "vgpu";
 import type { DrawPassDescriptor, PassDescriptor, ResourceDescriptor, UniformValues } from "../plan.ts";
 import { wgsl } from "../wgsl.ts";
+import { preparedShader } from "./prepared-shader.ts";
 import type { ResourceSet } from "./resources.ts";
 
 const COPY_ATLAS = wgsl`@group(0) @binding(0) var atlas: texture_2d<f32>;
@@ -26,7 +27,7 @@ const valuesOf = (values: UniformValues | undefined) => JSON.stringify(values ==
 
 /** Environment-only reuse; ordinary draws retain their existing execution and ownership. */
 export function createEnvironmentPreparation(
-  gpu: Gpu, passes: readonly PassDescriptor[], descriptors: readonly ResourceDescriptor[], initialResources: ResourceSet, retire: (copy: Effect) => void,
+  gpu: Gpu, passes: readonly PassDescriptor[], descriptors: readonly ResourceDescriptor[], initialResources: ResourceSet,
 ) {
   let resources = initialResources;
   const groups = new Map<string, Group>();
@@ -81,17 +82,12 @@ export function createEnvironmentPreparation(
     if (existing !== undefined) Object.assign(group, { canonical: existing });
     groups.set(owner, group);
   }
-  try {
-    for (const [owner, group] of groups) {
-      if (group.canonical === undefined) continue;
-      const sourceTarget = resources.targets.get(group.canonical.passes.at(-1)!.target)!;
-      const destination = resources.targets.get(group.passes.at(-1)!.target)!;
-      group.copy = effect(gpu, COPY_ATLAS, { label: `${owner}:prepared environment copy`, set: { atlas: sourceTarget.color } });
-      group.copy.compileSync(destination);
-    }
-  } catch (error) {
-    for (const group of groups.values()) if (group.copy !== undefined) retire(group.copy);
-    throw error;
+  for (const [owner, group] of groups) {
+    if (group.canonical === undefined) continue;
+    const sourceTarget = resources.targets.get(group.canonical.passes.at(-1)!.target)!;
+    const destination = resources.targets.get(group.passes.at(-1)!.target)!;
+    group.copy = effect(gpu, preparedShader(COPY_ATLAS, `${owner}:prepared environment copy`), { label: `${owner}:prepared environment copy`, set: { atlas: sourceTarget.color } });
+    group.copy.compileSync(destination);
   }
   const byPass = new Map([...groups.values()].flatMap(group => group.passes.map(pass => [pass.id, group] as const)));
   let epoch = 0;
@@ -106,7 +102,6 @@ export function createEnvironmentPreparation(
   return {
     beginRender() { available.clear(); },
     invalidate() { epoch++; available.clear(); for (const group of groups.values()) group.ready = undefined; },
-    copies() { return [...groups.values()].flatMap(group => group.copy === undefined ? [] : [group.copy]); },
     begin(frame: Frame, currentResources: ResourceSet, uniforms: ReadonlyMap<string, UniformValues>, skipped: ReadonlySet<string>, copy: (pass: DrawPassDescriptor, destination: Target, drawable: Effect) => void) {
       resources = currentResources;
       const decisions = new Map<Group, { mode: "reuse" | "copy" | "draw"; snapshot: readonly unknown[] | undefined }>();

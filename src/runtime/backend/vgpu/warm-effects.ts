@@ -1,6 +1,7 @@
 import { effect } from "vgpu";
 import type { Effect, Gpu, TargetSignature } from "vgpu";
 import type { EffectPassDescriptor, PassDescriptor, ResourceDescriptor } from "../plan.ts";
+import { preparedShader } from "./prepared-shader.ts";
 
 /**
  * §T1507b — A BYPASSED LAYER'S EFFECTS, BUILT BEFORE IT IS SWITCHED ON.
@@ -160,7 +161,7 @@ export function createWarmEffects(gpu: Gpu): WarmEffects {
         const scoped = raw !== undefined && typeof raw.pushErrorScope === "function";
         if (scoped) raw.pushErrorScope("validation");
         try {
-          built = effect(gpu, pass.shader, { label: pass.id });
+          built = effect(gpu, preparedShader(pass.shader, pass.id), { label: pass.id });
         } catch {
           // A CPU-side refusal (vgpu's reflection): the compile meets it again and says so.
           built = undefined;

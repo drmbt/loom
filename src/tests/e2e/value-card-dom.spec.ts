@@ -66,6 +66,19 @@ test("E32's value cards mount a bounded number of rows, and no channel sockets",
   await page.goto("/");
   await expect(page.getByTestId("graph-canvas")).toBeVisible();
   await openExample(page, "E32 Pasture");
+  // §T1709b: a plot too small to read takes no values (T1691b, `legibleScaleOf`), and E32
+  // opens fitted to all its nodes at under 10 %, where no card draws bars at all. From about
+  // 17 % every card's bars are drawn (measured: 32 lists, 30 of them wide); 30 % is past that.
+  const zoom = (): Promise<number> =>
+    page.evaluate(() => new DOMMatrix(getComputedStyle(window.document.querySelector(".react-flow__viewport") as HTMLElement).transform).a);
+  const pane = await page.getByTestId("graph-canvas").boundingBox();
+  if (pane === null) throw new Error("the graph canvas has no box on screen");
+  await page.mouse.move(pane.x + pane.width / 2, pane.y + pane.height / 2);
+  for (let step = 0; step < 60 && (await zoom()) < 0.3; step += 1) {
+    await page.mouse.wheel(0, -40);
+    await page.waitForTimeout(25);
+  }
+  expect(await zoom()).toBeGreaterThanOrEqual(0.3);
 
   // THE PREMISE: the document really does carry wide bags into its cards. Without this a
   // build that published nothing would pass every bound below by drawing nothing.

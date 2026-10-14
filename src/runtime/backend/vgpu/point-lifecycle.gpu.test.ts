@@ -13,6 +13,7 @@ import { packAttributes } from "../../../points/packing.ts";
 import { pointRandReference } from "../../../points/rng.ts";
 import type { PointAttributeSchema } from "../../../points/attributes.ts";
 import { probeDawn } from "./node-gpu-host.ts";
+import { preparedShader } from "./prepared-shader.ts";
 
 /**
  * T119/T120 on a REAL device: the generated lifecycle passes must produce exactly what
@@ -87,7 +88,7 @@ describe("point lifecycle on Dawn (T119/T120, §V73/§V74)", () => {
       const pipelines = module.passes.map((pass) => {
         const set: Record<string, unknown> = { params };
         for (const binding of pass.bindings) set[binding.name] = bindingsByName[binding.name];
-        return { pass, pipeline: compute(gpu, pass.wgsl, { set }) };
+        return { pass, pipeline: compute(gpu, preparedShader(pass.wgsl, "lifecycle"), { set }) };
       });
 
       frame(gpu, () => {
@@ -176,7 +177,7 @@ describe("point lifecycle on Dawn (T119/T120, §V73/§V74)", () => {
       for (const binding of module.buffers) {
         set[binding.variable] = binding.access === "read" ? readHalf : writeHalf;
       }
-      const pipeline = compute(gpu, module.wgsl, { set });
+      const pipeline = compute(gpu, preparedShader(module.wgsl, "kernel"), { set });
       frame(gpu, () => pipeline.dispatch(Math.ceil(count / module.workgroupSize)));
 
       const got = new Float32Array(await writeHalf.read(), sampleOffset, count);

@@ -407,15 +407,14 @@ export interface LoomBackend extends RenderBackend {
  * end among the passes that carried a timer span in that vgpu frame, in milliseconds.
  *
  * `submit` is the backend's `status.framesSubmitted` value the frame counts as (the
- * value AFTER the `render()` that encoded it). The direct headless path splits one
- * `render()` into several vgpu frames around compute dispatches (`encodeSegmented`);
- * those share one `submit`, and a consumer sums their extents to get the render's.
+ * value AFTER the `render()` that encoded it). A `render()` is one vgpu frame on both
+ * paths since §T1707b; through vgpu 0.5.0 the direct path split it around compute
+ * dispatches, and those frames shared one `submit`.
  * `null` only if the frame was encoded outside `render()`, which no path does today.
  *
- * Not covered by the extent, by construction of what carries a span: compute
- * dispatches and indirect draws (no span, see `encode`), presentation blits, and the
- * gap between two vgpu frames of one segmented render. It is the plan's render-pass
- * work, not the whole submit.
+ * Not covered by the extent, by construction of what carries a span: presentation
+ * blits, and repeats of looped passes past the timer's per-frame capacity. It is the
+ * plan's work, render passes and kernels, not the whole submit.
  */
 export interface GpuFrameTiming {
   readonly gpuMs: number;
@@ -427,9 +426,9 @@ export interface GpuFrameTiming {
  *
  * Without it a lost frame is indistinguishable from one whose results have not landed yet,
  * and the export path lost most of them: vgpu's query ring has three staging slots and drops
- * rather than blocks, and `encodeSegmented` submits one frame per compute segment — so every
- * segment past the third of one render, and every frame of a run that never yields to the
- * event loop, reported nothing. `staging-busy` is that; `abandoned` is a frame whose timer a
+ * rather than blocks, and through vgpu 0.5.0 the export path submitted one frame per compute
+ * segment — so every segment past the third of one render, and every frame of a run that
+ * never yields to the event loop, reported nothing. `staging-busy` is that; `abandoned` is a frame whose timer a
  * failed pass discarded, or that never reached the queue. `spans` is how many it carried.
  */
 export interface GpuTimingDrop {

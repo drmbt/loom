@@ -5,7 +5,7 @@ import { createNodeRegistry } from "../../../nodes/registry/registry.ts";
 import { allNodeDefinitions } from "../../../nodes/definitions/index.ts";
 import { cameraNode } from "../../../nodes/definitions/scene.ts";
 import { createUniformAnimator } from "../../../app/animate-parameters.ts";
-import { cameraPayloadMatrix, transformPoint } from "../../../domain/geometry/camera.ts";
+import { cameraFrame, cameraPayloadMatrix, inCameraFrame, transformPoint } from "../../../domain/geometry/camera.ts";
 import { createVgpuBackend } from "./vgpu-backend.ts";
 import { nodeGpuHost, probeDawn } from "./node-gpu-host.ts";
 import { capturingHost, drawSynthesizedPreview } from "./preview-synthesis-fixture.ts";
@@ -80,9 +80,10 @@ const basePayload: CameraPayload = {
  * What driving one camera parameter must DO to the picture.
  *
  * `moves` — the probe point lands somewhere else, and the old picture had BACKGROUND
- * there. `clips` — the probe point leaves the frustum entirely, so the pixel that held it
- * becomes background. Every key of `cameraNode.parameters` must appear here (asserted
- * below); the two shapes are what the seven parameters actually do, not a taxonomy.
+ * there. `clips` — the pixel that held the probe point becomes background: the point left
+ * the frustum, or the camera turned to see the grid edge-on. Every key of
+ * `cameraNode.parameters` must appear here (asserted below); the two shapes are what the
+ * parameters actually do, not a taxonomy.
  */
 const VARIANTS: Readonly<
   Record<
@@ -105,6 +106,16 @@ const VARIANTS: Readonly<
   // T706: a bank swings every off-axis point around the view axis; the centre is the
   // one place a roll does nothing, so the probe sits in a corner.
   roll: { params: { roll: 40 }, probe: [0.9, 0.9, 0], effect: "moves" },
+  // T1656b: Eye and Look At are offsets from Origin, so the camera slides with it and the
+  // picture slides the other way: the grid's corner lands where the base view saw nothing.
+  origin: { params: { origin: [0.5, 0.5, 0] }, probe: [-0.9, -0.9, 0], effect: "moves" },
+  // A level frame facing +x turns the offset Eye 0, 0, 3 to −3, 0, 0: the grid (z = 0) is
+  // seen edge-on, a line through the centre, and the corner that held the probe is empty.
+  heading: { params: { heading: [1, 0, 0] }, probe: [0.9, 0.9, 0], effect: "clips" },
+  // T1671b: the same straight-down Heading turns nothing in a LEVEL frame (its horizontal
+  // part is zero) and puts the eye above the grid, looking down at it edge-on, when AIMED.
+  // So the picture changes only because Frame does.
+  frame: { params: { heading: [0, -1, 0], frame: "aimed" }, probe: [0.9, 0.9, 0], effect: "clips" },
 };
 
 /**
@@ -231,10 +242,19 @@ function probeAt(matrix: Float32Array, world: readonly [number, number, number])
   return { x, y, inside, at: (y * SIZE + x) * 4 };
 }
 
+/** §T1656b: Eye and Look At in the frame Origin, Heading and Frame make, in the world. */
+const framed = (params: Record<string, unknown>) => {
+  const vector = (key: string) => (params[key] ?? [0, 0, 0]) as readonly [number, number, number];
+  const frame = cameraFrame(vector("origin"), vector("heading"), params["frame"] === "aimed" ? "aimed" : "level");
+  return {
+    eye: inCameraFrame(frame, (params["eye"] ?? basePayload.eye) as readonly [number, number, number]),
+    lookAt: inCameraFrame(frame, (params["lookAt"] ?? basePayload.lookAt) as readonly [number, number, number]),
+  };
+};
+
 const payloadWith = (params: Record<string, unknown>): CameraPayload => ({
   ...basePayload,
-  ...(params["eye"] === undefined ? {} : { eye: params["eye"] as CameraPayload["eye"] }),
-  ...(params["lookAt"] === undefined ? {} : { lookAt: params["lookAt"] as CameraPayload["lookAt"] }),
+  ...(framed(params) as Pick<CameraPayload, "eye" | "lookAt">),
   ...(params["fov"] === undefined ? {} : { fovDeg: params["fov"] as number }),
   ...(params["near"] === undefined ? {} : { near: params["near"] as number }),
   ...(params["far"] === undefined ? {} : { far: params["far"] as number }),

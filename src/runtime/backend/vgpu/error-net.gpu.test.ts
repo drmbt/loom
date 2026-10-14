@@ -69,29 +69,32 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
 }
 
 /**
- * A dispatch the device accepts when it is BUILT and refuses when it RUNS: the shader wants
- * a 64-word block and the buffer bound to it holds one word. Module, layout and pipeline
- * are all valid; the bind group, which vgpu creates at the first dispatch, is not.
+ * A pass the device accepts when it is BUILT and refuses when it RUNS: the shader reads an
+ * unsigned-integer texture and the target bound to it holds floats. Module, layout and
+ * pipeline are all valid; the bind group, which vgpu creates at the first encode, is not.
+ *
+ * T1705b: through vgpu 0.5.0 this was a storage buffer smaller than the block the shader
+ * declared. vgpu 0.6.0 checks a buffer binding's size when it is set and refuses that plan
+ * at the build, so the shape that still waits for the frame is a texture of the wrong type.
  */
-function undersizedPlan(): LogicalExecutionPlan {
+function mistypedPlan(): LogicalExecutionPlan {
   return {
-    id: "undersized",
-    resources: [{ kind: "buffer", id: "small", stride: 4, capacity: 1, usage: "storage" }],
+    id: "mistyped",
+    resources: [
+      { kind: "target", id: "source", size: [8, 8], format: "rgba8unorm" },
+      { kind: "target", id: "output", size: [8, 8], format: "rgba8unorm" },
+    ],
     passes: [
       {
-        kind: "dispatch",
-        id: "undersized",
-        shader: `
-struct Block { words: array<u32, 64>, };
-@group(0) @binding(0) var<storage, read_write> block: Block;
-
-@compute @workgroup_size(1)
-fn main(@builtin(global_invocation_id) gid: vec3u) {
-  block.words[gid.x] = 1u;
+        kind: "effect",
+        id: "mistyped",
+        shader: `@group(0) @binding(0) var counts: texture_2d<u32>;
+@fragment
+fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
+  return vec4f(vec4u(textureLoad(counts, vec2i(0), 0)));
 }`,
-        entryPoint: "main",
-        workgroups: [1, 1, 1],
-        buffers: [{ binding: "block", resourceId: "small" }],
+        target: "output",
+        textures: [{ binding: "counts", resourceId: "source" }],
       },
     ],
   } as unknown as LogicalExecutionPlan;
@@ -133,7 +136,7 @@ describe("the persistent GPU error net (T327/B33)", () => {
     try {
       await backend.initialize({});
       // The build has nothing to object to: this is the case the net exists for.
-      const compiled = await backend.compile(undersizedPlan());
+      const compiled = await backend.compile(mistypedPlan());
       expect(errors).toEqual([]);
       backend.render(compiled, {
         frame: { timeSeconds: 0, deltaSeconds: 1 / 60, frameIndex: 0, mode: "offline", randomSeed: 7 },
@@ -146,11 +149,11 @@ describe("the persistent GPU error net (T327/B33)", () => {
       const deadline = Date.now() + 2000;
       while (errors.length === 0 && Date.now() < deadline) {
         // A readback is a full GPU round-trip; it drains the error delivery too.
-        await backend.readBuffer("small").catch(() => undefined);
+        await backend.readOutput("output").catch(() => undefined);
         await new Promise((resolve) => setTimeout(resolve, 25));
       }
       expect(errors.length, "the device's validation verdict must reach the hub").toBeGreaterThan(0);
-      expect(errors.join("\n")).toContain("is smaller than the minimum binding size (256)");
+      expect(errors.join("\n")).toContain("match the expected sample types (Uint)");
     } finally {
       backend.dispose();
     }

@@ -85,7 +85,29 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
  * colour-converted on its way in, which is why the node declares it as such rather than
  * treating both inputs the same.
  */
-export const DISPLACE_FRAGMENT_WGSL = wgsl`${WGSL_EXTEND}
+function displaceShader(scalarField: boolean) {
+  // §V57: 32-bit float filtering is optional in WebGPU, so an r32float field (Float Map In)
+  // is read with textureLoad and filtered here, bilinear with its edges clamped: the same
+  // smooth field a filtering sampler gives on a device that can (T1708b).
+  const field = scalarField
+    ? `fn fieldAt(uv: vec2f) -> vec4f {
+  let size = vec2i(textureDimensions(displaceTexture));
+  let p = uv * vec2f(size) - 0.5;
+  let base = floor(p);
+  let t = p - base;
+  let last = size - vec2i(1);
+  let i0 = clamp(vec2i(base), vec2i(0), last);
+  let i1 = clamp(vec2i(base) + vec2i(1), vec2i(0), last);
+  let a = textureLoad(displaceTexture, i0, 0);
+  let b = textureLoad(displaceTexture, vec2i(i1.x, i0.y), 0);
+  let c = textureLoad(displaceTexture, vec2i(i0.x, i1.y), 0);
+  let d = textureLoad(displaceTexture, i1, 0);
+  return mix(mix(a, b, t.x), mix(c, d, t.x), t.y);
+}`
+    : `fn fieldAt(uv: vec2f) -> vec4f {
+  return textureSampleLevel(displaceTexture, inputSampler, uv, 0.0);
+}`;
+  return wgsl`${WGSL_EXTEND}
 ${WGSL_CHANNEL}
 
 struct Params {
@@ -100,15 +122,21 @@ struct Params {
 @group(0) @binding(2) var inputTexture: texture_2d<f32>;
 @group(0) @binding(3) var displaceTexture: texture_2d<f32>;
 
+${field}
+
 @fragment
 fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
-  let field = textureSampleLevel(displaceTexture, inputSampler, uv, 0.0);
+  let field = fieldAt(uv);
   let shift = vec2f(
     channelValue(field, params.sourcex) - params.offset.x,
     channelValue(field, params.sourcey) - params.offset.y,
   );
   return sampleExtend(inputTexture, inputSampler, uv + (shift * params.weight), params.extend);
 }`;
+}
+
+export const DISPLACE_FRAGMENT_WGSL = displaceShader(false);
+export const DISPLACE_FLOAT_FRAGMENT_WGSL = displaceShader(true);
 
 /**
  * Remap — absolute UV lookup (T279). TD's Remap TOP.

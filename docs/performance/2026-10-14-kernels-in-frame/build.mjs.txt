@@ -1,0 +1,6 @@
+import { createRequire } from "node:module";
+const require = createRequire("/Users/flo/work/code/shaderloom/package.json");
+const esbuild = require(require.resolve("esbuild", { paths: [require.resolve("vite")] }));
+await esbuild.build({ entryPoints: [new URL("./bench.js", import.meta.url).pathname], bundle: true, format: "esm", outfile: new URL("./bench.bundle.js", import.meta.url).pathname,
+  nodePaths: ["/Users/flo/work/code/shaderloom/node_modules"], conditions: ["browser"], platform: "browser", logLevel: "warning" });
+console.log("built");
