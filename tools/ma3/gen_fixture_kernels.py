@@ -224,7 +224,8 @@ fn process(p: Point, ctx: PointCtx) -> Point {{
   if (role == 0u) {{
     q.tip = q.position + dir * reach;
     q.width = reach * tan(radians(zoom) * 0.5);
-    q.tint = vec4f(light * ctx.params.beamGain, 1.0);
+    // A wide beam spreads the same light: a flood reads soft, a narrow beam reads as a shaft.
+    q.tint = vec4f(light * ctx.params.beamGain * clamp(14.0 / zoom, 0.12, 1.6), 1.0);
   }} else {{
     q.tip = q.position;
     q.width = select(0.12, 0.3, KIND[h] == 3u);

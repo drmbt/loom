@@ -142,6 +142,11 @@ def main():
             for ph in c.iter("Phaser"):
                 if ph.get("IDType") != "0":
                     continue
+                # A Global value is stored for the fixture TYPE (preset data riding in the cue),
+                # not output by the fixture it is filed under: playing it flashed one head per
+                # type on every hit.
+                if ph.get("Selective") == "Global":
+                    continue
                 ids = ph.get("ID").split(".")
                 fid = int(ids[0])
                 if fid not in keep:

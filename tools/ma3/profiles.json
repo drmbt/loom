@@ -1678,7 +1678,8 @@
     ],
     "sub": "",
     "attr": "Zoom",
-    "default": 100
+    "invert": true,
+    "note": "MA Zoom % runs narrow -> wide; this fixture's DMX runs wide -> narrow"
    },
    {
     "offset": [
@@ -1943,7 +1944,9 @@
      40
     ],
     "sub": "",
-    "attr": "Zoom"
+    "attr": "Zoom",
+    "invert": true,
+    "note": "MA Zoom % runs narrow -> wide; this fixture's DMX runs wide -> narrow"
    },
    {
     "offset": [
