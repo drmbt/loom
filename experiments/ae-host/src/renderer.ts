@@ -80,6 +80,12 @@ function assertCompiled(plan: CompiledGraph): void {
 /** Which parameter of a control node holds its value. */
 const VALUE_KEY: Record<string, string> = { slider: "value", toggle: "on" };
 
+/**
+ * VN122: `<node>.<parameter>` -> the value the host always renders with, whatever the project
+ * was saved with or the effect sends. Source = 0 (live): the AE layers are the source.
+ */
+const PINNED: Readonly<Record<string, number>> = { "stageFeeds.source": 0 };
+
 /** A project path (`media/stage-previz/stage-r2.glb`) resolved inside the package. */
 function packageMedia(packageDir: string, file: string): string {
   const flat = join(packageDir, "media", basename(file));
@@ -146,15 +152,53 @@ export async function createPrevizRenderer(options: RendererOptions): Promise<Pr
   const flattened = flattenComponents({ graph, registry, components });
   const morphs = flattened.morphs ?? buildMorphIndex({ document: graph, registry });
 
-  // Manifest param id (a node name) -> the flattened node and the parameter it writes.
-  const controls = new Map<string, { nodeId: string; key: string; bool: boolean }>();
-  for (const param of manifest.params) {
-    const entry = Object.entries(flattened.graph.nodes).find(([, n]) => (n as GraphNode).label === param.id);
-    if (entry === undefined) throw new Error(`manifest param "${param.id}" names no node in the project`);
-    const [nodeId, node] = entry as [string, GraphNode];
-    const key = VALUE_KEY[node.type];
-    if (key === undefined) throw new Error(`manifest param "${param.id}" is a ${node.type}, not a slider or toggle`);
-    controls.set(param.id, { nodeId, key, bool: node.type === "toggle" });
+  // Manifest param id -> the flattened parameters it writes (VN122: PROTOCOL.md's amended ids).
+  //  - `<node>`: that node's value parameter (`value` on a slider, `on` on a toggle);
+  //  - `<node>.<parameter>`: that parameter. A component instance is inlined away by
+  //    flattening, so its published parameter is written where flattening wrote it: every
+  //    internal parameter whose published origin is (instance, parameter). A plain value
+  //    replaces whatever stood there (a static number, or an expression slot handed down).
+  // The node part matches a root node's name, else its id (`stageFeeds` is the id of the
+  // instance named `stagefeeds1`).
+  const rootNodes = Object.values(graph.nodes) as GraphNode[];
+  function writesFor(id: string): { nodeId: string; key: string; bool: boolean }[] {
+    const dot = id.indexOf(".");
+    if (dot < 0) {
+      const entry = Object.entries(flattened.graph.nodes).find(([, n]) => (n as GraphNode).label === id);
+      if (entry === undefined) throw new Error(`param "${id}" names no node in the project`);
+      const [nodeId, node] = entry as [string, GraphNode];
+      const key = VALUE_KEY[node.type];
+      if (key === undefined) throw new Error(`param "${id}" is a ${node.type}, not a slider or toggle`);
+      return [{ nodeId, key, bool: node.type === "toggle" }];
+    }
+    const name = id.slice(0, dot), key = id.slice(dot + 1);
+    const root = rootNodes.find((n) => n.label === name) ?? rootNodes.find((n) => n.id === name);
+    if (root === undefined) throw new Error(`param "${id}" names no node "${name}" in the project`);
+    if (flattened.graph.nodes[root.id] !== undefined) {
+      if (!(key in root.parameters)) throw new Error(`param "${id}": ${root.label} has no parameter "${key}"`);
+      return [{ nodeId: root.id, key, bool: false }];
+    }
+    const writes: { nodeId: string; key: string; bool: boolean }[] = [];
+    for (const [flatId, origins] of flattened.publishedOrigins) {
+      for (const [innerKey, origin] of Object.entries(origins)) {
+        if (origin.nodeId === root.id && origin.key === key) writes.push({ nodeId: flatId, key: innerKey, bool: false });
+      }
+    }
+    if (writes.length === 0) throw new Error(`param "${id}": instance ${root.label} publishes no parameter "${key}" that reaches a node`);
+    return writes;
+  }
+  const controls = new Map<string, { nodeId: string; key: string; bool: boolean }[]>();
+  for (const param of manifest.params) controls.set(param.id, writesFor(param.id));
+  // VN122: parameters the host pins whatever the project was saved with. The AE layers ARE
+  // the source, so Source is live (0) always: the DS and Sides switches show the layers, not
+  // the test card or grid. Written on the instance's published parameter rather than the
+  // slider, so a project whose instance is not wired to the slider is pinned too. A project
+  // without it (another package) pins nothing.
+  const pinned: { nodeId: string; key: string; bool: boolean; value: number }[] = [];
+  for (const [id, value] of Object.entries(PINNED)) {
+    if (controls.has(id)) throw new Error(`param "${id}" is pinned by the host and cannot be published`);
+    try { for (const w of writesFor(id)) pinned.push({ ...w, value }); log(`pinned ${id} = ${value}`); }
+    catch (e) { log(`not pinned: ${e instanceof Error ? e.message : String(e)}`); }
   }
   // VN121: still pictures (a Movie File In on a PNG), decoded once and fed as a constant frame.
   // Keyed by the flattened node id, which is what the node's media key is built from.
@@ -176,16 +220,17 @@ export async function createPrevizRenderer(options: RendererOptions): Promise<Pr
   const outputNodeId = outputs[0]!.id;
   const defaults = Object.fromEntries(manifest.params.map((p) => [p.id, Number(p.default)]));
 
-  /** The flattened graph with this request's control values written into it. */
+  /** The flattened graph with this request's control values (and the pinned ones) written into it. */
   function withParams(params: Readonly<Record<string, number>>): typeof flattened {
     const patched = { ...flattened.graph.nodes } as Record<string, GraphNode>;
-    for (const [id, control] of controls) {
-      const raw = params[id] ?? defaults[id]!;
+    const write = (control: { nodeId: string; key: string; bool: boolean }, raw: number) => {
       const value = control.bool ? raw >= 0.5 : raw;
       const node = patched[control.nodeId]!;
-      if (node.parameters[control.key] === value) continue;
+      if (node.parameters[control.key] === value) return;
       patched[control.nodeId] = { ...node, parameters: { ...node.parameters, [control.key]: value } } as GraphNode;
-    }
+    };
+    for (const [id, writes] of controls) for (const w of writes) write(w, params[id] ?? defaults[id]!);
+    for (const p of pinned) write(p, p.value);
     return { ...flattened, graph: { ...flattened.graph, nodes: patched } } as typeof flattened;
   }
 
@@ -265,7 +310,9 @@ export async function createPrevizRenderer(options: RendererOptions): Promise<Pr
     const backend = createVgpuBackend({ host: nodeGpuHost() });
     backend.onDiagnostic((d) => { if (d.severity === "error") log(`gpu ${d.code}: ${d.message}`); });
     const capabilities = await backend.initialize({});
-    const request: CompileRequest = { graph, settings, registry, capabilities, flattened };
+    // The base program is the manifest defaults with the pins written in, so the inputs'
+    // feeds are in it even for a project saved with Source on the test card.
+    const request: CompileRequest = { graph, settings, registry, capabilities, flattened: withParams({}) };
     const plan = compileGraph(request);
     assertCompiled(plan);
     const compiled = await backend.compile(plan);

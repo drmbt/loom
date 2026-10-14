@@ -99,7 +99,14 @@ The client creates the shm slots, starts the host, connects, and runs these chec
   - With no Sides, 593,839 px differ.
 - **(d) Random access.** Frames at 1, 5, 20 and 33.3 s, with frame-dependent inputs, are rendered in order and then in the order 33.3, 1, 20, 5. All 4 pairs are byte-identical, and the four frames differ from each other.
 - **(e) Resize.** The client requests 960×540 (the DS sent at 960×540 is resampled) and then 1920×1080 again. The first 960×540 frame takes 160–170 ms, because it includes building that size's program.
-- **(f) The FX pixel map (VN121).** The client writes two package copies with Source FX = 2 (the map): one with the real PNG, one with an opaque black PNG of the same size (what the map rendered as before). 21,129 px differ, in x 211..1695, y 314..862 (the pixel lines on the drape and riser and the deck strobes), and the mean luminance there is 0.471 with the map against 0.340 without. See `f-fxmap.png` and `f-fxmap-black.png`. With still registration disabled the check fails: 0 px differ.
+- **(f) The FX pixel map (VN121).** The client writes two package copies, one with the real PNG and one with an opaque black PNG of the same size (what the map rendered as before), and renders both with `stageFeeds.sourceFX` = 2 (the map) and LEDs and strobes at 1. 21,129 px differ, in x 211..1695, y 314..862 (the pixel lines on the drape and riser and the deck strobes), and the mean luminance there is 0.471 with the map against 0.340 without. See `f-fxmap.png` and `f-fxmap-black.png`. With still registration disabled the check fails: 0 px differ.
+- **(g) Popups and dotted ids (VN122).**
+  - The manifest has `stageFeeds.sourceFX` and `slider_shot` as popups, LEDs and strobes defaulting to 0, no `slider_source`, and `defaultLayer` 1 on both inputs.
+  - With LEDs and strobes at 1, `stageFeeds.sourceFX` 1 (test pattern) → 2 (pixel map) changes 21,090 px in x 211..1695, y 314..862 (the pixel lines and strobes). See `g-fx-test.png` and `g-fx-map.png`.
+  - At the manifest defaults (LEDs and strobes 0) the same change alters 0 px: the FX source lights nothing. See `g-leds-off.png`.
+  - `slider_shot` 4 (wide) → 0 (FOH) changes every pixel. See `g-shot-foh.png`.
+  - With the dotted-id write disabled, the sourceFX check and (f) fail with 0 px differing.
+- **(h) Source pinned to live (VN122).** A package copy whose project is saved with Source = 1 (test) on both `slider_source` and the instance's `source` renders byte-identical to the shipped package. With the pin removed it differs.
 - **Lifetime.** The host exits 0 when the client disconnects. It also exits 0 when stdin closes, which was checked separately.
 
 These checks were red before the output-node fix. While the host read back the plan's first output (a black solid), every check (a)–(d) failed.
@@ -118,19 +125,27 @@ The round trip is client write → socket → host render → readback → copy 
 ## How the host maps the protocol to Loom
 
 - **Frame.** `round(time × fps)`, clamped at 0, evaluated exactly. The transport is a fixed frame with Δ = 1/fps. Every frame is a pure function of time and parameters (-13 has no feedback), so request order does not matter.
-- **Params.** Each id is a node name. The host writes `value` (slider) or `on` (toggle, ≥ 0.5) into the flattened graph. It then runs the value graph and a values-only compile, and pushes the uniforms. If a value ever changes the plan's structure, the program is recompiled for that frame.
+- **Params.** An id is a node name or `<node>.<parameter>` (VN122). The node part matches a node's name, else its id: `stageFeeds` is the id of the instance named `stagefeeds1`.
+  - For a node name, the host writes `value` (slider) or `on` (toggle, ≥ 0.5) into the flattened graph.
+  - For `<node>.<parameter>`, the host writes that parameter. A component instance is inlined away by flattening, so its published parameter is written to every internal parameter whose published origin is that instance and key (`stageFeeds.sourceFX` → `stageFeeds/feedFX.index`).
+  - A popup's value is the chosen option's number and is written like a slider's.
+  - **Pinned (VN122).** `stageFeeds.source` is always 0 (live). The AE layers are the source, whatever the project was saved with or the effect sends. The base program is compiled with the pin in place, so the layer feeds are always in it. It then runs the value graph and a values-only compile, and pushes the uniforms. If a value ever changes the plan's structure, the program is recompiled for that frame.
 - **Inputs.**
   - Each input registers as `media:stageFeeds/dsFeed` or `media:stageFeeds/sidesFeed`, with a new frameId on every request.
   - Bytes are uploaded as `rgba8unorm-srgb`, the movie node's texture format, at the texture's authored size (1920×1080 for both). A layer of another size is resampled bilinearly on the CPU.
   - A missing input is black.
 - **Stills (VN121).** A Movie File In on a `.png` (`movie_fxMap`, `fx-pixel-map-r2.png`) is decoded once at load by `src/png.ts` and registered as `media:<node id>` with a constant frameId, resampled to the texture's extent if it differs. The bytes are the file's own (straight alpha, display-encoded), as the app's `openStill` hands them over. Any other picture format, a 16-bit or palette PNG, or an interlaced PNG fails the load by name; `build-package.ts` fails when a still the project names is missing.
   - What stays black, and the host logs each once: `movie_testVideo` (an mp4) and `syphonin_FX`.
-  - In the default view none of the three matters. -13 is saved with Source FX = 1 (the test pattern lights the FX fixtures), and Source FX is not on the panel, so the map shows only in a project saved with Source FX = 2. `testVideo` is the DS picture at Source = 1 (test), which is on the panel: that setting shows a black drape headless. Syphon is Source FX = 0.
+  - Neither black source is reachable from AE (VN122). Syphon is Source FX = 0, and the `stageFeeds.sourceFX` popup offers only 1 (test pattern, the saved value) and 2 (the pixel map above). `testVideo` is the DS picture at Source = 1 (test), and Source is pinned to 0 (live).
 - **Output.** The Output node's `$target`, read back as rgba16float, display-encoded, alpha 1, at the requested size, and copied into the output slot.
 - **Manifest.**
-  - The params are the panel's sliders and toggle, in board order and grouped by its section labels. That is 26 params: 25 sliders and the `toggle_talent` toggle.
+  - The params are the panel's sliders and toggle, in board order and grouped by its section labels, with the VN122 changes. That is 26 params: 23 floats, the `toggle_talent` bool, and 2 popups.
+    - `slider_source` is not published; the host pins Source to live.
+    - `stageFeeds.sourceFX` (label "FX source", a popup: Test pattern = 1, Pixel map = 2) takes `slider_source`'s place in "Feeds and view".
+    - An integer-step slider whose caption lists its choices becomes a popup. In -13 that is only `slider_shot`: "Shot", with FOH = 0, iso = 1, wing = 2, proj = 3, wide = 4, as the caption lists them.
   - Labels are ASCII and at most 31 bytes.
-  - `default` is the value the project was saved with, not the slider's reset default, so a new effect instance shows the project's look.
+  - `default` is the value the project was saved with, not the slider's reset default, so a new effect instance shows the project's look. The exceptions are `slider_leds` and `slider_strobes`, which default to 0, so a fresh effect has the LED fixtures off (VN122). The project file is unchanged.
+  - Both inputs carry `"defaultLayer": 1`.
   - `durationSeconds` = (end − start + 1) / fps = 144.733.
 
 ## Shipping notes

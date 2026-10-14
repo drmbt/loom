@@ -12,33 +12,61 @@
     {
       "id": "ds",
       "label": "DS Layer",
-      "mediaKey": "media:stageFeeds/dsFeed"
+      "mediaKey": "media:stageFeeds/dsFeed",
+      "defaultLayer": 1
     },
     {
       "id": "sides",
       "label": "Sides Layer",
-      "mediaKey": "media:stageFeeds/sidesFeed"
+      "mediaKey": "media:stageFeeds/sidesFeed",
+      "defaultLayer": 1
     }
   ],
   "params": [
     {
-      "id": "slider_source",
-      "label": "Source: live/test/grid",
-      "type": "float",
-      "min": 0,
-      "max": 2,
-      "default": 0,
-      "step": 1,
+      "id": "stageFeeds.sourceFX",
+      "label": "FX source",
+      "type": "popup",
+      "default": 1,
+      "options": [
+        {
+          "label": "Test pattern",
+          "value": 1
+        },
+        {
+          "label": "Pixel map",
+          "value": 2
+        }
+      ],
       "group": "Feeds and view"
     },
     {
       "id": "slider_shot",
-      "label": "Shot: FOH/iso/wing/proj/wide",
-      "type": "float",
-      "min": 0,
-      "max": 4,
+      "label": "Shot",
+      "type": "popup",
       "default": 4,
-      "step": 1,
+      "options": [
+        {
+          "label": "FOH",
+          "value": 0
+        },
+        {
+          "label": "iso",
+          "value": 1
+        },
+        {
+          "label": "wing",
+          "value": 2
+        },
+        {
+          "label": "proj",
+          "value": 3
+        },
+        {
+          "label": "wide",
+          "value": 4
+        }
+      ],
       "group": "Feeds and view"
     },
     {
@@ -77,7 +105,7 @@
       "type": "float",
       "min": 0,
       "max": 1,
-      "default": 1,
+      "default": 0,
       "step": 0,
       "group": "Stage"
     },
@@ -87,7 +115,7 @@
       "type": "float",
       "min": 0,
       "max": 1,
-      "default": 0.5,
+      "default": 0,
       "step": 0.01,
       "group": "Stage"
     },

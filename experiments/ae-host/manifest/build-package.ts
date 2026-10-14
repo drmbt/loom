@@ -10,7 +10,18 @@
 //
 // Params: the panel's members in board order (top to bottom, left to right), grouped by
 // the panel's section labels; sliders and toggles only. `default` is the value the project
-// was saved with, so a fresh effect reproduces the project's look.
+// was saved with, so a fresh effect reproduces the project's look, except where DEFAULTS
+// below says otherwise (VN122).
+//
+// VN122 (Vincent's decisions, 2026-10-13):
+//   - the AE layer IS the source: `slider_source` is not published, and the host pins
+//     Source to live (renderer.ts PINNED);
+//   - the FX source is published as `stageFeeds.sourceFX`, a popup (test pattern / pixel
+//     map; Syphon renders black headless, so it is not offered), in the slot `slider_source`
+//     held on the panel;
+//   - LEDs and strobes default to off in a fresh effect (the project file is unchanged);
+//   - an integer-step slider whose caption lists its choices (`Shot: FOH · iso · …`) is a popup;
+//   - both inputs default to comp layer 1.
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 
@@ -24,17 +35,28 @@ const mediaRoot = arg("media", "public/media");
 const out = arg("out", "experiments/ae-host/package");
 
 // AE parameter names are at most 31 bytes; kept ASCII so no encoding question arises.
-const LABELS: Record<string, string> = {
-  slider_source: "Source: live/test/grid",
-  slider_shot: "Shot: FOH/iso/wing/proj/wide",
-};
+const LABELS: Record<string, string> = {};
+/** VN122: panel members that are not published (the host pins them, renderer.ts PINNED). */
+const EXCLUDE = new Set(["slider_source"]);
+/** VN122: manifest defaults that differ from the saved project (a fresh effect shows these). */
+const DEFAULTS: Record<string, number | boolean> = { slider_leds: 0, slider_strobes: 0 };
+/**
+ * VN122: params that are not panel members, published at the board position of a panel
+ * member (`at`), which they replace when that member is excluded. `id` is `<node>.<parameter>`
+ * (PROTOCOL.md: the host writes that parameter of the node, here a component instance's
+ * published parameter); `default` is read from the saved project.
+ */
+const EXTRA: { at: string; id: string; label: string; options: { label: string; value: number }[] }[] = [
+  { at: "slider_source", id: "stageFeeds.sourceFX", label: "FX source",
+    options: [{ label: "Test pattern", value: 1 }, { label: "Pixel map", value: 2 }] },
+];
 function asciiLabel(caption: string): string {
   return caption.replace(/°/g, "deg").replace(/·/g, "/").replace(/→/g, "->").replace(/[^\x20-\x7e]/g, "").replace(/\s+/g, " ").trim();
 }
 
 const INPUTS = [
-  { id: "ds", label: "DS Layer", mediaKey: "media:stageFeeds/dsFeed" },
-  { id: "sides", label: "Sides Layer", mediaKey: "media:stageFeeds/sidesFeed" },
+  { id: "ds", label: "DS Layer", mediaKey: "media:stageFeeds/dsFeed", defaultLayer: 1 },
+  { id: "sides", label: "Sides Layer", mediaKey: "media:stageFeeds/sidesFeed", defaultLayer: 1 },
 ];
 
 /** The few fields of a saved node this script reads. */
@@ -52,6 +74,32 @@ interface BoardItem { readonly label?: string; readonly member?: string; readonl
 const project = JSON.parse(readFileSync(projectPath, "utf8"));
 const nodes = Object.values(project.graph.nodes) as SavedNode[];
 const byLabel = new Map(nodes.map((n) => [n.label, n]));
+/** A saved parameter's static value: a bare value, or the `static` binding of a mode envelope. */
+function savedValue(v: unknown): unknown {
+  if (v !== null && typeof v === "object" && "bindings" in v) {
+    const env = v as { mode?: string; bindings: Record<string, { value?: unknown }> };
+    if (env.mode !== "static") throw new Error(`saved parameter is in ${env.mode} mode, not a static value`);
+    return env.bindings["static"]?.value;
+  }
+  return v;
+}
+/** `<node>.<parameter>`: the node by name, else by id (a component instance's id is its component's name). */
+function dottedDefault(id: string): number {
+  const dot = id.indexOf(".");
+  const name = id.slice(0, dot), key = id.slice(dot + 1);
+  const node = byLabel.get(name) ?? nodes.find((n) => n.id === name);
+  if (node === undefined) throw new Error(`param ${id}: no node "${name}"`);
+  const v = savedValue(node.parameters[key]);
+  if (typeof v !== "number") throw new Error(`param ${id}: saved value ${JSON.stringify(v)} is not a number`);
+  return v;
+}
+/** `Shot: FOH · iso · wing · proj · wide` on a 0..4 step-1 slider -> its five choices, else undefined. */
+function choicesOf(caption: string, min: number, max: number, step: number): { label: string; choices: string[] } | undefined {
+  const m = /^([^:]+):\s*(.+)$/.exec(caption);
+  if (m === null || step !== 1 || !Number.isInteger(min) || !Number.isInteger(max)) return undefined;
+  const choices = m[2]!.split("·").map((c) => asciiLabel(c));
+  return choices.length >= 2 && choices.length === max - min + 1 ? { label: asciiLabel(m[1]!), choices } : undefined;
+}
 const panels = nodes.filter((n) => n.type === "panel");
 if (panels.length !== 1) throw new Error(`expected one panel, found ${panels.length}`);
 const board = JSON.parse(String(panels[0]!.parameters.board)) as { items: BoardItem[] };
@@ -61,17 +109,35 @@ const params: Record<string, unknown>[] = [];
 let group: string | undefined;
 for (const item of items) {
   if (item.label !== undefined && item.member === undefined) { group = item.label; continue; }
+  const g = group ? { group } : {};
+  for (const extra of EXTRA.filter((e) => e.at === item.member)) {
+    const value = dottedDefault(extra.id);
+    if (!extra.options.some((o) => o.value === value)) throw new Error(`param ${extra.id}: saved value ${value} is not one of its options`);
+    params.push({ id: extra.id, label: extra.label, type: "popup", default: value, options: extra.options, ...g });
+  }
+  if (item.member !== undefined && EXCLUDE.has(item.member)) continue;
   const node = item.member === undefined ? undefined : byLabel.get(item.member);
   if (node === undefined || (node.type !== "slider" && node.type !== "toggle")) continue;
   const p = node.parameters;
-  const label = LABELS[node.label] ?? asciiLabel(String(p.caption ?? node.label));
+  const caption = String(p.caption ?? node.label);
+  const popup = node.type === "slider" ? choicesOf(caption, p.min ?? 0, p.max ?? 1, p.step ?? 0) : undefined;
+  const label = LABELS[node.label] ?? popup?.label ?? asciiLabel(caption);
   if (Buffer.byteLength(label) > 31) throw new Error(`label "${label}" for ${node.label} is over 31 bytes; add it to LABELS`);
-  params.push(node.type === "slider"
-    ? { id: node.label, label, type: "float", min: p.min, max: p.max, default: p.value ?? p.defaultValue, step: p.step ?? 0, ...(group ? { group } : {}) }
-    : { id: node.label, label, type: "bool", default: (p.on ?? p.defaultOn) === true, ...(group ? { group } : {}) });
+  const saved = DEFAULTS[node.label];
+  if (popup !== undefined) {
+    params.push({ id: node.label, label, type: "popup", default: saved ?? p.value ?? p.defaultValue,
+      options: popup.choices.map((c, i) => ({ label: c, value: (p.min ?? 0) + i })), ...g });
+  } else {
+    params.push(node.type === "slider"
+      ? { id: node.label, label, type: "float", min: p.min, max: p.max, default: saved ?? p.value ?? p.defaultValue, step: p.step ?? 0, ...g }
+      : { id: node.label, label, type: "bool", default: saved ?? (p.on ?? p.defaultOn) === true, ...g });
+  }
+}
+for (const id of [...Object.keys(DEFAULTS), ...EXTRA.map((e) => e.id)]) {
+  if (!params.some((p) => p.id === id)) throw new Error(`${id} is named in DEFAULTS/EXTRA but was not published`);
 }
 // Sliders and toggles the panel does not show are left out on purpose: the panel IS the desk.
-const missed = nodes.filter((n) => (n.type === "slider" || n.type === "toggle") && !params.some((p) => p.id === n.label));
+const missed = nodes.filter((n) => (n.type === "slider" || n.type === "toggle") && !params.some((p) => p.id === n.label) && !EXCLUDE.has(n.label));
 if (missed.length > 0) console.warn(`not on the panel, not published: ${missed.map((n) => n.label).join(", ")}`);
 
 const settings = project.settings;

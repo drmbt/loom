@@ -15,6 +15,12 @@
 //   (d) frames requested out of order are byte-identical to the same frames in order;
 //   (f) the FX pixel map PNG is decoded and fed: with Source FX = map, the real PNG and a
 //       black one of the same size render the FX fixtures differently (VN121);
+//   (g) VN122: the popup and `<node>.<parameter>` params: `stageFeeds.sourceFX` (a component
+//       instance's published parameter) test pattern vs pixel map changes the lit FX
+//       fixtures; with LEDs and strobes at their manifest default (off) it changes nothing;
+//       the `slider_shot` popup changes the view;
+//   (h) VN122: Source is pinned to live: a package whose project is saved with Source = test
+//       (slider and instance both) renders byte-identical to the shipped one;
 //   plus a resize (960x540) and the round-trip time over N frames at 1920x1080.
 import { spawn } from "node:child_process";
 import { connect, type Socket } from "node:net";
@@ -308,18 +314,70 @@ try {
   const p95 = (v: number[]) => [...v].sort((a, b) => a - b)[Math.floor(v.length * 0.95)]!;
   const timing = `round trip median ${med(rt).toFixed(1)} ms, p95 ${p95(rt).toFixed(1)} ms, host median ${med(hostMs).toFixed(1)} ms over ${N} frames at 1920x1080 (${(1000 / med(rt)).toFixed(1)} fps)`;
   console.log(timing);
-  // (f) VN121: the FX pixel map (movie_fxMap, a PNG inside stageFeeds) is decoded and fed.
-  // -13 ships with Source FX = 1 (test pattern) and the panel does not expose it, so the map
-  // is not on screen by default. Two package copies set Source FX = 2 (the map): one with the
-  // real PNG, one with an opaque black PNG of the same size, which is what the map rendered as
-  // before VN121. The FX fixtures (pixel lines, strobes) must differ, and be brighter, with
-  // the real map.
+  // (g) VN122: popups and `<node>.<parameter>` ids.
+  {
+    const params = manifest.params as { id: string; type: string; default: number | boolean; options?: { value: number }[] }[];
+    const fxParam = params.find((p) => p.id === "stageFeeds.sourceFX");
+    const shotParam = params.find((p) => p.id === "slider_shot");
+    const leds = params.find((p) => p.id === "slider_leds"), strobes = params.find((p) => p.id === "slider_strobes");
+    const inputsOk = (manifest.inputs as { defaultLayer?: number }[]).every((i) => i.defaultLayer === 1);
+    check("g: manifest shape (VN122)",
+      fxParam?.type === "popup" && shotParam?.type === "popup" && shotParam.options?.length === 5 && leds?.default === 0 && strobes?.default === 0
+        && !params.some((p) => p.id === "slider_source") && inputsOk,
+      `sourceFX ${fxParam?.type} [${fxParam?.options?.map((o) => o.value).join(",")}] default ${fxParam?.default}; slider_shot ${shotParam?.type} x${shotParam?.options?.length}; leds ${leds?.default}, strobes ${strobes?.default}; slider_source published: ${params.some((p) => p.id === "slider_source")}; inputs defaultLayer 1: ${inputsOk}`);
+    fill(dsSlot, W, H, dsCard(0)); fill(sidesSlot, W, H, sidesCard(0));
+    const lit = { slider_leds: 1, slider_strobes: 1 };
+    const test = await render({ time: T, params: { ...lit, "stageFeeds.sourceFX": 1 } }, "g-fx-test");
+    const map = await render({ time: T, params: { ...lit, "stageFeeds.sourceFX": 2 } }, "g-fx-map");
+    const fxMask = diffMask(test.f, map.f);
+    check("g: stageFeeds.sourceFX test pattern vs pixel map changes the lit FX fixtures", count(fxMask) > 1000,
+      `${count(fxMask)} px differ, region ${bbox(fxMask, W)} (LEDs 1, strobes 1)`);
+    const offTest = await render({ time: T, params: { "stageFeeds.sourceFX": 1 } });
+    const offMap = await render({ time: T, params: { "stageFeeds.sourceFX": 2 } }, "g-leds-off");
+    const offN = count(diffMask(offTest.f, offMap.f, 0));
+    check("g: LEDs and strobes off by default: the FX source lights nothing", offN === 0,
+      `${offN} px differ between test pattern and pixel map at the manifest defaults (any difference at all counts)`);
+    const litN = count(diffMask(offTest.f, test.f));
+    console.log(`  defaults vs LEDs+strobes at 1: ${litN} px differ`);
+    const shot0 = await render({ time: T, params: { slider_shot: 0 } }, "g-shot-foh");
+    const shotN = count(diffMask(base.f, shot0.f));
+    check("g: slider_shot popup wide -> FOH changes the view", shotN > W * H * 0.05, `${shotN} px differ (${((100 * shotN) / (W * H)).toFixed(1)}%)`);
+  }
+
+  // (h) VN122: Source pinned to live. A package whose project is saved with Source = test on
+  // both the slider and the instance's published parameter must render what the shipped one does.
   {
     const project = JSON.parse(readFileSync(join(packageDir, manifest.project), "utf8"));
-    const feeds = Object.values(project.graph.nodes as Record<string, { type: string; parameters: Record<string, unknown> }>)
-      .find((n) => n.type.startsWith("component:stageFeeds"));
-    if (feeds === undefined) throw new Error("f: no stageFeeds instance in the project");
-    feeds.parameters["sourceFX"] = 2;
+    const nodes = Object.values(project.graph.nodes as Record<string, { type: string; label: string; parameters: Record<string, unknown> }>);
+    const feeds = nodes.find((n) => n.type.startsWith("component:stageFeeds"));
+    const slider = nodes.find((n) => n.label === "slider_source");
+    if (feeds === undefined || slider === undefined) throw new Error("h: no stageFeeds instance or slider_source in the project");
+    feeds.parameters["source"] = 1;
+    slider.parameters["value"] = 1;
+    const dir = join(process.env["TMPDIR"] ?? tmpdir(), `loomae.${process.pid}.pin`);
+    try {
+      mkdirSync(join(dir, "media"), { recursive: true });
+      writeFileSync(join(dir, "manifest.json"), JSON.stringify(manifest));
+      writeFileSync(join(dir, manifest.project), JSON.stringify(project));
+      for (const file of readdirSync(join(packageDir, "media"))) copyFileSync(join(packageDir, "media", file), join(dir, "media", file));
+      fill(dsSlot, W, H, dsCard(0)); fill(sidesSlot, W, H, sidesCard(0));
+      const host = await startHost(dir, "pin");
+      let pinnedShot: Uint8Array;
+      try { pinnedShot = (await render({ time: T }, "h-saved-test", host)).bytes; } finally { await stopHost(host); }
+      const ref = (await render({ time: T })).bytes;
+      check("h: Source pinned to live (project saved with Source = test)", Buffer.compare(pinnedShot, ref) === 0,
+        `byte-identical to the shipped package: ${Buffer.compare(pinnedShot, ref) === 0}`);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  }
+
+  // (f) VN121: the FX pixel map (movie_fxMap, a PNG inside stageFeeds) is decoded and fed.
+  // -13 ships with Source FX = 1 (test pattern). Two package copies, one with the real PNG,
+  // one with an opaque black PNG of the same size (what the map rendered as before VN121),
+  // render with Source FX = 2 (the map, through the VN122 `stageFeeds.sourceFX` param) and
+  // LEDs and strobes up. The FX fixtures (pixel lines, strobes) must differ, and be brighter,
+  // with the real map.
+  {
+    const project = JSON.parse(readFileSync(join(packageDir, manifest.project), "utf8"));
     const mapFile = /"file":\s*"[^"]*\/(fx-pixel-map[^"/]*\.png)"/.exec(JSON.stringify(project.componentLibrary))?.[1];
     if (mapFile === undefined) throw new Error("f: the project names no fx-pixel-map PNG");
     const png = readFileSync(join(packageDir, "media", mapFile));
@@ -340,7 +398,8 @@ try {
       const shots: Record<string, Float32Array> = {};
       for (const [tag, black] of [["fxmap", false], ["fxmap-black", true]] as const) {
         const host = await startHost(variant(tag, black), tag);
-        try { shots[tag] = (await render({ time: T }, `f-${tag}`, host)).f; } finally { await stopHost(host); }
+        const params = { "stageFeeds.sourceFX": 2, slider_leds: 1, slider_strobes: 1 };
+        try { shots[tag] = (await render({ time: T, params }, `f-${tag}`, host)).f; } finally { await stopHost(host); }
       }
       const withMap = shots["fxmap"]!, withoutMap = shots["fxmap-black"]!;
       const fxMask = diffMask(withMap, withoutMap);
