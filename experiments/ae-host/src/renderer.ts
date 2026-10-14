@@ -30,6 +30,7 @@ import { NO_INSTANCES, NO_PAGES } from "../../../src/domain/parameters/node-refe
 import { createFrameDriver } from "../../../src/runtime/execution/frame-driver.ts";
 import { createPointerSource } from "../../../src/runtime/execution/pointer.ts";
 import type { Manifest } from "./manifest-types.ts";
+import { decodePng } from "./png.ts";
 
 /** One layer image as the effect hands it over: RGBA8, straight alpha, rows top to bottom. */
 export interface LayerImage {
@@ -155,6 +156,21 @@ export async function createPrevizRenderer(options: RendererOptions): Promise<Pr
     if (key === undefined) throw new Error(`manifest param "${param.id}" is a ${node.type}, not a slider or toggle`);
     controls.set(param.id, { nodeId, key, bool: node.type === "toggle" });
   }
+  // VN121: still pictures (a Movie File In on a PNG), decoded once and fed as a constant frame.
+  // Keyed by the flattened node id, which is what the node's media key is built from.
+  const stills = new Map<string, LayerImage>();
+  for (const [nodeId, node] of Object.entries(flattened.graph.nodes) as [string, GraphNode][]) {
+    if (node.type !== "movieFileIn") continue;
+    const file = String(node.parameters["file"] ?? "");
+    if (/\.png$/i.test(file)) {
+      const image = decodePng(new Uint8Array(readFileSync(packageMedia(packageDir, file))), `${node.label} (${basename(file)})`);
+      stills.set(nodeId, image);
+      log(`still ${node.label ?? nodeId}: ${basename(file)} ${image.width}x${image.height}`);
+    } else if (/\.(jpe?g|webp|gif|bmp|tiff?|heic|avif|exr|hdr)$/i.test(file)) {
+      throw new Error(`${node.label}: ${basename(file)} is a still the host cannot decode (PNG only)`);
+    }
+  }
+
   const outputs = Object.values(flattened.graph.nodes).filter((n) => (n as GraphNode).type === "output") as GraphNode[];
   if (outputs.length !== 1) throw new Error(`expected one Output node, found ${outputs.length}`);
   const outputNodeId = outputs[0]!.id;
@@ -194,6 +210,8 @@ export async function createPrevizRenderer(options: RendererOptions): Promise<Pr
     frame: EvaluationFrame;
     /** sourceId -> the bytes offered this render, at the texture's authored size. */
     readonly feeds: Map<string, { frameId: number; bytes: Uint8Array; size: readonly [number, number]; black: Uint8Array; scratch?: Uint8Array }>;
+    /** Source ids of the stills registered on this rig's backend. */
+    readonly stillsFed: Set<string>;
   }
 
   const rigs = new Map<string, Rig>();
@@ -214,6 +232,32 @@ export async function createPrevizRenderer(options: RendererOptions): Promise<Pr
       fps,
       subframes: 1,
     });
+  }
+
+  /**
+   * Stills: one upload (constant frameId), at the texture's extent. Any other external texture
+   * that nothing feeds renders black, and says so once per source. Run for every plan a rig
+   * gets, so a still a structural recompile brings in is fed too.
+   */
+  const reportedBlack = new Set<string>();
+  function feedStills(backend: Rig["backend"], plan: CompiledGraph, feeds: Rig["feeds"], fed = new Set<string>()): Set<string> {
+    for (const resource of plan.resources) {
+      if (resource.kind !== "externalTexture" || feeds.has(resource.sourceId) || fed.has(resource.sourceId)) continue;
+      const nodeId = resource.sourceId.replace(/^media:/, "");
+      const still = stills.get(nodeId);
+      if (still === undefined) {
+        if (reportedBlack.has(resource.sourceId)) continue;
+        reportedBlack.add(resource.sourceId);
+        const node = flattened.graph.nodes[nodeId] as GraphNode | undefined;
+        log(`${resource.sourceId} (${node?.label ?? "?"}, ${node?.type ?? "?"}): no source, renders black`);
+        continue;
+      }
+      const [w, h] = resource.size;
+      const bytes = still.width === w && still.height === h ? still.bytes : resample(still, w, h, new Uint8Array(w * h * 4));
+      backend.registerMediaSource(resource.sourceId, { currentFrame: () => ({ frameId: 1, bytes }) });
+      fed.add(resource.sourceId);
+    }
+    return fed;
   }
 
   async function buildRig(width: number, height: number): Promise<Rig> {
@@ -243,6 +287,7 @@ export async function createPrevizRenderer(options: RendererOptions): Promise<Pr
       feeds.set(input.mediaKey, feed);
       backend.registerMediaSource(input.mediaKey, { currentFrame: () => ({ frameId: feed.frameId, bytes: feed.bytes }) });
     }
+    const stillsFed = feedStills(backend, plan, feeds);
     for (const [id, mesh] of meshes) {
       const ids = meshSourceIdsFor(id);
       backend.registerMediaSource(ids.points, { currentFrame: () => ({ frameId: 1, bytes: mesh.points }) });
@@ -250,7 +295,7 @@ export async function createPrevizRenderer(options: RendererOptions): Promise<Pr
     }
 
     const rig: Rig = {
-      key: `${width}x${height}`, width, height, backend, capabilities, base: plan, outputId: output.resourceId,
+      key: `${width}x${height}`, width, height, backend, capabilities, base: plan, outputId: output.resourceId, stillsFed,
       animator: createUniformAnimator(), pointer: createPointerSource(), frame: frameAt(0), feeds,
       driver: undefined as never,
     };
@@ -320,6 +365,7 @@ export async function createPrevizRenderer(options: RendererOptions): Promise<Pr
       // A structural change (a value that adds or removes a pass): rebuild the program.
       assertCompiled(next);
       log(`frame ${index}: structural change, recompiling`);
+      feedStills(rig.backend, next, rig.feeds, rig.stillsFed);
       rig.driver.setPlan(await rig.backend.compile(next));
       rig.base = next;
       rig.animator.reset();

@@ -21,6 +21,7 @@ The project is `projects/stage-previz/stage-previz-13.loom.json`. Spike B's repo
 | `src/host.ts` | the process: CLI, Unix socket (NDJSON), one serial GPU queue, lifetime |
 | `src/renderer.ts` | the Loom half: load, GLB meshes, one GPU program per output size, per-frame values, readback |
 | `src/shm.ts` | the shared-memory transport, isolated so it can switch |
+| `src/png.ts` | a PNG decoder on Node's zlib for still pictures (VN121): 8-bit RGB/RGBA, non-interlaced |
 | `native/loom_shm.c` | `loom-shm.node`: `shm_open` + `mmap` as an N-API addon of about 90 lines (Node has neither) |
 | `manifest/build-package.ts` | writes `package/` (manifest, project copy, media) from a `.loom.json` |
 | `package/manifest.json` | the -13 manifest, committed (the effect reads it at PARAMS_SETUP) |
@@ -55,7 +56,7 @@ From the repo root.
    | `loom-previz-host` | 118 MB | Node 24.21.0 plus the 1.6 MB bundle |
    | `dawn.node` | 8.9 MB | thinned to arm64 |
    | `loom-shm.node` | 68 KB | |
-   | `package/` | 2.9 MB | |
+   | `package/` | 3.0 MB | includes the 44 KB FX map |
 
    The total is about 130 MB on disk.
 
@@ -98,6 +99,7 @@ The client creates the shm slots, starts the host, connects, and runs these chec
   - With no Sides, 593,839 px differ.
 - **(d) Random access.** Frames at 1, 5, 20 and 33.3 s, with frame-dependent inputs, are rendered in order and then in the order 33.3, 1, 20, 5. All 4 pairs are byte-identical, and the four frames differ from each other.
 - **(e) Resize.** The client requests 960×540 (the DS sent at 960×540 is resampled) and then 1920×1080 again. The first 960×540 frame takes 160–170 ms, because it includes building that size's program.
+- **(f) The FX pixel map (VN121).** The client writes two package copies with Source FX = 2 (the map): one with the real PNG, one with an opaque black PNG of the same size (what the map rendered as before). 21,129 px differ, in x 211..1695, y 314..862 (the pixel lines on the drape and riser and the deck strobes), and the mean luminance there is 0.471 with the map against 0.340 without. See `f-fxmap.png` and `f-fxmap-black.png`. With still registration disabled the check fails: 0 px differ.
 - **Lifetime.** The host exits 0 when the client disconnects. It also exits 0 when stdin closes, which was checked separately.
 
 These checks were red before the output-node fix. While the host read back the plan's first output (a black solid), every check (a)–(d) failed.
@@ -121,7 +123,9 @@ The round trip is client write → socket → host render → readback → copy 
   - Each input registers as `media:stageFeeds/dsFeed` or `media:stageFeeds/sidesFeed`, with a new frameId on every request.
   - Bytes are uploaded as `rgba8unorm-srgb`, the movie node's texture format, at the texture's authored size (1920×1080 for both). A layer of another size is resampled bilinearly on the CPU.
   - A missing input is black.
-  - `movie_fxMap`, `testVideo` and Syphon have no source, so they are black. Decoding `fx-pixel-map-r2.png` is VN121.
+- **Stills (VN121).** A Movie File In on a `.png` (`movie_fxMap`, `fx-pixel-map-r2.png`) is decoded once at load by `src/png.ts` and registered as `media:<node id>` with a constant frameId, resampled to the texture's extent if it differs. The bytes are the file's own (straight alpha, display-encoded), as the app's `openStill` hands them over. Any other picture format, a 16-bit or palette PNG, or an interlaced PNG fails the load by name; `build-package.ts` fails when a still the project names is missing.
+  - What stays black, and the host logs each once: `movie_testVideo` (an mp4) and `syphonin_FX`.
+  - In the default view none of the three matters. -13 is saved with Source FX = 1 (the test pattern lights the FX fixtures), and Source FX is not on the panel, so the map shows only in a project saved with Source FX = 2. `testVideo` is the DS picture at Source = 1 (test), which is on the panel: that setting shows a black drape headless. Syphon is Source FX = 0.
 - **Output.** The Output node's `$target`, read back as rgba16float, display-encoded, alpha 1, at the requested size, and copied into the output slot.
 - **Manifest.**
   - The params are the panel's sliders and toggle, in board order and grouped by its section labels. That is 26 params: 25 sliders and the `toggle_talent` toggle.

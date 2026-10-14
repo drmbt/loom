@@ -100,12 +100,15 @@ for (const f of files) {
   if (!existsSync(src)) throw new Error(`media missing: ${src}`);
   copyFileSync(src, join(out, "media", basename(f)));
 }
-// Components' media (movieFileIn inside stageFeeds) too.
+// Components' media too: the FX pixel map (movie_fxMap inside stageFeeds) is a still the
+// host decodes (VN121), so a missing one is an error here, not a black node at render time.
 const lib = JSON.stringify(project.componentLibrary ?? {});
 for (const m of lib.matchAll(/"file":\s*"([^"]+\.(?:glb|gltf|png|jpe?g))"/gi)) {
   const f = m[1]!;
   const src = join(mediaRoot, f.replace(/^media\//, ""));
-  if (existsSync(src)) { copyFileSync(src, join(out, "media", basename(f))); files.add(f); }
+  if (!existsSync(src)) throw new Error(`component media missing: ${src}`);
+  copyFileSync(src, join(out, "media", basename(f)));
+  files.add(f);
 }
 mkdirSync(dirname(out), { recursive: true });
 console.log(`${manifest.name}: ${params.length} params, ${manifest.fps} fps, ${manifest.durationSeconds} s; media: ${[...files].map((f) => basename(f)).join(", ")} -> ${out}`);

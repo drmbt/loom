@@ -13,10 +13,12 @@
 //   (b) a parameter changes pixels (slider_orbit, toggle_talent);
 //   (c) a cut input renders differently from a fed one, and darker in the DS region;
 //   (d) frames requested out of order are byte-identical to the same frames in order;
+//   (f) the FX pixel map PNG is decoded and fed: with Source FX = map, the real PNG and a
+//       black one of the same size render the FX fixtures differently (VN121);
 //   plus a resize (960x540) and the round-trip time over N frames at 1920x1080.
 import { spawn } from "node:child_process";
 import { connect, type Socket } from "node:net";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { deflateSync } from "node:zlib";
@@ -105,74 +107,104 @@ function writePng(path: string, f: Float32Array, w: number, h: number): void {
 }
 
 // ---------- the host ----------
-const socketPath = join(process.env["TMPDIR"] ?? tmpdir(), `loomae.${process.pid}.sock`);
-const cmd = hostExe ? resolve(hostExe) : process.execPath;
-const cmdArgs = [
-  ...(hostExe ? [] : ["--import", "./src/tooling/alias-hooks.ts", "experiments/ae-host/src/host.ts"]),
-  "--package", packageDir, "--socket", socketPath, "--shm-prefix", prefix,
-];
-const spawnedAt = performance.now();
-const child = spawn(cmd, cmdArgs, { cwd: hostExe ? dirname(resolve(hostExe)) : repoRoot, stdio: ["pipe", "inherit", "pipe"] });
-const hostLog: string[] = [];
-child.stderr!.setEncoding("utf8").on("data", (s: string) => { hostLog.push(s); if (process.env["VERBOSE"]) process.stderr.write(s); });
-let hostExit: number | null = null;
-child.on("exit", (code) => { hostExit = code; });
-
-async function connectWithRetry(): Promise<Socket> {
-  for (let i = 0; i < 300; i++) {
-    const sock = await new Promise<Socket | null>((ok) => {
-      const s = connect(socketPath); s.once("connect", () => ok(s)); s.once("error", () => ok(null));
-    });
-    if (sock) return sock;
-    if (hostExit !== null) throw new Error(`host exited ${hostExit}:\n${hostLog.join("")}`);
-    await new Promise((r) => setTimeout(r, 50));
-  }
-  throw new Error("host never listened");
-}
-const sock = await connectWithRetry();
-sock.setNoDelay(true);
 /** Every host -> effect message, loosely: PROTOCOL.md v1 § Control channel. */
 interface HostMessage {
   type: "hello" | "frame" | "error" | "log";
   seq: number; protocol: number; name: string; gpu: string;
   slot: number; width: number; height: number; ms: number; message: string;
 }
-const pending = new Map<number, (m: HostMessage) => void>();
-let helloResolve: (m: HostMessage) => void;
-const hello = new Promise<HostMessage>((r) => (helloResolve = r));
-let buf = "";
-sock.setEncoding("utf8").on("data", (c: string) => {
-  buf += c; let nl: number;
-  while ((nl = buf.indexOf("\n")) >= 0) {
-    const m = JSON.parse(buf.slice(0, nl)) as HostMessage; buf = buf.slice(nl + 1);
-    if (m.type === "hello") helloResolve(m);
-    else if (m.type === "log") { if (process.env["VERBOSE"]) console.log(`  host log: ${m.message}`); }
-    else { pending.get(m.seq)?.(m); pending.delete(m.seq); }
+interface Host {
+  readonly child: ReturnType<typeof spawn>;
+  readonly log: string[];
+  /** The host's exit code once it has exited. */
+  exit: number | null;
+  readonly sock: Socket;
+  readonly hello: HostMessage;
+  readonly helloMs: number;
+  send(msg: { seq: number } & Record<string, unknown>): Promise<HostMessage>;
+}
+/** Starts a host on a package and connects to it (VN121: the FX-map check runs two more). */
+async function startHost(pkg: string, tag: string): Promise<Host> {
+  const socketPath = join(process.env["TMPDIR"] ?? tmpdir(), `loomae.${process.pid}.${tag}.sock`);
+  const cmd = hostExe ? resolve(hostExe) : process.execPath;
+  const cmdArgs = [
+    ...(hostExe ? [] : ["--import", "./src/tooling/alias-hooks.ts", "experiments/ae-host/src/host.ts"]),
+    "--package", pkg, "--socket", socketPath, "--shm-prefix", prefix,
+  ];
+  const spawnedAt = performance.now();
+  const child = spawn(cmd, cmdArgs, { cwd: hostExe ? dirname(resolve(hostExe)) : repoRoot, stdio: ["pipe", "inherit", "pipe"] });
+  const log: string[] = [];
+  const state = { exit: null as number | null };
+  child.stderr!.setEncoding("utf8").on("data", (s: string) => { log.push(s); if (process.env["VERBOSE"]) process.stderr.write(s); });
+  child.on("exit", (code) => { state.exit = code; });
+  let sock: Socket | null = null;
+  for (let i = 0; i < 300 && sock === null; i++) {
+    sock = await new Promise<Socket | null>((ok) => {
+      const s = connect(socketPath); s.once("connect", () => ok(s)); s.once("error", () => ok(null));
+    });
+    if (sock) break;
+    if (state.exit !== null) throw new Error(`host exited ${state.exit}:\n${log.join("")}`);
+    await new Promise((r) => setTimeout(r, 50));
   }
-});
-const h = await hello;
-const helloMs = performance.now() - spawnedAt;
-if (h.protocol !== 1) throw new Error(`protocol mismatch: ${h.protocol}`);
+  if (sock === null) throw new Error("host never listened");
+  sock.setNoDelay(true);
+  const pending = new Map<number, (m: HostMessage) => void>();
+  let helloResolve: (m: HostMessage) => void;
+  const hello = new Promise<HostMessage>((r) => (helloResolve = r));
+  let buf = "";
+  sock.setEncoding("utf8").on("data", (c: string) => {
+    buf += c; let nl: number;
+    while ((nl = buf.indexOf("\n")) >= 0) {
+      const m = JSON.parse(buf.slice(0, nl)) as HostMessage; buf = buf.slice(nl + 1);
+      if (m.type === "hello") helloResolve(m);
+      else if (m.type === "log") { if (process.env["VERBOSE"]) console.log(`  host log: ${m.message}`); }
+      else { pending.get(m.seq)?.(m); pending.delete(m.seq); }
+    }
+  });
+  const h = await hello;
+  const helloMs = performance.now() - spawnedAt;
+  if (h.protocol !== 1) throw new Error(`protocol mismatch: ${h.protocol}`);
+  const connected = sock;
+  return {
+    child, log, sock: connected, hello: h, helloMs,
+    get exit() { return state.exit; },
+    send(msg) {
+      return new Promise((ok, bad) => {
+        pending.set(msg.seq, (m) => (m.type === "frame" ? ok(m) : bad(new Error(m.message))));
+        connected.write(JSON.stringify(msg) + "\n");
+      });
+    },
+  };
+}
+/** Closes the connection and waits for the host to exit (it must, PROTOCOL.md lifetime). */
+async function stopHost(host: Host): Promise<boolean> {
+  host.sock.end();
+  const exited = await new Promise<boolean>((ok) => {
+    if (host.exit !== null) return ok(true);
+    const t = setTimeout(() => ok(false), 5000);
+    host.child.once("exit", () => { clearTimeout(t); ok(true); });
+  });
+  if (!exited) host.child.kill();
+  return exited;
+}
+const main = await startHost(packageDir, "main");
+const h = main.hello, helloMs = main.helloMs;
 console.log(`hello: ${JSON.stringify(h)} (${helloMs.toFixed(0)} ms after spawn)`);
 
 let seq = 0;
 const defaults = Object.fromEntries((manifest.params as { id: string; default: number | boolean }[]).map((p) => [p.id, typeof p.default === "boolean" ? (p.default ? 1 : 0) : p.default]));
 interface Req { time: number; width?: number; height?: number; params?: Record<string, number>; ds?: boolean; sides?: boolean; out?: number; dsSize?: [number, number] }
-function request(r: Req): Promise<HostMessage> {
+function request(r: Req, host: Host = main): Promise<HostMessage> {
   const id = ++seq;
   const width = r.width ?? W, height = r.height ?? H;
   const inputs: Record<string, unknown> = {};
   if (r.ds !== false) inputs["ds"] = { slot: SLOT.ds, width: r.dsSize?.[0] ?? W, height: r.dsSize?.[1] ?? H };
   if (r.sides !== false) inputs["sides"] = { slot: SLOT.sides, width: W, height: H };
-  const msg = { type: "render", seq: id, time: r.time, width, height, params: { ...defaults, ...r.params }, inputs, output: { slot: r.out ?? SLOT.out } };
-  return new Promise((ok, bad) => {
-    pending.set(id, (m) => (m.type === "frame" ? ok(m) : bad(new Error(m.message))));
-    sock.write(JSON.stringify(msg) + "\n");
-  });
+  return host.send({ type: "render", seq: id, time: r.time, width, height, params: { ...defaults, ...r.params }, inputs, output: { slot: r.out ?? SLOT.out } });
 }
 /** Render and copy the output out of the slot (the slot is reused by the next request). */
-async function render(r: Req, name?: string): Promise<{ f: Float32Array; bytes: Uint8Array; reply: HostMessage }> {
-  const reply = await request(r);
+async function render(r: Req, name?: string, host: Host = main): Promise<{ f: Float32Array; bytes: Uint8Array; reply: HostMessage }> {
+  const reply = await request(r, host);
   const view = (r.out ?? SLOT.out) === SLOT.out ? outSlot : out2Slot;
   const bytes = view.slice(0, reply.width * reply.height * 8);
   const f = toFloat(bytes);
@@ -276,19 +308,59 @@ try {
   const p95 = (v: number[]) => [...v].sort((a, b) => a - b)[Math.floor(v.length * 0.95)]!;
   const timing = `round trip median ${med(rt).toFixed(1)} ms, p95 ${p95(rt).toFixed(1)} ms, host median ${med(hostMs).toFixed(1)} ms over ${N} frames at 1920x1080 (${(1000 / med(rt)).toFixed(1)} fps)`;
   console.log(timing);
+  // (f) VN121: the FX pixel map (movie_fxMap, a PNG inside stageFeeds) is decoded and fed.
+  // -13 ships with Source FX = 1 (test pattern) and the panel does not expose it, so the map
+  // is not on screen by default. Two package copies set Source FX = 2 (the map): one with the
+  // real PNG, one with an opaque black PNG of the same size, which is what the map rendered as
+  // before VN121. The FX fixtures (pixel lines, strobes) must differ, and be brighter, with
+  // the real map.
+  {
+    const project = JSON.parse(readFileSync(join(packageDir, manifest.project), "utf8"));
+    const feeds = Object.values(project.graph.nodes as Record<string, { type: string; parameters: Record<string, unknown> }>)
+      .find((n) => n.type.startsWith("component:stageFeeds"));
+    if (feeds === undefined) throw new Error("f: no stageFeeds instance in the project");
+    feeds.parameters["sourceFX"] = 2;
+    const mapFile = /"file":\s*"[^"]*\/(fx-pixel-map[^"/]*\.png)"/.exec(JSON.stringify(project.componentLibrary))?.[1];
+    if (mapFile === undefined) throw new Error("f: the project names no fx-pixel-map PNG");
+    const png = readFileSync(join(packageDir, "media", mapFile));
+    const mw = png.readUInt32BE(16), mh = png.readUInt32BE(20);
+    const made: string[] = [];
+    const variant = (tag: string, black: boolean): string => {
+      const dir = join(process.env["TMPDIR"] ?? tmpdir(), `loomae.${process.pid}.${tag}`);
+      made.push(dir);
+      mkdirSync(join(dir, "media"), { recursive: true });
+      writeFileSync(join(dir, "manifest.json"), JSON.stringify(manifest));
+      writeFileSync(join(dir, manifest.project), JSON.stringify(project));
+      for (const file of readdirSync(join(packageDir, "media"))) copyFileSync(join(packageDir, "media", file), join(dir, "media", file));
+      if (black) writePng(join(dir, "media", mapFile), new Float32Array(mw * mh * 4).map((_, i) => (i % 4 === 3 ? 1 : 0)), mw, mh);
+      return dir;
+    };
+    try {
+      fill(dsSlot, W, H, dsCard(0)); fill(sidesSlot, W, H, sidesCard(0));
+      const shots: Record<string, Float32Array> = {};
+      for (const [tag, black] of [["fxmap", false], ["fxmap-black", true]] as const) {
+        const host = await startHost(variant(tag, black), tag);
+        try { shots[tag] = (await render({ time: T }, `f-${tag}`, host)).f; } finally { await stopHost(host); }
+      }
+      const withMap = shots["fxmap"]!, withoutMap = shots["fxmap-black"]!;
+      const fxMask = diffMask(withMap, withoutMap);
+      let lMap = 0, lBlack = 0;
+      for (let p = 0; p < fxMask.length; p++) if (fxMask[p]) { lMap += lum(withMap, p); lBlack += lum(withoutMap, p); }
+      const nFx = count(fxMask);
+      check("f: the FX pixel map lights the FX fixtures (Source FX = map)", nFx > 1000 && lMap > lBlack,
+        `${nFx} px differ between the real ${mapFile} (${mw}x${mh}) and a black one, region ${bbox(fxMask, W)}; mean luminance there: map ${(lMap / Math.max(1, nFx)).toFixed(3)}, black ${(lBlack / Math.max(1, nFx)).toFixed(3)}`);
+    } finally {
+      for (const dir of made) rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
   writeFileSync(join(outDir, "results.json"), JSON.stringify({ hello: h, helloMs, results, timing: { roundTripMedian: med(rt), roundTripP95: p95(rt), hostMedian: med(hostMs), frames: N } }, null, 2));
 } finally {
   // Lifetime: closing our only connection must make the host exit.
-  sock.end();
-  const exited = await new Promise<boolean>((ok) => {
-    if (hostExit !== null) return ok(true);
-    const t = setTimeout(() => ok(false), 5000);
-    child.once("exit", () => { clearTimeout(t); ok(true); });
-  });
-  check("lifetime: host exits when the last client disconnects", exited && hostExit === 0, `exit code ${hostExit}`);
-  if (!exited) child.kill();
+  const exited = await stopHost(main);
+  check("lifetime: host exits when the last client disconnects", exited && main.exit === 0, `exit code ${main.exit}`);
   for (const name of slotNames) unlinkSlot(name);
   const failed = results.filter((r) => !r.ok);
   console.log(failed.length === 0 ? `ALL ${results.length} CHECKS PASS (PNGs in ${outDir})` : `${failed.length} FAILED`);
-  if (failed.length > 0) { console.log(hostLog.join("")); process.exitCode = 1; }
+  if (failed.length > 0) { console.log(main.log.join("")); process.exitCode = 1; }
 }
