@@ -120,6 +120,7 @@ describe("examples: the gate", () => {
       "E86-Photo-Mapping-Point-Cloud.loom.json",
       "E87-Photo-Mapping-Falling-Facade.loom.json",
       "E88-Photo-Mapping-Ribbon-Peel.loom.json",
+      "E89-Cymatics.loom.json",
       "E9-Ember.loom.json",
     ]);
   });

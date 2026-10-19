@@ -529,6 +529,9 @@ const FRAME_ZERO_DIGESTS: Readonly<Record<string, string>> = {
   "E86-Photo-Mapping-Point-Cloud.loom.json": "9cc38b32abfe7d54",
   "E87-Photo-Mapping-Falling-Facade.loom.json": "f0f3112888228973",
   "E88-Photo-Mapping-Ribbon-Peel.loom.json": "a008916b8c0680c4",
+  // §T1714b — E89 Cymatics: four sand kernels (a kernel holds at most a million grains),
+  // each its own random stream, hopping on the plate's field.
+  "E89-Cymatics.loom.json": "4de0890542928729",
 };
 
 const POINT_KERNEL_TYPES = new Set(["pointKernel", "pointKernelAdvanced"]);
@@ -539,7 +542,7 @@ const POINT_KERNEL_TYPES = new Set(["pointKernel", "pointKernelAdvanced"]);
  * are held by the component tests. E86–E88 each add an attribute-motion region; their
  * lighting stage reads that attribute from upstream and remains a pure processor.
  */
-const SHIPPED_STEP_REGIONS = 71;
+const SHIPPED_STEP_REGIONS = 75;
 
 describe("T900 — every shipped kernel resolves byte-equal at frame 0", () => {
   const digests = new Map<string, string>();
@@ -579,8 +582,8 @@ describe("T900 — every shipped kernel resolves byte-equal at frame 0", () => {
     expect([...digests.keys()].sort()).toEqual(Object.keys(FRAME_ZERO_DIGESTS).sort());
     // 63 existing kernels, 51 family kernels, two E75 core-occlusion kernels, and E79's
     // ten (T1349b): the halo, six swarm grids, the dust, the core and its heart;
-    // E86–E88 each carry Carve, Paint, deformation and attribute lighting.
-    expect(kernelCount).toBe(138);
+    // E86–E88 each carry Carve, Paint, deformation and attribute lighting; E89 its four sand kernels.
+    expect(kernelCount).toBe(142);
   });
 
   it.each(Object.keys(FRAME_ZERO_DIGESTS))("%s is unchanged at frame 0", (fileName) => {

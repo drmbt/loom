@@ -109,6 +109,7 @@ happened:
 | [E86 Photo Mapping Point Cloud](./E86-Photo-Mapping-Point-Cloud.md) | Photo-coloured 3D points carried by depth-dependent curls; a custom motion attribute drives travelling cyan highlights. |
 | [E87 Photo Mapping Falling Facade](./E87-Photo-Mapping-Falling-Facade.md) | Photographic sections release in a staggered wave, tumble and fall, then reform; cohort attributes carry warm fracture highlights. |
 | [E88 Photo Mapping Ribbon Peel](./E88-Photo-Mapping-Ribbon-Peel.md) | Architectural relief peels into moving horizontal ribbons; a bend attribute drives colour independently of the camera. |
+| [E89 Cymatics](./E89-Cymatics.md) | A shaken dish of liquid filmed from above under a rig of coloured lamps: a shallow-water simulation with a Faraday drive and meniscus waves in a seven-lobed vessel, lit by a banded ring lamp that draws the waves as contour lines of slope. A lab signal generator, a tour of notes, a song mode on the shipped beat, and an oscilloscope with a hertz readout beside the dish, all on one Panel. |
 
 ## Running them
 

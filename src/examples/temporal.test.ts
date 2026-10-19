@@ -167,6 +167,10 @@ describe("examples with a temporal loop", () => {
       // make them chase the look instead of the signal.
       "E54-Quorum.loom.json",
       "E64-Relay.loom.json",
+      // E89's loop is a WHOLE PHYSICS STATE: height, two face velocities and the last step,
+      // run forty substeps a frame through two passes (momentum, then height), with the drive's
+      // oscillators kept in three corner cells because substeps share one frame clock.
+      "E89-Cymatics.loom.json",
       // T511: E9's loop is a SPARK STREAK. Two frames of an ember's own path, held so a
       // moving point reads as a moving point rather than a stipple — the loop's fourth
       // use in the set, after a smear, a simulation and a zoom. Its persistence is a
@@ -254,7 +258,9 @@ describe.each(temporalExamples)("$file.fileName temporal structure", ({ document
     // The edit has to actually be live, or this proves nothing: a pruned node never
     // reaches resource allocation, so the diff below would be trivially empty.
     expect(messagesOf(edited.diagnostics)).toEqual([]);
-    expect(edited.pruned).toEqual([]);
+    // Nothing the edit added was pruned. (A Panel is a surface, not a sink, so a document
+    // with one, E89, prunes it in every compile; the edit must not prune anything more.)
+    expect(edited.pruned).toEqual(plan.pruned);
     expect(edited.order).toContain("probe-level");
     expect(edited.order).toContain("probe-out");
 

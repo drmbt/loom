@@ -12,6 +12,8 @@ import { azulejoDocument } from "./documents/azulejo.ts";
 import { phoneDeskDocument } from "./documents/phone-desk.ts";
 import { setListDocument } from "./documents/set-list.ts";
 import { photoMappingMoonlitStoneDocument, photoMappingContourEngravingDocument, photoMappingVideoDocument, photoMappingPointCloudDocument, photoMappingFallingFacadeDocument, photoMappingRibbonPeelDocument } from "./documents/photo-mapping-samples.ts";
+export { cymaticsDocument } from "./documents/cymatics.ts";
+import { cymaticsDocument } from "./documents/cymatics.ts";
 import type { ProjectDocument } from "../domain/types/graph.ts";
 export { EXAMPLE_TIMESTAMP } from "./documents/builders.ts";
 export { feedbackEchoDocument } from "./documents/feedback-echo.ts";
@@ -222,4 +224,5 @@ export const EXAMPLE_DOCUMENTS: readonly ProjectDocument[] = [
   photoMappingPointCloudDocument,
   photoMappingFallingFacadeDocument,
   photoMappingRibbonPeelDocument,
+  cymaticsDocument,
 ];

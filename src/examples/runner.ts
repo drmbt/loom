@@ -286,9 +286,15 @@ export async function renderTrace(
     await backend.initialize({});
     const compiled = await backend.compile(plan);
     const snapshots: Record<string, number>[] = [];
+    // T1705b: one frame per tick, as the frame loop runs. vgpu 0.6.0 captures a frame's
+    // managed uniforms into a pooled page that returns to the pool when the frame completes;
+    // frames encoded back to back in one turn each take a fresh page (one createBuffer) and
+    // re-mint every bind group that names it, which the §V8 gate in runner.test.ts would read as a per-frame leak.
+    const tick = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
     for (const inputs of frameSequence(document, frameCount)) {
       backend.render(compiled, inputs);
       snapshots.push({ ...host.instrumentation?.calls });
+      await tick();
     }
     return { snapshots, framesSubmitted: backend.status.framesSubmitted, diagnostics };
   } finally {
