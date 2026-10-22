@@ -100,7 +100,32 @@ fn centre() -> vec2f { return vec2f(size()) * 0.5 + vec2f(0.37, 0.19); }
  * seven-fold mandalas where a round one, on a square grid, drifts towards the grid's four.
  */
 fn wet(p: vec2i, radius: f32) -> bool {
+  if (allWet) { return true; }
   return vesselReach(vec2f(p) + vec2f(0.5) - centre()) < radius;
+}
+
+/**
+ * Set by a pass once it knows every cell it will ask about is inside the vessel, so wet()
+ * answers without evaluating the wall. A step asks about a few hundred neighbours' wetness,
+ * and the wall function (powers, an arctangent, a cosine) was most of what a step cost.
+ */
+var<private> allWet: bool = false;
+
+/**
+ * How far vesselReach can move per cell moved, an upper bound for every shape: a superellipse
+ * moves at most as fast as the distance, a lobed wall's angle term adds lobes times depth, the
+ * square and the hexagon divide by their half-sizes. With it, a cell whose own reach sits
+ * further than this times a neighbour's distance inside the wall has every such neighbour
+ * inside too. A fractional lobe count has a seam at the negative x axis where the wall jumps,
+ * so no bound holds and the answer is a very large one (no cell is ever "deep inside").
+ */
+fn reachPerCell() -> f32 {
+  let shapes = 1.0 / min(SQUARE_HALF, HEX_APOTHEM);
+  if (i32(round(params.shape)) != 0) { return shapes; }
+  let depth = min(abs(params.lobeDepth), 0.5);
+  let lobes = abs(params.lobes);
+  if (abs(lobes - round(lobes)) > 1e-4) { return 1e9; }
+  return max(shapes, 1.0 / (1.0 - depth) + lobes * depth / ((1.0 - depth) * (1.0 - depth)));
 }
 
 ${VESSEL_WGSL}
@@ -249,7 +274,11 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
     if (p.x == 1) { return second; }
     return vec4f(signal(phaseOf(fundamental), phaseOf(second)), 0.0, 0.0);
   }
-  if (!wet(p, radius)) { return vec4f(0.0); }
+  let reach = vesselReach(vec2f(p) + vec2f(0.5) - centre());
+  if (!(reach < radius)) { return vec4f(0.0); }
+  // A step reads cells at most two over and one across (√5 away): deep enough inside the wall,
+  // every one of them is wet, and wet() need not ask the wall again.
+  allWet = reach + 2.3 * reachPerCell() + 0.05 < radius;
   let here = at(p);
   let shake = at(vec2i(2, 0)).r;
   let gravity = mix(0.03, 0.15, clamp(params.depth, 0.0, 1.0)) * (1.0 + clamp(params.drive, 0.0, 0.95) * shake);
@@ -286,7 +315,12 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   let here = at(p);
   if (isBook(p)) { return here; }
   let radius = params.radius * f32(size().x);
-  if (!wet(p, radius)) { return vec4f(0.0); }
+  let middle = centre();
+  let toward = vec2f(p) + vec2f(0.5) - middle;
+  let reach = vesselReach(toward);
+  if (!(reach < radius)) { return vec4f(0.0); }
+  // The four neighbours are one cell away.
+  allWet = reach + reachPerCell() + 0.05 < radius;
   let h = here.r;
   let east = at(p + vec2i(1, 0));
   let west = at(p - vec2i(1, 0));
@@ -302,14 +336,15 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   var dh = -flux;
 
   // The meniscus: a band one wavelength's sliver wide at the wall, pumped at the drive.
-  let middle = centre();
-  let toward = vec2f(p) + vec2f(0.5) - middle;
-  let band = smoothstep(radius - 8.0, radius - 1.0, vesselReach(toward));
-  // The meniscus pumps hardest where the wall bulges out (it climbs a convex wall further),
-  // so a lobed vessel is a ring of sources rather than one: their waves cross in the dish
-  // and draw the petals and islands, not only rings.
-  let focus = 1.0 + params.rimFocus * cos(params.lobes * atan2(toward.y, toward.x));
-  dh = dh + params.rim * 0.006 * at(vec2i(2, 0)).g * band * focus;
+  // Inside the band's inner edge it adds exactly nothing, so it is not evaluated there.
+  if (reach > radius - 8.0) {
+    let band = smoothstep(radius - 8.0, radius - 1.0, reach);
+    // The meniscus pumps hardest where the wall bulges out (it climbs a convex wall further),
+    // so a lobed vessel is a ring of sources rather than one: their waves cross in the dish
+    // and draw the petals and islands, not only rings.
+    let focus = 1.0 + params.rimFocus * cos(params.lobes * atan2(toward.y, toward.x));
+    dh = dh + params.rim * 0.006 * at(vec2i(2, 0)).g * band * focus;
+  }
 
   // A drop: a crater ringed by a lip, zero net volume. Its spot is hashed from the seed.
   if (params.splash > 0.0) {
@@ -336,76 +371,18 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
 `;
 
 /**
- * THE CAMERA AND THE LAMPS.
- *
- * A liquid surface is a mirror, so a camera above it sees the LAMPS, reflected wherever the
- * surface is tilted just so. Flat water reflects the camera itself and stays black. A lamp
- * at elevation e lights the slopes tilted by (90 - e) / 2 towards it, so low lamps catch only
- * the steep flanks of the crests and each lamp colours the flanks that face it. The ring
- * lamps around the lens are what draw the fine zebra lines of the reference photograph:
- * every point whose slope matches the ring's angle lights up, which traces contour lines of
- * slope across every wave.
- *
- * THE SHUTTER. The surface oscillates at half the drive frequency, far faster than a frame,
- * so one frame's surface is one arbitrary instant. A photograph exposes over many cycles;
- * a stroboscope freezes one phase. The state carries dh, so each point's oscillation can be
- * recovered (for a standing wave at angular rate w, h and dh/w are the two quadratures) and
- * the surface rebuilt at any phase. `strobe` picks the phase relative to the drive's own
- * (stored in the state), so it holds still; drive it with time and the pattern moves in slow
- * motion. `shutter` opens the exposure over that share of a cycle, which smears each
- * highlight along its path: the streaks of a long exposure.
- *
- * Under the surface: the dish's dark floor, lit through the water. A crest focuses light
- * and a trough spreads it, so the floor shows the caustic of the surface's curvature.
+ * The sand's part of the surface (§T1718b): its parameters, its texture, the raking light and
+ * the mix over a darkened plate. Only `wgsl_sandlit` carries it; `wgsl_surface` is the same
+ * shader without it, so the plain surface binds no sand texture and the sand chain can be
+ * switched off whole.
  */
-export const CYMATICS_SURFACE_WGSL = `${SHARED_UNIFORMS_WGSL}
-struct Params {
-  radius: f32, // @default 0.47 Dish radius as a share of the simulation grid. Keep it equal to the simulation's.
-  lobes: f32, // @default 7 The vessel's bulges, as the simulation has them.
-  lobeDepth: f32, // @default 0.03 How far they stand out.
-  shape: f32, // @default 0 The vessel, as the simulation (or the plate) has it.
-  squareness: f32, // @default 0 Round to square, as the simulation has it.
-  frequency: f32, // @default 29.14 The drive frequency, so the shutter knows the surface's cycle.
-  dishSize: f32, // @default 0.55 As the simulation has it.
-  waveHeight: f32, // @default 1 Exaggerates the slopes the lamps see.
-  shutter: f32, // @default 0.05 Exposure as a share of one wave cycle: 0 a strobe flash, 1 the whole cycle.
-  strobe: f32, // @default 0 Which phase of the cycle the strobe catches, in turns. Drive it with time for slow motion.
-  palette: f32, // @default 0 The lamp rig: 0 Cymascope, 1 Prism, 2 Ember, 3 Aurora, 4 Peacock, 5 Neon. Between two whole numbers it blends.
-  rigTurn: f32, // @default 0 Turns the rig of coloured lamps around the dish, in turns.
-  ring: f32, // @default 1.3 Ring lamps around the lens: the fine contour lines.
-  rings: f32, // @default 7 Rows of LEDs in the ring lamp, 1 to 16. More rows, denser stripes.
-  ringColour: f32, // @default 0.9 0 white rings; 1 each ring takes its own colour from the rig, so gentle and steep slopes differ.
-  radial: f32, // @default 0 Recolours the dish centre to edge in the rig's colours.
-  spots: f32, // @default 0.15 The six coloured lamps: faint by default, the ring lamp draws the figure.
-  elevation: f32, // @default 60 Height of the coloured lamps above the horizon, in degrees. Lower lamps catch only the steepest flanks.
-  caustics: f32, // @default 0.6 Light focused through the waves onto the dish's floor.
-  exposure: f32, // @default 2 Overall exposure.
-  tilt: f32, // @default 0 Camera tilt away from straight down, in degrees.
-  orbit: f32, // @default 0 Camera heading around the dish, in degrees.
-  zoom: f32, // @default 1 Camera zoom.
-  flash: f32, // @default 0 A flash on the coloured lamps, 0..1 (the beat lane).
-  shimmer: f32, // @default 0 Lamps warm towards white where the surface swings hardest.
-  sand: f32, // @default 0 Sand on the plate: 0 none, 1 the grains alone under a raking light, over a darkened plate.
+const SAND_PARAMS = `  sand: f32, // @default 0 Sand on the plate: 0 none, 1 the grains alone under a raking light, over a darkened plate.
   sandTint: vec3f, // @default [1, 0.9, 0.74] The sand's colour.
-  viewEye: vec3f, // @default [0, 3.7, 0.001] Viewport camera position.
-  viewTarget: vec3f, // @default [0, 0, 0] Viewport camera target.
-  viewFov: f32, // @default 36 Viewport field of view, degrees.
-  viewOverride: f32, // @default 0 1 while the viewer's orbit camera is in charge.
-};
-
-@group(0) @binding(0) var inputSampler: sampler;
-@group(0) @binding(1) var inputTexture: texture_2d<f32>;
-@group(0) @binding(2) var<uniform> frameU: SharedFrame;
-@group(0) @binding(3) var<uniform> params: Params;
-// The sand: grains drawn into the dish's own square by 'points_sand' (§T1714b).
+`;
+const SAND_BINDING = `// The sand: grains drawn into the dish's own square by 'points_sand' (§T1714b).
 @group(0) @binding(4) var inputTexture1: texture_2d<f32>;
-
-const PI: f32 = 3.14159265;
-const TAU: f32 = 6.28318531;
-const TIME_SCALE: f32 = ${TIME_SCALE};
-${VESSEL_WGSL}
-
-/** Grains per texel, bilinear by hand (the texture is bound unfilterable). */
+`;
+const SAND_FUNCTIONS = `/** Grains per texel, bilinear by hand (the texture is bound unfilterable). */
 fn sandAt(uv: vec2f) -> f32 {
   let dims = vec2f(textureDimensions(inputTexture1));
   let p = uv * dims - vec2f(0.5);
@@ -437,8 +414,81 @@ fn sandLight(uv: vec2f) -> vec4f {
   return vec4f(lit * cover, cover);
 }
 
-/** Six rigs, six colours each: four lamps, the ring, the liquid's own tint. */
-var<private> PALETTES: array<vec3f, 36> = array<vec3f, 36>(
+`;
+const SAND_MIX = `  if (params.sand > 0.0) {
+    let grains = sandLight(suv);
+    colour = mix(colour, colour * 0.06 + grains.rgb * 0.7, params.sand);
+  }
+`;
+
+/**
+ * THE CAMERA AND THE LAMPS.
+ *
+ * A liquid surface is a mirror, so a camera above it sees the LAMPS, reflected wherever the
+ * surface is tilted just so. Flat water reflects the camera itself and stays black. A lamp
+ * at elevation e lights the slopes tilted by (90 - e) / 2 towards it, so low lamps catch only
+ * the steep flanks of the crests and each lamp colours the flanks that face it. The ring
+ * lamps around the lens are what draw the fine zebra lines of the reference photograph:
+ * every point whose slope matches the ring's angle lights up, which traces contour lines of
+ * slope across every wave.
+ *
+ * THE SHUTTER. The surface oscillates at half the drive frequency, far faster than a frame,
+ * so one frame's surface is one arbitrary instant. A photograph exposes over many cycles;
+ * a stroboscope freezes one phase. The state carries dh, so each point's oscillation can be
+ * recovered (for a standing wave at angular rate w, h and dh/w are the two quadratures) and
+ * the surface rebuilt at any phase. `strobe` picks the phase relative to the drive's own
+ * (stored in the state), so it holds still; drive it with time and the pattern moves in slow
+ * motion. `shutter` opens the exposure over that share of a cycle, which smears each
+ * highlight along its path: the streaks of a long exposure.
+ *
+ * Under the surface: the dish's dark floor, lit through the water. A crest focuses light
+ * and a trough spreads it, so the floor shows the caustic of the surface's curvature.
+ */
+const surfaceWgsl = (sand: boolean) => `${SHARED_UNIFORMS_WGSL}
+struct Params {
+  radius: f32, // @default 0.47 Dish radius as a share of the simulation grid. Keep it equal to the simulation's.
+  lobes: f32, // @default 7 The vessel's bulges, as the simulation has them.
+  lobeDepth: f32, // @default 0.03 How far they stand out.
+  shape: f32, // @default 0 The vessel, as the simulation (or the plate) has it.
+  squareness: f32, // @default 0 Round to square, as the simulation has it.
+  frequency: f32, // @default 29.14 The drive frequency, so the shutter knows the surface's cycle.
+  dishSize: f32, // @default 0.55 As the simulation has it.
+  waveHeight: f32, // @default 1 Exaggerates the slopes the lamps see.
+  shutter: f32, // @default 0.05 Exposure as a share of one wave cycle: 0 a strobe flash, 1 the whole cycle.
+  strobe: f32, // @default 0 Which phase of the cycle the strobe catches, in turns. Drive it with time for slow motion.
+  palette: f32, // @default 0 The lamp rig: 0 Cymascope, 1 Prism, 2 Ember, 3 Aurora, 4 Peacock, 5 Neon. Between two whole numbers it blends.
+  rigTurn: f32, // @default 0 Turns the rig of coloured lamps around the dish, in turns.
+  ring: f32, // @default 1.3 Ring lamps around the lens: the fine contour lines.
+  rings: f32, // @default 7 Rows of LEDs in the ring lamp, 1 to 16. More rows, denser stripes.
+  ringColour: f32, // @default 0.9 0 white rings; 1 each ring takes its own colour from the rig, so gentle and steep slopes differ.
+  radial: f32, // @default 0 Recolours the dish centre to edge in the rig's colours.
+  spots: f32, // @default 0.15 The six coloured lamps: faint by default, the ring lamp draws the figure.
+  elevation: f32, // @default 60 Height of the coloured lamps above the horizon, in degrees. Lower lamps catch only the steepest flanks.
+  caustics: f32, // @default 0.6 Light focused through the waves onto the dish's floor.
+  exposure: f32, // @default 2 Overall exposure.
+  tilt: f32, // @default 0 Camera tilt away from straight down, in degrees.
+  orbit: f32, // @default 0 Camera heading around the dish, in degrees.
+  zoom: f32, // @default 1 Camera zoom.
+  flash: f32, // @default 0 A flash on the coloured lamps, 0..1 (the beat lane).
+  shimmer: f32, // @default 0 Lamps warm towards white where the surface swings hardest.
+${sand ? SAND_PARAMS : ""}  viewEye: vec3f, // @default [0, 3.7, 0.001] Viewport camera position.
+  viewTarget: vec3f, // @default [0, 0, 0] Viewport camera target.
+  viewFov: f32, // @default 36 Viewport field of view, degrees.
+  viewOverride: f32, // @default 0 1 while the viewer's orbit camera is in charge.
+};
+
+@group(0) @binding(0) var inputSampler: sampler;
+@group(0) @binding(1) var inputTexture: texture_2d<f32>;
+@group(0) @binding(2) var<uniform> frameU: SharedFrame;
+@group(0) @binding(3) var<uniform> params: Params;
+${sand ? SAND_BINDING : ""}
+const PI: f32 = 3.14159265;
+const TAU: f32 = 6.28318531;
+const TIME_SCALE: f32 = ${TIME_SCALE};
+${VESSEL_WGSL}
+
+${sand ? SAND_FUNCTIONS : ""}/** Six rigs, six colours each: four lamps, the ring, the liquid's own tint. A const: see the plate's tables. */
+const PALETTES: array<vec3f, 36> = array<vec3f, 36>(
   // 0 Cymascope: ice, cobalt, aqua and violet.
   vec3f(0.0, 0.6, 1.0), vec3f(0.0, 0.18, 1.0), vec3f(0.2, 1.0, 0.9), vec3f(0.45, 0.25, 1.0), vec3f(0.6, 0.88, 1.0), vec3f(0.0, 0.06, 0.16),
   // 1 Prism: the three primaries and amber.
@@ -610,11 +660,7 @@ fn radiance(cam: Camera, ndc: vec2f, exposures: i32, cellsPerPixel: f32) -> vec3
   // brightness and takes the gradient's hue.
   let luma = dot(colour, vec3f(0.2126, 0.7152, 0.0722));
   colour = mix(colour, luma * centreToEdge / max(dot(centreToEdge, vec3f(0.2126, 0.7152, 0.0722)), 0.05), params.radial);
-  if (params.sand > 0.0) {
-    let grains = sandLight(suv);
-    colour = mix(colour, colour * 0.06 + grains.rgb * 0.7, params.sand);
-  }
-  return colour * smoothstep(1.0, 0.9, r);
+${sand ? SAND_MIX : ""}  return colour * smoothstep(1.0, 0.9, r);
 }
 
 /** Four samples per pixel on a rotated grid: the contour lines are thinner than a pixel. */
@@ -639,6 +685,10 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   return vec4f(colour * 0.25, 1.0);
 }
 `;
+/** The camera and the lamps: `wgsl_surface`. */
+export const CYMATICS_SURFACE_WGSL = surfaceWgsl(false);
+/** The same, with the sand lit over a darkened plate: `wgsl_sandlit`, the picture of `layer_sand`. */
+export const CYMATICS_SANDLIT_WGSL = surfaceWgsl(true);
 
 /**
  * THE INSTRUMENT PANEL, for when the dish is being shown rather than played: a bench
@@ -968,6 +1018,7 @@ struct Params {
   symmetry: f32, // @default 12 The lattice's order: 12 for the 4:5 quasipattern, 6 for hexagons, 8 or 10 for the metastable ones.
   second: f32, // @default 0 The second ring's weight (the second tone): superlattices.
   secondRatio: f32, // @default 1.25 The second ring's wavenumber against the first's.
+  show: f32, // @default 1 0 while nothing reads the plate (the liquid is on show): the pass writes black and sums no modes.
 };
 @group(0) @binding(0) var inputSampler: sampler;
 @group(0) @binding(1) var inputTexture: texture_2d<f32>;
@@ -979,6 +1030,7 @@ ${PLATE_COMMON}
 
 @fragment
 fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
+  if (params.show < 0.5) { return vec4f(0.0); }
   let d = (uv - vec2f(0.5)) / params.radius;
   let shape = i32(round(params.shape));
   if (vesselReach(d) > 1.0) { return vec4f(0.0); }

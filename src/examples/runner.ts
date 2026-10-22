@@ -1,4 +1,4 @@
-import { compileGraph, flattenComponents } from "../compiler/index.ts";
+import { compileGraph, compileLayerWarmPlan, flattenComponents } from "../compiler/index.ts";
 import type { CompiledGraph, FlattenedGraph } from "../compiler/index.ts";
 import { documentFindings, requireCodeBuilt, type DocumentFinding } from "../compiler/document-findings.ts";
 import { loadProject } from "../domain/project/index.ts";
@@ -58,6 +58,12 @@ export interface RunExampleResult {
   readonly placeholders: readonly UnknownNodePlaceholder[];
   readonly plan: CompiledGraph | undefined;
   readonly read: PlanReadResult | undefined;
+  /**
+   * §T1718b: the plan with every Layer the file ships OFF switched on (`compileLayerWarmPlan`,
+   * the plan the app builds ahead so the switch builds nothing). Null when no Layer ships off.
+   * An off Layer prunes its picture's chain by design, so §V25 holds the file to this plan.
+   */
+  readonly layersOn?: CompiledGraph | null;
   /**
    * §T1641b slice 3: what `documentFindings` says of the loaded document, the compile above
    * included. The write gate over every stored node and every definition the file carries,
@@ -129,7 +135,7 @@ export function runExample(file: ExampleFile): RunExampleResult {
     // a declared output socket; an explicit $target socket would be invalid.
     ...displays.map(node => ({ nodeId: node.id, kind: "readback" as const })),
   ];
-  const plan = compileGraph({
+  const request = {
     graph: loaded.document.graph,
     settings: loaded.document.settings,
     registry,
@@ -137,7 +143,8 @@ export function runExample(file: ExampleFile): RunExampleResult {
     components: components.view(),
     flattened,
     ...(sinks === undefined ? {} : { sinks }),
-  });
+  };
+  const plan = compileGraph(request);
 
   return {
     fileName: file.fileName,
@@ -148,6 +155,7 @@ export function runExample(file: ExampleFile): RunExampleResult {
     placeholders: loaded.placeholders,
     plan,
     read: readExecutionPlan(plan),
+    layersOn: compileLayerWarmPlan(request),
     findings: documentFindings({
       graph: loaded.document.graph,
       settings: loaded.document.settings,

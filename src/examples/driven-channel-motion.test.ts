@@ -387,7 +387,6 @@ const DELIBERATELY_STILL: Record<string, string> = {
   "E89-Cymatics.loom.json slider_drivepoint.drivepoint": "Slider: moves by hand only",
   "E89-Cymatics.loom.json slider_shape.shape": "Slider: moves by hand only",
   "E89-Cymatics.loom.json toggle_plate.plate": "Toggle: flips by hand only",
-  "E89-Cymatics.loom.json toggle_sand.sand": "Toggle: flips by hand only",
   "E89-Cymatics.loom.json button_scatter.scatter": "Button: pressed by hand only",
   "E89-Cymatics.loom.json slider_agitation.agitation": "Slider: moves by hand only",
   "E89-Cymatics.loom.json slider_powder.powder": "Slider: moves by hand only",

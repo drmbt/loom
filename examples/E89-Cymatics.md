@@ -11,8 +11,8 @@ figure is the liquid answering the drive.
 ```
 feedback_state(feedback) ─► wgsl_momentum(customWgsl) ─► wgsl_height(customWgsl) ─► switch_medium(switch)
 feedback_modes(feedback) ─► wgsl_modes(customWgsl) ─► wgsl_plate(customWgsl) ─► switch_medium(switch)
-switch_medium(switch) ─► wgsl_surface(customWgslMulti) ─► threshold_hot(threshold) ─► blur_halo(blur) ─► add_glow(add)
-switch_medium(switch) ─► kernel_sand0(pointKernel) ─► points_sand0(renderPoints) ─► add_sand01(add) ─► add_sand(add) ─► wgsl_surface(customWgslMulti)
+switch_medium(switch) ─► wgsl_surface(customWgsl) ─► layer_sand(layer) ─► threshold_hot(threshold) ─► blur_halo(blur) ─► add_glow(add)
+switch_medium(switch) ─► kernel_sand0(pointKernel) ─► points_sand0(renderPoints) ─► add_sand01(add) ─► add_sand(add) ─► wgsl_sandlit(customWgslMulti) ─► layer_sand(layer)
 add_glow(add) ─► wgsl_hud(customWgsl) ─► output1(output)
 ```
 
@@ -82,8 +82,14 @@ drifts a little down the slope of that motion (Grabec & Sok 2023): the grains dr
 places that move and gather on the lines that stand still, as Chladni's sand did, in about a
 thousand cycles. `Sand → fine powder` turns the drift around, the way fine powder gathers where
 the plate moves most (Faraday 1831). `points_sand0` … `points_sand3` draw the grains into the dish's own square
-and `wgsl_surface` lights them from low on one side, over a darkened plate. **Scatter sand**
-throws every grain back across the plate.
+and `wgsl_sandlit`, the same surface as `wgsl_surface`, lights them from low on one side, over a
+darkened plate. **Scatter sand** throws every grain back across the plate.
+
+The sand is a Layer, `layer_sand`, and it ships off. Its Picture is `wgsl_sandlit` and the stack
+below it is the plain `wgsl_surface`. Off is bypass: the plain surface passes straight through
+and the compiler prunes the whole sand chain, so the four million grains cost nothing while the
+sand is off. Its switch and fader sit on the Panel under the Plate toggle; the fader blends the
+sand in over the plain surface. Switched on, the grains start scattered and gather again.
 
 ## The Faraday lattice
 

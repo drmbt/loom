@@ -15,6 +15,7 @@ import {
   CYMATICS_SAND_KERNEL,
   CYMATICS_SAND_SIZE,
   CYMATICS_MOMENTUM_WGSL,
+  CYMATICS_SANDLIT_WGSL,
   CYMATICS_SURFACE_WGSL,
 } from "../shaders/cymatics.wgsl.ts";
 
@@ -28,8 +29,14 @@ import {
  *
  *   feedback_state(feedback, substeps ← slider_speed) ─► wgsl_momentum(customWgsl) ─► wgsl_height(customWgsl)
  *        ╰┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ source: "wgsl_height" ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄╯
- *   wgsl_height ─► wgsl_surface(customWgsl) ─► threshold_hot ─► blur_halo ─┐
- *                               └──────────────────────────────────────► add_glow ─► wgsl_hud(customWgsl) ─► output1
+ *   wgsl_height ─► wgsl_surface(customWgsl) ─► layer_sand(layer) ─► threshold_hot ─► blur_halo ─┐
+ *                                                        └──────────────────────────────────────► add_glow ─► wgsl_hud(customWgsl) ─► output1
+ *   kernel_sand0…3 ─► points_sand0…3 ─► add_sand ─► wgsl_sandlit(customWgslMulti) ─► layer_sand (Picture)
+ *
+ * SAND IS A LAYER, AND IT SHIPS OFF (§T1718b). `layer_sand` puts `wgsl_sandlit`, the same
+ * surface with the grains lit over a darkened plate, over `wgsl_surface`. Off is bypass: the
+ * plain surface passes through and the compiler prunes the whole sand chain, four million
+ * grains included, so sand that is off costs nothing. Its switch and fader sit on the Panel.
  *
  * The physics (shallow water with a Faraday drive and a meniscus) is in
  * `../shaders/cymatics.wgsl.ts`. The reference is the owner's photograph at 29.14 Hz (A#0):
@@ -101,7 +108,6 @@ const SQUARENESS = chan("slider_squareness", "squareness");
 const SHAPE = chan("slider_shape", "shape");
 /** 1 while the plate (Chladni/Bessel modes) is on show instead of the liquid. */
 const PLATE = chan("toggle_plate", "plate");
-const SAND = chan("toggle_sand", "sand");
 /** On the tour the dish shrinks a little as the note climbs, so the high stops stay readable. */
 const DISH = `${chan("slider_dish", "dish")} * (1 - ${TOUR}) + ${TOUR} * 0.55 * (29.14 / (${TOUR_FREQUENCY})) ^ 0.4`;
 const RADIUS = 0.47;
@@ -192,14 +198,16 @@ type Recipe = {
   readonly lobes: number; readonly shape: number; readonly palette: number; readonly radial?: number;
   readonly plate?: boolean; readonly sand?: boolean;
 };
+/** The Layer that puts the sand over the surface (§T1718b): a recipe switches it, never a toggle. */
+const SAND_LAYER = "layer_sand";
 const RECIPE_TARGETS = ["frequency", "drive", "harmonic2", "harmonic3", "tone", "toneratio", "rim", "viscosity", "lobes", "shape", "palette", "radial"] as const;
 function recipe(name: string, r: Recipe): Preset {
   const values: Record<string, Record<string, number | boolean>> = {};
   const full = { drive: 0.3, harmonic2: 0, harmonic3: 0, tone: 0, toneratio: 1.5, rim: 1, viscosity: 0.5, radial: 0.3, ...r };
   for (const key of RECIPE_TARGETS) values[`slider_${key}`] = { value: full[key] };
   values["toggle_plate"] = { on: r.plate === true };
-  values["toggle_sand"] = { on: r.sand === true };
-  return { name, values };
+  values[SAND_LAYER] = { opacity: 1 };
+  return { name, values, on: { [SAND_LAYER]: r.sand === true } };
 }
 const RECIPES: readonly Preset[] = [
   // The owner's reference photograph: A#0 in a seven-lobed dish.
@@ -223,7 +231,7 @@ const RECIPES: readonly Preset[] = [
   // A circular plate on a seven-fold resonance (J_7, the 30.35 Hz mode spot).
   recipe("bessel_seven", { frequency: 30.35, lobes: 7, shape: 1, palette: 0, plate: true }),
 ];
-const RECIPE_BANK_TARGETS = [...RECIPE_TARGETS.map((key) => `slider_${key}.value`), "toggle_plate.on", "toggle_sand.on"].join(" ");
+const RECIPE_BANK_TARGETS = [...RECIPE_TARGETS.map((key) => `slider_${key}.value`), "toggle_plate.on", `${SAND_LAYER}.opacity`].join(" ");
 
 /** The Panel: four groups of three columns, a caption above each. */
 const groupColumns: ReadonlyArray<readonly [number, string, readonly SliderSpec[]]> = [
@@ -247,7 +255,7 @@ const CYMATICS_BOARD = serializePanelBoard({
     { member: "button_calm", rect: { x: 3, y: 12, w: 3, h: 1 } },
     { member: "toggle_xy", rect: { x: 9, y: 7, w: 3, h: 1 } },
     { member: "toggle_plate", rect: { x: 9, y: 8, w: 3, h: 1 } },
-    { member: "toggle_sand", rect: { x: 9, y: 9, w: 3, h: 1 } },
+    { member: SAND_LAYER, rect: { x: 9, y: 9, w: 3, h: 1 } },
     { member: "button_scatter", rect: { x: 9, y: 10, w: 3, h: 1 } },
     { label: "Recipes", rect: { x: 0, y: 14, w: 12, h: 1 } },
     { member: "presets_recipes", rect: { x: 0, y: 15, w: 12, h: 2 } },
@@ -258,6 +266,33 @@ const CYMATICS_BOARD = serializePanelBoard({
 function wired(role: string, type: string, position: readonly [number, number], parameters: GraphNode["parameters"], extra: Partial<GraphNode> = {}): GraphNode {
   return named(role, type, position, {}, { ...extra, parameters: { ...parameters, ...(extra.parameters ?? {}) } });
 }
+
+/** The lamps in the liquid: `wgsl_surface`, and `wgsl_sandlit` with the sand on (§T1718b). */
+const SURFACE: GraphNode["parameters"] = {
+        source: CYMATICS_SURFACE_WGSL,
+        radius: RADIUS, lobes: expressionSlot(LOBES, DEFAULTS.lobes), lobeDepth: LOBE_DEPTH, shape: expressionSlot(SHAPE, 0), squareness: expressionSlot(SQUARENESS, 0),
+        dishSize: expressionSlot(DISH, DEFAULTS.dish),
+        radial: expressionSlot(chan("slider_radial", "radial"), DEFAULTS.radial),
+        frequency: expressionSlot(FREQUENCY, DEFAULTS.frequency),
+        waveHeight: expressionSlot(chan("slider_waveheight", "waveheight"), DEFAULTS.waveheight),
+        shutter: expressionSlot(chan("slider_shutter", "shutter"), DEFAULTS.shutter),
+        strobe: expressionSlot(`abstime * ${chan("slider_slowmo", "slowmo")}`, 0),
+        palette: expressionSlot(`${chan("slider_palette", "palette")} + ${SONG} * floor(${chan("audiofile_clip", "bar")} / 4) + ${TOUR_PALETTE}`, DEFAULTS.palette),
+        rigTurn: expressionSlot(`abstime * ${chan("slider_rigspin", "rigspin")} + 0.05 * ${songs(MID)}`, 0),
+        ring: expressionSlot(chan("slider_ring", "ring"), DEFAULTS.ring),
+        rings: expressionSlot(chan("slider_rings", "rings"), DEFAULTS.rings),
+        ringColour: expressionSlot(chan("slider_ringcolour", "ringcolour"), DEFAULTS.ringcolour),
+        spots: expressionSlot(chan("slider_spots", "spots"), DEFAULTS.spots),
+        elevation: expressionSlot(chan("slider_elevation", "elevation"), DEFAULTS.elevation),
+        caustics: expressionSlot(chan("slider_caustics", "caustics"), DEFAULTS.caustics),
+        exposure: 2,
+        tilt: expressionSlot(`${chan("slider_tilt", "tilt")} + ${TOUR} * 14 * (0.5 - 0.5 * cos(abstime * 0.07))`, DEFAULTS.tilt),
+        orbit: expressionSlot(chan("slider_orbit", "orbit"), DEFAULTS.orbit),
+        zoom: expressionSlot(chan("slider_zoom", "zoom"), DEFAULTS.zoom),
+        flash: expressionSlot(songs(KICK), 0),
+        shimmer: expressionSlot(songs(HIGH), 0),
+        viewEye: [0, 3.7, 0.001], viewTarget: [0, 0, 0], viewFov: 36, viewOverride: 0,
+};
 
 export const cymaticsDocument = document(
   "e89-cymatics",
@@ -331,6 +366,9 @@ export const cymaticsDocument = document(
         symmetry: expressionSlot(LOBES, DEFAULTS.lobes),
         second: expressionSlot(TONE, DEFAULTS.tone),
         secondRatio: expressionSlot(TONE_RATIO, DEFAULTS.toneratio),
+        // Only the plate reads this field (the sand reads whatever the switch shows), so it
+        // sums its modes only while the plate is on show.
+        show: expressionSlot(PLATE, 0),
       }, {
         resolution: { mode: "fixed", width: SIM_SIZE, height: SIM_SIZE },
         format: { mode: "fixed", format: "rgba16float" },
@@ -362,39 +400,17 @@ export const cymaticsDocument = document(
       wired("medium", "switch", [300, -500], { index: expressionSlot(PLATE, 0), crossfade: false }),
 
       // ── The picture: the lamps in the liquid, then a glow ──
-      wired("surface", "customWgslMulti", [300, 0], {
-        source: CYMATICS_SURFACE_WGSL,
-        radius: RADIUS, lobes: expressionSlot(LOBES, DEFAULTS.lobes), lobeDepth: LOBE_DEPTH, shape: expressionSlot(SHAPE, 0), squareness: expressionSlot(SQUARENESS, 0),
-        dishSize: expressionSlot(DISH, DEFAULTS.dish),
-        radial: expressionSlot(chan("slider_radial", "radial"), DEFAULTS.radial),
-        frequency: expressionSlot(FREQUENCY, DEFAULTS.frequency),
-        waveHeight: expressionSlot(chan("slider_waveheight", "waveheight"), DEFAULTS.waveheight),
-        shutter: expressionSlot(chan("slider_shutter", "shutter"), DEFAULTS.shutter),
-        strobe: expressionSlot(`abstime * ${chan("slider_slowmo", "slowmo")}`, 0),
-        palette: expressionSlot(`${chan("slider_palette", "palette")} + ${SONG} * floor(${chan("audiofile_clip", "bar")} / 4) + ${TOUR_PALETTE}`, DEFAULTS.palette),
-        rigTurn: expressionSlot(`abstime * ${chan("slider_rigspin", "rigspin")} + 0.05 * ${songs(MID)}`, 0),
-        ring: expressionSlot(chan("slider_ring", "ring"), DEFAULTS.ring),
-        rings: expressionSlot(chan("slider_rings", "rings"), DEFAULTS.rings),
-        ringColour: expressionSlot(chan("slider_ringcolour", "ringcolour"), DEFAULTS.ringcolour),
-        spots: expressionSlot(chan("slider_spots", "spots"), DEFAULTS.spots),
-        elevation: expressionSlot(chan("slider_elevation", "elevation"), DEFAULTS.elevation),
-        caustics: expressionSlot(chan("slider_caustics", "caustics"), DEFAULTS.caustics),
-        exposure: 2,
-        tilt: expressionSlot(`${chan("slider_tilt", "tilt")} + ${TOUR} * 14 * (0.5 - 0.5 * cos(abstime * 0.07))`, DEFAULTS.tilt),
-        orbit: expressionSlot(chan("slider_orbit", "orbit"), DEFAULTS.orbit),
-        zoom: expressionSlot(chan("slider_zoom", "zoom"), DEFAULTS.zoom),
-        flash: expressionSlot(songs(KICK), 0),
-        shimmer: expressionSlot(songs(HIGH), 0),
-        sand: expressionSlot(SAND, 0),
-        sandTint: [1, 0.9, 0.74],
-        viewEye: [0, 3.7, 0.001], viewTarget: [0, 0, 0], viewFov: 36, viewOverride: 0,
-      }, { resolution: { mode: "project" } }),
-      wired("hot", "threshold", [600, -250], { threshold: 0.7, softness: 0.25, channel: "luminance", compare: "greater" }),
-      wired("halo", "blur", [900, -250], { size: 10, filter: "gaussian", extend: "hold" }),
-      wired("glow", "add", [1200, 0], { opacity: 0.6 }),
+      wired("surface", "customWgsl", [300, 0], SURFACE, { resolution: { mode: "project" } }),
+      // The same surface with the grains lit over a darkened plate: the picture `layer_sand` shows.
+      wired("sandlit", "customWgslMulti", [600, -500], { ...SURFACE, source: CYMATICS_SANDLIT_WGSL, sand: 1, sandTint: [1, 0.9, 0.74] }, { resolution: { mode: "project" } }),
+      // Ships off (bypassed): the plain surface passes through and nothing of the sand renders.
+      wired("sand", "layer", [600, 0], { picture: "", opacity: 1, blend: "replace" }, { ui: { bypassed: true } }),
+      wired("hot", "threshold", [900, -250], { threshold: 0.7, softness: 0.25, channel: "luminance", compare: "greater" }),
+      wired("halo", "blur", [1200, -250], { size: 10, filter: "gaussian", extend: "hold" }),
+      wired("glow", "add", [1500, 0], { opacity: 0.6 }),
 
       // The instrument panel beside the dish: the trace on a graticule, the hertz above it.
-      wired("hud", "customWgsl", [1500, 0], {
+      wired("hud", "customWgsl", [1800, 0], {
         source: CYMATICS_HUD_WGSL,
         scope: expressionSlot(chan("slider_scope", "scope"), DEFAULTS.scope),
         frequency: expressionSlot(FREQUENCY, DEFAULTS.frequency),
@@ -405,7 +421,7 @@ export const cymaticsDocument = document(
         xy: expressionSlot(chan("toggle_xy", "xy"), 0),
         tint: [0.3, 1, 0.45],
       }, { resolution: { mode: "project" } }),
-      node("output1", "output", [1800, 0], { toneMap: "none" }, { label: "output1" }),
+      node("output1", "output", [2100, 0], { toneMap: "none" }, { label: "output1" }),
 
       // ── The song: the shipped beat, five spectrum lanes ──
       wired("clip", "audioFileIn", [-3000, 0], {
@@ -432,7 +448,6 @@ export const cymaticsDocument = document(
 
       // ── The controls ──
       ...sliders,
-      wired("sand", "toggle", [-300, 2740], { channel: "sand", caption: "Sand", on: false, defaultOn: false }),
       wired("scatter", "button", [-300, 2980], { channel: "scatter", caption: "Scatter sand", held: false, presses: 0 }),
       wired("plate", "toggle", [-300, 2500], { channel: "plate", caption: "Plate (Chladni)", on: false, defaultOn: false }),
       wired("tour", "toggle", [-300, 1300], { channel: "tour", caption: "Tour the notes", on: false, defaultOn: false }),
@@ -459,12 +474,15 @@ export const cymaticsDocument = document(
       edge("e-sand3-add", ["points_sand3", "out"], ["add_sand23", "in2"]),
       edge("e-sand01-sum", ["add_sand01", "out"], ["add_sand", "in1"]),
       edge("e-sand23-sum", ["add_sand23", "out"], ["add_sand", "in2"]),
-      edge("e-sand-surface", ["add_sand", "out"], ["wgsl_surface", "more"], 0),
+      edge("e-sand-sandlit", ["add_sand", "out"], ["wgsl_sandlit", "more"], 0),
+      edge("e-medium-sandlit", ["switch_medium", "out"], ["wgsl_sandlit", "input"]),
+      edge("e-surface-layer", ["wgsl_surface", "out"], ["layer_sand", "below"]),
+      edge("e-sandlit-layer", ["wgsl_sandlit", "out"], ["layer_sand", "picture"]),
       edge("e-modes-loop", ["feedback_modes", "out"], ["wgsl_modes", "input"]),
       edge("e-modes-plate", ["wgsl_modes", "out"], ["wgsl_plate", "input"]),
-      edge("e-surface-hot", ["wgsl_surface", "out"], ["threshold_hot", "input"]),
+      edge("e-layer-hot", ["layer_sand", "out"], ["threshold_hot", "input"]),
       edge("e-hot-halo", ["threshold_hot", "out"], ["blur_halo", "input"]),
-      edge("e-surface-glow", ["wgsl_surface", "out"], ["add_glow", "in1"]),
+      edge("e-layer-glow", ["layer_sand", "out"], ["add_glow", "in1"]),
       edge("e-halo-glow", ["blur_halo", "out"], ["add_glow", "in2"]),
       edge("e-glow-hud", ["add_glow", "out"], ["wgsl_hud", "input"]),
       edge("e-hud-out", ["wgsl_hud", "out"], ["output1", "input"]),
@@ -486,7 +504,7 @@ export const cymaticsDocument = document(
       // The Panel's members, in board order (E81's idiom: wired, Layout left empty).
       ...[...SIGNAL, ...FLUID, ...LIGHT, ...VIEW].map((spec, index) =>
         edge(`e-panel-${spec[0]}`, [`slider_${spec[0]}`, "out"], ["panel_cymatics", "controls"], index)),
-      ...["toggle_tour", "toggle_song", "button_drop", "button_calm", "toggle_xy", "toggle_plate", "toggle_sand", "button_scatter"].map((widget, index) =>
+      ...["toggle_tour", "toggle_song", "button_drop", "button_calm", "toggle_xy", "toggle_plate", "button_scatter"].map((widget, index) =>
         edge(`e-panel-${widget}`, [widget, "out"], ["panel_cymatics", "controls"], SLIDER_COUNT + index)),
     ],
   ),

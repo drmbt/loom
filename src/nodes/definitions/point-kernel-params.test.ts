@@ -14,7 +14,7 @@ import { reflectParamsStruct, extractParamsStruct } from "./params-reflection.ts
 import { compileContext } from "./test-support.ts";
 import { pointStorageId } from "./point-storage.ts";
 import type { ParameterValue } from "../../domain/types/parameters.ts";
-import type { PassDescriptor } from "../../runtime/backend/plan.ts";
+import { readExecutionPlan, type PassDescriptor } from "../../runtime/backend/plan.ts";
 
 /**
  * T900 — POINT KERNELS ON THE REFLECTION, NOT ON THE FIXED SLOTS.
@@ -553,7 +553,10 @@ describe("T900 — every shipped kernel resolves byte-equal at frame 0", () => {
     const result = runExample(file);
     const graph = result.document?.graph;
     if (graph === undefined) continue;
-    const owned = (result.read?.passes ?? []).filter((pass) => {
+    /* §T1718b: a loom whose kernels sit behind a Layer it ships OFF (E89's sand) compiles them
+       only with that layer on, so the gate reads the plan the switch would install. */
+    const read = result.layersOn ? readExecutionPlan(result.layersOn) : result.read;
+    const owned = (read?.passes ?? []).filter((pass) => {
       const nodeId = (pass as { nodeId?: string }).nodeId;
       return nodeId !== undefined && POINT_KERNEL_TYPES.has(graph.nodes[nodeId]?.type ?? "");
     });

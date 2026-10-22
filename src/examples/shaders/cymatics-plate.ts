@@ -119,8 +119,14 @@ export const PLATE_MODE_COUNTS = { circle: CIRCLE.length, square: SQUARE.length,
 export const PLATE_MODE_SLOTS = Math.max(CIRCLE.length, SQUARE.length, HEXAGON.length);
 
 const vec4 = (row: readonly number[]) => `vec4f(${row.map((value) => (Number.isInteger(value) ? `${value}.0` : value.toFixed(6))).join(", ")})`;
+/**
+ * `const`, never `var<private>`: a private array is per-invocation storage, so every pixel of the
+ * plate's field (and every texel of the modes pass) copied all three tables, ten kilobytes, before
+ * it did anything, even a pixel that returns black at once. That copy was most of the plate's cost
+ * (§T1717b). A const table is one shared copy the compiler can index in place.
+ */
 const table = (name: string, rows: ReadonlyArray<readonly number[]>) =>
-  `var<private> ${name}: array<vec4f, ${rows.length}> = array<vec4f, ${rows.length}>(\n  ${rows.map(vec4).join(",\n  ")},\n);`;
+  `const ${name}: array<vec4f, ${rows.length}> = array<vec4f, ${rows.length}>(\n  ${rows.map(vec4).join(",\n  ")},\n);`;
 
 /** The three tables and their sizes, as WGSL. */
 export const PLATE_TABLES_WGSL = [
