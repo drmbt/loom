@@ -1,0 +1,144 @@
+{
+ "physical.SL": {
+  "onStageOnly": 418993,
+  "overlap": 1184717,
+  "offStage": 469890,
+  "onStagePct": 77.3,
+  "overlapPct": 57.1,
+  "burnedPct": 22.7,
+  "corners": [
+   [
+    -45.7,
+    -9.1
+   ],
+   [
+    9.3,
+    2.3
+   ],
+   [
+    9.3,
+    12.9
+   ],
+   [
+    -45.7,
+    24.3
+   ]
+  ]
+ },
+ "physical.SR": {
+  "onStageOnly": 418993,
+  "overlap": 1184717,
+  "offStage": 469890,
+  "onStagePct": 77.3,
+  "overlapPct": 57.1,
+  "burnedPct": 22.7,
+  "corners": [
+   [
+    -9.3,
+    2.3
+   ],
+   [
+    45.7,
+    -9.1
+   ],
+   [
+    45.7,
+    24.3
+   ],
+   [
+    -9.3,
+    12.9
+   ]
+  ]
+ },
+ "physical.plan": {
+  "stageSqft": 767,
+  "slOnlyPct": 34.5,
+  "srOnlyPct": 34.5,
+  "overlapPct": 30.3,
+  "uncoveredPct": 0.8,
+  "pxPerSqft": {
+   "SL": {
+    "min": 928,
+    "median": 2287,
+    "max": 11020
+   },
+   "SR": {
+    "min": 924,
+    "median": 2276,
+    "max": 10926
+   }
+  }
+ },
+ "loom-keystone.SL": {
+  "onStageOnly": 398084,
+  "overlap": 1675516,
+  "offStage": 0,
+  "onStagePct": 100,
+  "overlapPct": 80.8,
+  "burnedPct": 0,
+  "corners": [
+   [
+    -23.9,
+    -0.4
+   ],
+   [
+    16.2,
+    -0.4
+   ],
+   [
+    16.2,
+    15.6
+   ],
+   [
+    -23.9,
+    15.6
+   ]
+  ]
+ },
+ "loom-keystone.SR": {
+  "onStageOnly": 398084,
+  "overlap": 1675516,
+  "offStage": 0,
+  "onStagePct": 100,
+  "overlapPct": 80.8,
+  "burnedPct": 0,
+  "corners": [
+   [
+    -16.2,
+    -0.4
+   ],
+   [
+    23.9,
+    -0.4
+   ],
+   [
+    23.9,
+    15.6
+   ],
+   [
+    -16.2,
+    15.6
+   ]
+  ]
+ },
+ "loom-keystone.plan": {
+  "stageSqft": 767,
+  "slOnlyPct": 16,
+  "srOnlyPct": 16,
+  "overlapPct": 67.5,
+  "uncoveredPct": 0.4,
+  "pxPerSqft": {
+   "SL": {
+    "min": 3225,
+    "median": 3235,
+    "max": 3244
+   },
+   "SR": {
+    "min": 3226,
+    "median": 3235,
+    "max": 3244
+   }
+  }
+ }
+}

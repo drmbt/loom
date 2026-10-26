@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="2400" height="2180" font-family="Helvetica, Arial" fill="#ddd">
+<rect width="2400" height="2180" fill="#0c0c0e"/>
+<text x="40" y="60" font-size="40" font-weight="bold">Side projectors, HD each (1920×1080, portrait): stage 48'×16' coverage — stage-previz-12</text>
+<text x="40" y="100" font-size="24" fill="#999">Plan: audience at the bottom, stage left on the right. Yellow = 48'×16' grate edge, grid = 4' decks, white dots = lenses (19' off centre, trim 22'-7"). Dim = light off the stage.</text>
+<g font-size="24"><rect x="40" y="125" width="28" height="28" fill="rgb(230,80,70)"/><text x="78" y="148">SL projector only</text>
+<rect x="320" y="125" width="28" height="28" fill="rgb(60,130,235)"/><text x="358" y="148">SR projector only</text>
+<rect x="600" y="125" width="28" height="28" fill="rgb(175,90,215)"/><text x="638" y="148">overlap (both)</text>
+<rect x="860" y="125" width="28" height="28" fill="rgb(38,38,42)" stroke="#666"/><text x="898" y="148">raster: pixel lands off the stage (burned)</text></g>
+
+<text x="40" y="215" font-size="30" font-weight="bold">A · What v12 draws (Loom keystone 27.55°)</text>
+<text x="40" y="250" font-size="22" fill="#aaa">Each image a clean 40.1'×16' rectangle, 0% burned, overlap 32' wide = 67% of the stage.</text>
+<text x="40" y="280" font-size="22" fill="#f7c948">Not physically achievable: the near edge sits 6.9' outside the lens's own frustum.</text>
+<text x="40" y="310" font-size="22" fill="#f7c948">A UDX's keystone is digital and can only shrink inside the native raster.</text>
+<image x="40" y="330" width="1100" height="422" xlink:href="plan-loom-keystone.png"/>
+
+<text x="1240" y="215" font-size="30" font-weight="bold">B · Physical lens, v12 aim (tilt 39.61°, throw 1.16, keystone off)</text>
+<text x="1240" y="250" font-size="22" fill="#aaa">Each: 77% of pixels on stage, 23% burned (past the far deck edge, up/downstage).</text>
+<text x="1240" y="280" font-size="22" fill="#aaa">Overlap 30% of stage (18.6' wide band). Uncovered 0.8%: notches on the centre line.</text>
+<text x="1240" y="310" font-size="22" fill="#aaa">Density 30–105 px/ft (far edge to near), median 48 px/ft.</text>
+<image x="1240" y="330" width="1100" height="422" xlink:href="plan-physical.png"/>
+
+<text x="40" y="815" font-size="30" font-weight="bold">C · Re-aimed for real pixels: tilt 47.5°, throw 1.14, keystone off, no shift</text>
+<text x="40" y="850" font-size="22" fill="#aaa">Each: 94% of pixels on stage, 6% burned. Far edge lands on the far deck edge (−23.9').</text>
+<text x="40" y="880" font-size="22" fill="#aaa">Overlap 40% of stage (25' wide band, ±12.6'). Uncovered 1.2% (centre-line notches).</text>
+<text x="40" y="910" font-size="22" fill="#aaa">Density 32–114 px/ft, median 50 px/ft.</text>
+<image x="40" y="930" width="1100" height="422" xlink:href="plan-reaim.png"/>
+
+<text x="1240" y="815" font-size="30" font-weight="bold">Rasters (what each output carries)</text>
+<text x="1240" y="850" font-size="22" fill="#aaa">Left of raster = far side of stage. Grid = 4' decks warped into the image.</text>
+<text x="1240" y="890" font-size="24">B · SL, v12 aim</text><text x="1800" y="890" font-size="24">B · SR, v12 aim</text>
+<image x="1240" y="900" width="540" height="304" xlink:href="raster-physical-SL.png"/>
+<image x="1800" y="900" width="540" height="304" xlink:href="raster-physical-SR.png"/>
+<text x="1240" y="1250" font-size="24">C · SL, re-aimed</text><text x="1800" y="1250" font-size="24">C · SR, re-aimed</text>
+<image x="1240" y="1260" width="540" height="304" xlink:href="raster-reaim-SL.png"/>
+<image x="1800" y="1260" width="540" height="304" xlink:href="raster-reaim-SR.png"/>
+
+<text x="40" y="1630" font-size="30" font-weight="bold">Pixel budget per HD output (2,073,600 px)</text>
+<g font-size="24">
+<text x="40" y="1680" fill="#999">case</text><text x="560" y="1680" fill="#999">on stage</text><text x="800" y="1680" fill="#999">of which unique</text><text x="1080" y="1680" fill="#999">of which overlap</text><text x="1360" y="1680" fill="#999">burned</text><text x="1560" y="1680" fill="#999">stage overlap</text>
+<text x="40" y="1725">A · v12 as drawn (not real)</text><text x="560" y="1725">100%</text><text x="800" y="1725">0.40 M (19%)</text><text x="1080" y="1725">1.68 M (81%)</text><text x="1360" y="1725">0%</text><text x="1560" y="1725">67% · 32'</text>
+<text x="40" y="1770">B · physical, v12 aim</text><text x="560" y="1770">77%</text><text x="800" y="1770">0.42 M (20%)</text><text x="1080" y="1770">1.18 M (57%)</text><text x="1360" y="1770">23%</text><text x="1560" y="1770">30% · 18.6'</text>
+<text x="40" y="1815">C · physical, re-aimed</text><text x="560" y="1815">94%</text><text x="800" y="1815">0.36 M (17%)</text><text x="1080" y="1815">1.60 M (77%)</text><text x="1360" y="1815">6%</text><text x="1560" y="1815">40% · 25'</text>
+</g>
+<text x="40" y="1890" font-size="22" fill="#888">Model: Loom's projectorMatrix with v12's live rig values, every pixel cast onto the grate top (6'-6" above the venue floor). The stage is treated as a flat plane:</text>
+<text x="40" y="1920" font-size="22" fill="#888">burned light actually lands on the riser face and stairs upstage, the house downstage, and past the deck ends. No talent or scenery occlusion. 16:10 native aspect (UDX-4K40) with a 16:9 HD signal;</text>
+<text x="40" y="1950" font-size="22" fill="#888">the raster here is the full 16:10 panel scaled to 1920×1080. Lens shift searched too: it bought ~1% at an unrealistic 0.6 image-width shift, so it is left out.</text>
+</svg>

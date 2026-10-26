@@ -11076,9 +11076,20 @@
       },
       {
         "componentId": "stageFeeds",
-        "description": "Every picture the rig can show: the After Effects renders (DS.mp4 on the DS projector, SIDES.mp4 on both sides), test patterns and a test video, one switch per projector (Source picks the bank: 0 the renders, 1 test, 2 grid), and the FX pixel-map feed for the LED and strobe materials (its own Source FX: 0 Syphon, 1 test, 2 map). Out: one picture per projector and the FX feed.",
+        "description": "Every picture the rig can show: Syphon feeds (DS, a UNIQUE 16:10 output each for SL and SR, FX) plus test content, one switch per projector. Source 3-5 send each side projector its own pre-warped output of the stage plan (as Resolume's Advanced Output would): 3 stage map, 4 white, 5 SL/SR colours; Blend is the soft edge. Out: one picture per projector and the FX feed.",
         "graph": {
           "edges": {
+            "e-blank-stagePlan": {
+              "id": "e-blank-stagePlan",
+              "source": {
+                "nodeId": "blank",
+                "portId": "out"
+              },
+              "target": {
+                "nodeId": "stagePlan",
+                "portId": "input"
+              }
+            },
             "e-blank-testBeams": {
               "id": "e-blank-testBeams",
               "source": {
@@ -11112,27 +11123,51 @@
                 "portId": "input"
               }
             },
-            "e-dsFeed-feedDS": {
-              "id": "e-dsFeed-feedDS",
-              "order": 0,
-              "source": {
-                "nodeId": "dsFeed",
-                "portId": "out"
-              },
-              "target": {
-                "nodeId": "feedDS",
-                "portId": "inputs"
-              }
-            },
-            "e-feedSL-flipSL": {
-              "id": "e-feedSL-flipSL",
+            "e-feedSL-out_sl": {
+              "id": "e-feedSL-out_sl",
               "source": {
                 "nodeId": "feedSL",
                 "portId": "out"
               },
               "target": {
-                "nodeId": "flipSL",
-                "portId": "input"
+                "nodeId": "out_sl",
+                "portId": "in"
+              }
+            },
+            "e-fxMap-feedFX-3": {
+              "id": "e-fxMap-feedFX-3",
+              "order": 3,
+              "source": {
+                "nodeId": "fxMap",
+                "portId": "out"
+              },
+              "target": {
+                "nodeId": "feedFX",
+                "portId": "inputs"
+              }
+            },
+            "e-fxMap-feedFX-4": {
+              "id": "e-fxMap-feedFX-4",
+              "order": 4,
+              "source": {
+                "nodeId": "fxMap",
+                "portId": "out"
+              },
+              "target": {
+                "nodeId": "feedFX",
+                "portId": "inputs"
+              }
+            },
+            "e-fxMap-feedFX-5": {
+              "id": "e-fxMap-feedFX-5",
+              "order": 5,
+              "source": {
+                "nodeId": "fxMap",
+                "portId": "out"
+              },
+              "target": {
+                "nodeId": "feedFX",
+                "portId": "inputs"
               }
             },
             "e-grid-feedDS": {
@@ -11171,18 +11206,6 @@
                 "portId": "inputs"
               }
             },
-            "e-ma3FX-feedFX": {
-              "id": "e-ma3FX-feedFX",
-              "order": 3,
-              "source": {
-                "nodeId": "ma3FX",
-                "portId": "out"
-              },
-              "target": {
-                "nodeId": "feedFX",
-                "portId": "inputs"
-              }
-            },
             "e-out_ds": {
               "id": "e-out_ds",
               "source": {
@@ -11205,17 +11228,6 @@
                 "portId": "in"
               }
             },
-            "e-out_sl": {
-              "id": "e-out_sl",
-              "source": {
-                "nodeId": "flipSL",
-                "portId": "out"
-              },
-              "target": {
-                "nodeId": "out_sl",
-                "portId": "in"
-              }
-            },
             "e-out_sr": {
               "id": "e-out_sr",
               "source": {
@@ -11227,23 +11239,45 @@
                 "portId": "in"
               }
             },
-            "e-sidesFeed-feedSL": {
-              "id": "e-sidesFeed-feedSL",
-              "order": 0,
+            "e-stagePlan-warpSL": {
+              "id": "e-stagePlan-warpSL",
               "source": {
-                "nodeId": "sidesFeed",
+                "nodeId": "stagePlan",
                 "portId": "out"
               },
               "target": {
-                "nodeId": "feedSL",
+                "nodeId": "warpSL",
+                "portId": "input"
+              }
+            },
+            "e-stagePlan-warpSR": {
+              "id": "e-stagePlan-warpSR",
+              "source": {
+                "nodeId": "stagePlan",
+                "portId": "out"
+              },
+              "target": {
+                "nodeId": "warpSR",
+                "portId": "input"
+              }
+            },
+            "e-syphonDS-feedDS": {
+              "id": "e-syphonDS-feedDS",
+              "order": 0,
+              "source": {
+                "nodeId": "syphonDS",
+                "portId": "out"
+              },
+              "target": {
+                "nodeId": "feedDS",
                 "portId": "inputs"
               }
             },
-            "e-sidesFeed-feedSR": {
-              "id": "e-sidesFeed-feedSR",
+            "e-syphonSR-feedSR": {
+              "id": "e-syphonSR-feedSR",
               "order": 0,
               "source": {
-                "nodeId": "sidesFeed",
+                "nodeId": "syphonSR",
                 "portId": "out"
               },
               "target": {
@@ -11284,6 +11318,126 @@
               },
               "target": {
                 "nodeId": "feedSR",
+                "portId": "inputs"
+              }
+            },
+            "e-testGrid-feedDS-3": {
+              "id": "e-testGrid-feedDS-3",
+              "order": 3,
+              "source": {
+                "nodeId": "testGrid",
+                "portId": "out"
+              },
+              "target": {
+                "nodeId": "feedDS",
+                "portId": "inputs"
+              }
+            },
+            "e-testGrid-feedDS-4": {
+              "id": "e-testGrid-feedDS-4",
+              "order": 4,
+              "source": {
+                "nodeId": "testGrid",
+                "portId": "out"
+              },
+              "target": {
+                "nodeId": "feedDS",
+                "portId": "inputs"
+              }
+            },
+            "e-testGrid-feedDS-5": {
+              "id": "e-testGrid-feedDS-5",
+              "order": 5,
+              "source": {
+                "nodeId": "testGrid",
+                "portId": "out"
+              },
+              "target": {
+                "nodeId": "feedDS",
+                "portId": "inputs"
+              }
+            },
+            "e-warpSL-feedSL-3": {
+              "id": "e-warpSL-feedSL-3",
+              "order": 3,
+              "source": {
+                "nodeId": "warpSL",
+                "portId": "out"
+              },
+              "target": {
+                "nodeId": "feedSL",
+                "portId": "inputs"
+              }
+            },
+            "e-warpSL-feedSL-4": {
+              "id": "e-warpSL-feedSL-4",
+              "order": 4,
+              "source": {
+                "nodeId": "warpSL",
+                "portId": "out"
+              },
+              "target": {
+                "nodeId": "feedSL",
+                "portId": "inputs"
+              }
+            },
+            "e-warpSL-feedSL-5": {
+              "id": "e-warpSL-feedSL-5",
+              "order": 5,
+              "source": {
+                "nodeId": "warpSL",
+                "portId": "out"
+              },
+              "target": {
+                "nodeId": "feedSL",
+                "portId": "inputs"
+              }
+            },
+            "e-warpSR-feedSR-3": {
+              "id": "e-warpSR-feedSR-3",
+              "order": 3,
+              "source": {
+                "nodeId": "warpSR",
+                "portId": "out"
+              },
+              "target": {
+                "nodeId": "feedSR",
+                "portId": "inputs"
+              }
+            },
+            "e-warpSR-feedSR-4": {
+              "id": "e-warpSR-feedSR-4",
+              "order": 4,
+              "source": {
+                "nodeId": "warpSR",
+                "portId": "out"
+              },
+              "target": {
+                "nodeId": "feedSR",
+                "portId": "inputs"
+              }
+            },
+            "e-warpSR-feedSR-5": {
+              "id": "e-warpSR-feedSR-5",
+              "order": 5,
+              "source": {
+                "nodeId": "warpSR",
+                "portId": "out"
+              },
+              "target": {
+                "nodeId": "feedSR",
+                "portId": "inputs"
+              }
+            },
+            "ed_3212ba7848fcc": {
+              "id": "ed_3212ba7848fcc",
+              "order": 0,
+              "source": {
+                "nodeId": "syphonSL",
+                "portId": "out"
+              },
+              "target": {
+                "nodeId": "feedSL",
                 "portId": "inputs"
               }
             },
@@ -11383,26 +11537,6 @@
               },
               "type": "solid"
             },
-            "dsFeed": {
-              "definitionVersion": 1,
-              "id": "dsFeed",
-              "label": "movie_dsFeed",
-              "parameters": {
-                "extend": "hold",
-                "file": "media/ae-bridge/DS.mp4",
-                "play": true,
-                "playMode": "timeline",
-                "speed": 1
-              },
-              "position": {
-                "x": -4100,
-                "y": 543.8501169816229
-              },
-              "type": "movieFileIn",
-              "ui": {
-                "preview": true
-              }
-            },
             "feedDS": {
               "definitionVersion": 1,
               "id": "feedDS",
@@ -11422,11 +11556,11 @@
               "id": "feedFX",
               "label": "switch_feedFX",
               "parameters": {
-                "index": 3
+                "index": 1
               },
               "position": {
-                "x": -4100,
-                "y": 4080
+                "x": -3611.084150060879,
+                "y": 1363.8008336715511
               },
               "type": "switch"
             },
@@ -11441,6 +11575,11 @@
                 "x": -3800,
                 "y": 300
               },
+              "resolution": {
+                "height": 1200,
+                "mode": "fixed",
+                "width": 1920
+              },
               "type": "switch"
             },
             "feedSR": {
@@ -11454,24 +11593,12 @@
                 "x": -3800,
                 "y": 0
               },
+              "resolution": {
+                "height": 1200,
+                "mode": "fixed",
+                "width": 1920
+              },
               "type": "switch"
-            },
-            "flipSL": {
-              "definitionVersion": 1,
-              "id": "flipSL",
-              "label": "flip_SL",
-              "parameters": {
-                "flipx": true,
-                "flipy": false
-              },
-              "position": {
-                "x": -3499.244240035842,
-                "y": 326.45159874553394
-              },
-              "type": "flip",
-              "ui": {
-                "preview": true
-              }
             },
             "fxMap": {
               "definitionVersion": 1,
@@ -11481,30 +11608,10 @@
                 "file": "media/stage-previz/fx-pixel-map-r2.png"
               },
               "position": {
-                "x": -4400,
-                "y": 4240
+                "x": -3911.084150060879,
+                "y": 1523.8008336715511
               },
               "type": "movieFileIn"
-            },
-            "ma3FX": {
-              "definitionVersion": 1,
-              "id": "ma3FX",
-              "label": "movie_ma3FX",
-              "parameters": {
-                "extend": "hold",
-                "file": "media/stage-previz/ma3/twentyfiveeight-fx.mp4",
-                "play": true,
-                "playMode": "timeline",
-                "speed": 1
-              },
-              "position": {
-                "x": -4400,
-                "y": 4410
-              },
-              "type": "movieFileIn",
-              "ui": {
-                "preview": true
-              }
             },
             "nd_9b04bc5bd9e618": {
               "definitionVersion": 1,
@@ -11529,8 +11636,8 @@
                 "xord": "srt"
               },
               "position": {
-                "x": -4107.667004055169,
-                "y": 3918.00644350228
+                "x": -3618.751154116048,
+                "y": 1201.8072771738312
               },
               "type": "transform",
               "ui": {
@@ -11546,8 +11653,8 @@
                 "operation": "multiply"
               },
               "position": {
-                "x": -4619.223753989178,
-                "y": 4354.836749289403
+                "x": -4130.307904050056,
+                "y": 1638.6375829609542
               },
               "type": "composite"
             },
@@ -11559,8 +11666,8 @@
                 "source": "info.v002.Syphon.F3118306-361C-4024-8EEC-A03D909269A7"
               },
               "position": {
-                "x": -4796.5820057409865,
-                "y": 3931.31386867906
+                "x": -4307.666155801866,
+                "y": 1215.114702350611
               },
               "resolution": {
                 "height": 1080,
@@ -11577,13 +11684,13 @@
               "id": "noteFX",
               "label": "note_FX",
               "parameters": {
-                "body": "Resolume → Syphon: pick the server in syphonFX. ONE 1920 x 1080 stream drives all 63 pixel lines and 38 strobes.\nTop half: the pixel lines seen from the house (30' across = 1920 px; one texel row per bar row).\nBottom half: the strobes in plan, downstage at the bottom (48' across = 1920 px; the riser's back edge at the middle).\nTemplate: fx-pixel-map.png (+ .svg labelled, .csv every texel) beside the session — Source 2 shows it on the rig.\nLevels: LEDs (pixel lines), Strobe level (strobes).\n3 = the grandMA3 show baked into this layout (VN123, tools/ma3/bake_fx.py): movie_ma3FX, locked to the timeline.",
+                "body": "Resolume → Syphon: pick the server in syphonFX. ONE 1920 x 1080 stream drives all 63 pixel lines and 38 strobes.\nTop half: the pixel lines seen from the house (30' across = 1920 px; one texel row per bar row).\nBottom half: the strobes in plan, downstage at the bottom (48' across = 1920 px; the riser's back edge at the middle).\nTemplate: fx-pixel-map.png (+ .svg labelled, .csv every texel) beside the session — Source 2 shows it on the rig.\nLevels: LEDs (pixel lines), Strobe level (strobes).",
                 "color": "input",
                 "title": "Pixel lines + strobes: one feed"
               },
               "position": {
-                "x": -3500,
-                "y": 3920
+                "x": -3011.084150060879,
+                "y": 1203.8008336715511
               },
               "size": {
                 "height": 170,
@@ -11596,7 +11703,7 @@
               "id": "noteFeeds",
               "label": "note_feeds",
               "parameters": {
-                "body": "After Effects → movie files (VN114): movie_dsFeed plays renders/DS.mp4 on the DS projector; movie_sidesFeed plays renders/SIDES.mp4 on BOTH sides (stage left flipped after its switch, so they mirror). Both are locked to the timeline.\nSource switch: 0 the AE renders, 1 test content, 2 alignment grid. FX keeps its Syphon (syphonin_FX) on its own Source FX: 0 Syphon, 1 test (the default), 2 the pixel map.",
+                "body": "Resolume → Syphon: select each server in syphonin_SR / syphonin_SL / syphonin_DS (inspector, Source). Desktop app on macOS only.\nSL and SR are UNIQUE 1920 x 1200 (16:10) outputs, already warped and soft-edged by Resolume's Advanced Output: they go to their projectors untouched (no flip).\nSource: 0 live Syphon, 1 test content, 2 alignment grid (in raster space), 3 stage map, 4 white, 5 SL/SR colours. 3-5 are pre-warped here (wgsl_warpSL / wgsl_warpSR) from wgsl_stagePlan, the 48' x 16' plan; Blend toggles their soft edge. DS shows the grid and FX its pixel map at 3-5.",
                 "color": "input",
                 "title": "Feeds"
               },
@@ -11605,8 +11712,8 @@
                 "y": -900
               },
               "size": {
-                "height": 150,
-                "width": 560
+                "height": 200,
+                "width": 620
               },
               "type": "annotate"
             },
@@ -11654,25 +11761,79 @@
               },
               "type": "componentOut"
             },
-            "sidesFeed": {
+            "stagePlan": {
               "definitionVersion": 1,
-              "id": "sidesFeed",
-              "label": "movie_sidesFeed",
+              "id": "stagePlan",
+              "label": "wgsl_stagePlan",
               "parameters": {
-                "extend": "hold",
-                "file": "media/ae-bridge/SIDES.mp4",
-                "play": true,
-                "playMode": "timeline",
-                "speed": 1
+                "level": 1,
+                "source": "struct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\n// Stage previz v14: the STAGE PLAN test pattern, composition space for the side projectors.\n// 48' x 16' (the grated stage) at 60 px/ft = 2880 x 960. Left = stage right (the audience's left),\n// top = upstage. Cells are the 4' decks, labelled column-row (columns 1-12 from stage right, rows 1-4\n// from downstage). Corner squares: red US-SR, green US-SL, blue DS-SR, yellow DS-SL. Circles must\n// read round on the floor: the big one is 15' across, the small ones 3'.\nstruct Params {\n  level: f32, // @default 1  Overall brightness.\n};\n\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(2) var<uniform> frameU: SharedFrame;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn line(d: f32, width: f32) -> f32 {\n  return 1.0 - smoothstep(width * 0.5, width * 0.5 + 1.0, d);\n}\n\n// 3 x 5 glyphs: 0-9 are digits, 10 '-', 11 'S', 12 'L', 13 'R'. Bit 14 is the top-left cell.\nfn glyphBits(code: i32) -> u32 {\n  switch code {\n    case 0: { return 31599u; }\n    case 1: { return 11415u; }\n    case 2: { return 29671u; }\n    case 3: { return 29647u; }\n    case 4: { return 23497u; }\n    case 5: { return 31183u; }\n    case 6: { return 31215u; }\n    case 7: { return 29330u; }\n    case 8: { return 31727u; }\n    case 9: { return 31695u; }\n    case 10: { return 448u; }\n    case 11: { return 31183u; }\n    case 12: { return 18727u; }\n    case 13: { return 27565u; }\n    default: { return 0u; }\n  }\n}\n\n// Text centred on the origin of p (ft), h ft tall; codes.x.. are the characters, n of them.\nfn label(p: vec2f, codes: vec4i, n: i32, h: f32) -> f32 {\n  let s = h / 5.0;\n  let total = f32(n) * 4.0 * s - s;\n  let x = p.x + total * 0.5;\n  let y = p.y + h * 0.5;\n  if (x < 0.0 || x >= total || y < 0.0 || y >= h) { return 0.0; }\n  let index = i32(floor(x / (4.0 * s)));\n  let qx = (x - f32(index) * 4.0 * s) / s;\n  if (qx >= 3.0 || index >= n) { return 0.0; }\n  let column = i32(qx);\n  let row = i32(y / s);\n  let bit = 14 - (row * 3 + column);\n  return f32((glyphBits(codes[index]) >> u32(bit)) & 1u);\n}\n\nfn hue(h: f32) -> vec3f {\n  return clamp(abs(fract(h + vec3f(0.0, 0.6666667, 0.3333333)) * 6.0 - 3.0) - 1.0, vec3f(0.0), vec3f(1.0));\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let keep = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).a * 0.0 + frameU.time * 0.0;\n  let xf = uv.x * 48.0 - 24.0;          // ft, + = stage left\n  let zf = uv.y * 16.0;                 // ft from the upstage lip\n  let ppf = 1.0 / max(fwidth(xf), 1e-5); // pixels per foot\n  let col = clamp(i32(floor((xf + 24.0) / 4.0)), 0, 11);\n  let row = clamp(i32(floor(zf / 4.0)), 0, 3);\n  let checker = f32((col + row) % 2);\n  var c = hue(f32(col) / 12.0) * (0.10 + 0.08 * checker) + vec3f(0.04 + 0.03 * checker);\n  let p = vec2f(xf, zf);\n  let g1 = abs(p - round(p));\n  c = max(c, vec3f(0.30) * line(min(g1.x, g1.y) * ppf, 1.5));\n  let g4 = abs(p - 4.0 * round(p / 4.0));\n  c = max(c, vec3f(0.75) * line(min(g4.x, g4.y) * ppf, 4.0));\n  c = max(c, vec3f(1.0) * line(abs(xf) * ppf, 8.0));\n  if (fract(xf * 0.5) < 0.5) { c = max(c, vec3f(0.9) * line(abs(zf - 8.0) * ppf, 4.0)); }\n  let r = length(p - vec2f(0.0, 8.0));\n  c = max(c, vec3f(1.0) * line(abs(r - 7.5) * ppf, 5.0));\n  let cx = clamp(8.0 * round(xf / 8.0), -16.0, 16.0);\n  if (abs(cx) > 1.0) { c = max(c, vec3f(0.95) * line(abs(length(p - vec2f(cx, 8.0)) - 1.5) * ppf, 4.0)); }\n  let corner = 1.5;\n  if (xf < -24.0 + corner && zf < corner) { c = vec3f(1.0, 0.1, 0.1); }\n  if (xf > 24.0 - corner && zf < corner) { c = vec3f(0.1, 1.0, 0.2); }\n  if (xf < -24.0 + corner && zf > 16.0 - corner) { c = vec3f(0.15, 0.3, 1.0); }\n  if (xf > 24.0 - corner && zf > 16.0 - corner) { c = vec3f(1.0, 0.9, 0.1); }\n  let centre = vec2f(-24.0 + (f32(col) + 0.5) * 4.0, (f32(row) + 0.5) * 4.0 - 0.9);\n  let colNum = col + 1;\n  let rowNum = 4 - row;\n  var codes = vec4i(colNum, 10, rowNum, 0);\n  var n = 3;\n  if (colNum >= 10) { codes = vec4i(1, colNum - 10, 10, rowNum); n = 4; }\n  c = mix(c, vec3f(0.95), label(p - centre, codes, n, 1.0));\n  let edge = min(min(xf + 24.0, 24.0 - xf), min(zf, 16.0 - zf));\n  c = max(c, vec3f(1.0, 0.85, 0.2) * line(edge * ppf, 14.0));\n  return vec4f(c * params.level + keep, 1.0);\n}\n"
+              },
+              "position": {
+                "x": -4759.288562272529,
+                "y": 1906.080878181798
+              },
+              "resolution": {
+                "height": 960,
+                "mode": "fixed",
+                "width": 2880
+              },
+              "type": "customWgsl",
+              "ui": {
+                "preview": true
+              }
+            },
+            "syphonDS": {
+              "definitionVersion": 1,
+              "id": "syphonDS",
+              "label": "syphonin_DS",
+              "parameters": {
+                "source": "info.v002.Syphon.D08031AE-9529-4744-8737-91D45521E8BC"
+              },
+              "position": {
+                "x": -4100,
+                "y": 543.8501169816229
+              },
+              "type": "syphonIn",
+              "ui": {
+                "preview": true
+              }
+            },
+            "syphonSL": {
+              "definitionVersion": 1,
+              "id": "syphonSL",
+              "label": "syphonin_SL",
+              "parameters": {
+                "source": "info.v002.Syphon.CB90C220-0A7E-432E-92EE-507B60C7A037"
+              },
+              "position": {
+                "x": -4100,
+                "y": 300
+              },
+              "resolution": {
+                "height": 1200,
+                "mode": "fixed",
+                "width": 1920
+              },
+              "type": "syphonIn"
+            },
+            "syphonSR": {
+              "definitionVersion": 1,
+              "id": "syphonSR",
+              "label": "syphonin_SR",
+              "parameters": {
+                "source": "info.v002.Syphon.C4BA3005-279B-446C-BD5A-8842E5AD8AB9"
               },
               "position": {
                 "x": -4101.160778817632,
                 "y": -22.05479753500216
               },
-              "type": "movieFileIn",
-              "ui": {
-                "preview": true
-              }
+              "resolution": {
+                "height": 1200,
+                "mode": "fixed",
+                "width": 1920
+              },
+              "type": "syphonIn"
             },
             "testBeams": {
               "definitionVersion": 1,
@@ -11701,8 +11862,8 @@
                 "speed": 0.25
               },
               "position": {
-                "x": -4400,
-                "y": 4080
+                "x": -3911.084150060879,
+                "y": 1363.8008336715511
               },
               "type": "customWgsl"
             },
@@ -11742,9 +11903,83 @@
                 "width": 1280
               },
               "type": "movieFileIn"
+            },
+            "warpSL": {
+              "definitionVersion": 1,
+              "id": "warpSL",
+              "label": "wgsl_warpSL",
+              "parameters": {
+                "blend": 1,
+                "blendCentre": 0,
+                "blendWidth": 8,
+                "gamma": 1,
+                "keyH": 0,
+                "keyV": 0,
+                "level": 1,
+                "luminance": 0.5,
+                "mask": 1,
+                "mode": 3,
+                "power": 2,
+                "roll": 90,
+                "side": 1,
+                "source": "struct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\n// Stage previz v14: one side projector's OUTPUT, as Resolume's Advanced Output would send it.\n// Every pixel of this 1920 x 1200 (16:10) raster is cast through the projector's own lens (the same\n// eye, aim, roll, throw and keystone ProjectorRig gives projSL / projSR) onto the grate top, and takes\n// the stage plan's colour there: the input map is the stage, the output is pre-warped. Off the stage\n// is black (Mask). Blend is a Resolume soft edge on the slice's inner edge: a ramp along the stage's\n// width, centred on Blend centre, Blend width ft wide, curve = Power / Luminance / Gamma; SL's and\n// SR's ramps are complementary, so with Luminance 0.5 they sum to one.\nstruct Params {\n  side: f32, // @default 1  1 = stage left projector (lens at +x), -1 = stage right.\n  trim: f32, // @default 22.5833  Truss trim, ft over the house deck.\n  tilt: f32, // @default 47.5  Side tilt, degrees down.\n  throwRatio: f32, // @default 1.14  Side throw ratio.\n  keyH: f32, // @default 0  Side keystone H (SR mirrors it).\n  keyV: f32, // @default 0  Side keystone V.\n  roll: f32, // @default 90  Side roll (SL rolls the other way).\n  mode: f32, // @default 3  The Source value: 3 stage map, 4 white, 5 SL/SR identity colours.\n  blend: f32, // @default 0  1 = soft edge across the overlap.\n  blendWidth: f32, // @default 8  Soft edge width, ft across the stage.\n  blendCentre: f32, // @default 0  Where the edge is centred, ft (+ = stage left).\n  power: f32, // @default 2  Soft edge curve power (Resolume: Power).\n  luminance: f32, // @default 0.5  Level at the middle of the edge (Resolume: Luminance).\n  gamma: f32, // @default 1  1 in this previz (the projector cookie is linear light); match the projector in Resolume.\n  mask: f32, // @default 1  1 = black off the stage; 0 = show the burned pixels and the raster frame.\n  level: f32, // @default 1  Overall brightness.\n};\n\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(2) var<uniform> frameU: SharedFrame;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn line(d: f32, width: f32) -> f32 {\n  return 1.0 - smoothstep(width * 0.5, width * 0.5 + 1.0, d);\n}\n\n// 3 x 5 glyphs: 0-9 are digits, 10 '-', 11 'S', 12 'L', 13 'R'. Bit 14 is the top-left cell.\nfn glyphBits(code: i32) -> u32 {\n  switch code {\n    case 0: { return 31599u; }\n    case 1: { return 11415u; }\n    case 2: { return 29671u; }\n    case 3: { return 29647u; }\n    case 4: { return 23497u; }\n    case 5: { return 31183u; }\n    case 6: { return 31215u; }\n    case 7: { return 29330u; }\n    case 8: { return 31727u; }\n    case 9: { return 31695u; }\n    case 10: { return 448u; }\n    case 11: { return 31183u; }\n    case 12: { return 18727u; }\n    case 13: { return 27565u; }\n    default: { return 0u; }\n  }\n}\n\n// Text centred on the origin of p (ft), h ft tall; codes.x.. are the characters, n of them.\nfn label(p: vec2f, codes: vec4i, n: i32, h: f32) -> f32 {\n  let s = h / 5.0;\n  let total = f32(n) * 4.0 * s - s;\n  let x = p.x + total * 0.5;\n  let y = p.y + h * 0.5;\n  if (x < 0.0 || x >= total || y < 0.0 || y >= h) { return 0.0; }\n  let index = i32(floor(x / (4.0 * s)));\n  let qx = (x - f32(index) * 4.0 * s) / s;\n  if (qx >= 3.0 || index >= n) { return 0.0; }\n  let column = i32(qx);\n  let row = i32(y / s);\n  let bit = 14 - (row * 3 + column);\n  return f32((glyphBits(codes[index]) >> u32(bit)) & 1u);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let keep = frameU.time * 0.0;\n  let pxs = fwidth(uv);\n  let D2R = 0.017453292;\n  let side = select(-1.0, 1.0, params.side >= 0.0);\n  let eye = vec3f(5.7912 * side, params.trim * 0.3048 + 0.8636, 2.3152);\n  let tl = max(params.tilt, 5.0) * D2R;\n  let look = vec3f(eye.x - side * (params.trim * 0.3048 - 1.1176) * cos(tl) / sin(tl), 1.9812, 2.3152);\n  let k = normalize(look - eye);\n  var up0 = vec3f(0.0, 1.0, 0.0);\n  if (abs(k.y) > 0.999) { up0 = vec3f(0.0, 0.0, 1.0); }\n  let th = side * params.roll * D2R;      // projSL rolls -(Side roll), projSR +(Side roll); theta = -roll\n  let up = up0 * cos(th) + cross(k, up0) * sin(th) + k * dot(k, up0) * (1.0 - cos(th));\n  let f = -k;\n  let right = normalize(cross(up, f));\n  let tup = cross(f, right);\n  let p0 = 2.0 * max(params.throwRatio, 0.05);\n  let p5 = p0 * 1.6;\n  let a = tan(side * params.keyH * D2R) * p0;\n  let b = tan(params.keyV * D2R) * p5;\n  let n = vec2f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);\n  let m00 = p0 - n.x * a;\n  let m01 = -n.x * b;\n  let m10 = -n.y * a;\n  let m11 = p5 - n.y * b;\n  let det = m00 * m11 - m01 * m10;\n  let xc = (n.x * m11 - m01 * n.y) / det;\n  let yc = (m00 * n.y - m10 * n.x) / det;\n  let d = right * xc + tup * yc - f;\n  let t = (1.9812 - eye.y) / d.y;\n  let hit = eye + d * t;\n  let xf = hit.x / 0.3048;\n  let zf = (hit.z + 0.1232) / 0.3048;\n  let valid = t > 0.0 && abs(det) > 1e-6;\n  let onStage = valid && abs(xf) <= 24.0 && zf >= 0.0 && zf <= 16.0;\n  let planUv = clamp(vec2f((xf + 24.0) / 48.0, zf / 16.0), vec2f(0.0), vec2f(1.0));\n  let plan = textureSampleLevel(inputTexture, inputSampler, planUv, 0.0).rgb;\n  let sideColour = select(vec3f(0.2, 0.45, 1.0), vec3f(1.0, 0.25, 0.2), side > 0.0);\n  let m = i32(round(params.mode)) - 3;\n  var c = plan;\n  if (m == 1) { c = vec3f(1.0); }\n  if (m == 2) { c = sideColour; }\n  if (m != 1) {\n    let tag = label(vec2f(xf, zf) - vec2f(-side * 20.5, 7.2), vec4i(11, select(13, 12, side > 0.0), 0, 0), 2, 2.6);\n    c = mix(c, select(sideColour, vec3f(1.0), m == 2), tag);\n  }\n  if (params.blend > 0.5) {\n    let s = -side * (xf - params.blendCentre);\n    var w = select(0.0, 1.0, s >= 0.0);\n    if (params.blendWidth > 0.01) {\n      let u = clamp((s + params.blendWidth * 0.5) / params.blendWidth, 0.0, 1.0);\n      var fw = 1.0 - (1.0 - params.luminance) * pow(2.0 * (1.0 - u), params.power);\n      if (u < 0.5) { fw = params.luminance * pow(2.0 * u, params.power); }\n      w = pow(max(fw, 0.0), 1.0 / max(params.gamma, 0.01));\n    }\n    c = c * w;\n  }\n  if (!onStage) {\n    c = select(sideColour * 0.12, vec3f(0.0), params.mask > 0.5);\n  }\n  let edgePx = min(min(uv.x, 1.0 - uv.x) / max(pxs.x, 1e-6), min(uv.y, 1.0 - uv.y) / max(pxs.y, 1e-6));\n  if (params.mask < 0.5 && edgePx < 8.0) { c = sideColour; }\n  return vec4f(c * params.level + keep, 1.0);\n}\n",
+                "throwRatio": 1.14,
+                "tilt": 47.5,
+                "trim": 22.5833
+              },
+              "position": {
+                "x": -4109.226786521074,
+                "y": 814.7623390629525
+              },
+              "resolution": {
+                "height": 1200,
+                "mode": "fixed",
+                "width": 1920
+              },
+              "type": "customWgsl",
+              "ui": {
+                "preview": true
+              }
+            },
+            "warpSR": {
+              "definitionVersion": 1,
+              "id": "warpSR",
+              "label": "wgsl_warpSR",
+              "parameters": {
+                "blend": 1,
+                "blendCentre": 0,
+                "blendWidth": 8,
+                "gamma": 1,
+                "keyH": 0,
+                "keyV": 0,
+                "level": 1,
+                "luminance": 0.5,
+                "mask": 1,
+                "mode": 3,
+                "power": 2,
+                "roll": 90,
+                "side": -1,
+                "source": "struct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\n// Stage previz v14: one side projector's OUTPUT, as Resolume's Advanced Output would send it.\n// Every pixel of this 1920 x 1200 (16:10) raster is cast through the projector's own lens (the same\n// eye, aim, roll, throw and keystone ProjectorRig gives projSL / projSR) onto the grate top, and takes\n// the stage plan's colour there: the input map is the stage, the output is pre-warped. Off the stage\n// is black (Mask). Blend is a Resolume soft edge on the slice's inner edge: a ramp along the stage's\n// width, centred on Blend centre, Blend width ft wide, curve = Power / Luminance / Gamma; SL's and\n// SR's ramps are complementary, so with Luminance 0.5 they sum to one.\nstruct Params {\n  side: f32, // @default 1  1 = stage left projector (lens at +x), -1 = stage right.\n  trim: f32, // @default 22.5833  Truss trim, ft over the house deck.\n  tilt: f32, // @default 47.5  Side tilt, degrees down.\n  throwRatio: f32, // @default 1.14  Side throw ratio.\n  keyH: f32, // @default 0  Side keystone H (SR mirrors it).\n  keyV: f32, // @default 0  Side keystone V.\n  roll: f32, // @default 90  Side roll (SL rolls the other way).\n  mode: f32, // @default 3  The Source value: 3 stage map, 4 white, 5 SL/SR identity colours.\n  blend: f32, // @default 0  1 = soft edge across the overlap.\n  blendWidth: f32, // @default 8  Soft edge width, ft across the stage.\n  blendCentre: f32, // @default 0  Where the edge is centred, ft (+ = stage left).\n  power: f32, // @default 2  Soft edge curve power (Resolume: Power).\n  luminance: f32, // @default 0.5  Level at the middle of the edge (Resolume: Luminance).\n  gamma: f32, // @default 1  1 in this previz (the projector cookie is linear light); match the projector in Resolume.\n  mask: f32, // @default 1  1 = black off the stage; 0 = show the burned pixels and the raster frame.\n  level: f32, // @default 1  Overall brightness.\n};\n\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(2) var<uniform> frameU: SharedFrame;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn line(d: f32, width: f32) -> f32 {\n  return 1.0 - smoothstep(width * 0.5, width * 0.5 + 1.0, d);\n}\n\n// 3 x 5 glyphs: 0-9 are digits, 10 '-', 11 'S', 12 'L', 13 'R'. Bit 14 is the top-left cell.\nfn glyphBits(code: i32) -> u32 {\n  switch code {\n    case 0: { return 31599u; }\n    case 1: { return 11415u; }\n    case 2: { return 29671u; }\n    case 3: { return 29647u; }\n    case 4: { return 23497u; }\n    case 5: { return 31183u; }\n    case 6: { return 31215u; }\n    case 7: { return 29330u; }\n    case 8: { return 31727u; }\n    case 9: { return 31695u; }\n    case 10: { return 448u; }\n    case 11: { return 31183u; }\n    case 12: { return 18727u; }\n    case 13: { return 27565u; }\n    default: { return 0u; }\n  }\n}\n\n// Text centred on the origin of p (ft), h ft tall; codes.x.. are the characters, n of them.\nfn label(p: vec2f, codes: vec4i, n: i32, h: f32) -> f32 {\n  let s = h / 5.0;\n  let total = f32(n) * 4.0 * s - s;\n  let x = p.x + total * 0.5;\n  let y = p.y + h * 0.5;\n  if (x < 0.0 || x >= total || y < 0.0 || y >= h) { return 0.0; }\n  let index = i32(floor(x / (4.0 * s)));\n  let qx = (x - f32(index) * 4.0 * s) / s;\n  if (qx >= 3.0 || index >= n) { return 0.0; }\n  let column = i32(qx);\n  let row = i32(y / s);\n  let bit = 14 - (row * 3 + column);\n  return f32((glyphBits(codes[index]) >> u32(bit)) & 1u);\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let keep = frameU.time * 0.0;\n  let pxs = fwidth(uv);\n  let D2R = 0.017453292;\n  let side = select(-1.0, 1.0, params.side >= 0.0);\n  let eye = vec3f(5.7912 * side, params.trim * 0.3048 + 0.8636, 2.3152);\n  let tl = max(params.tilt, 5.0) * D2R;\n  let look = vec3f(eye.x - side * (params.trim * 0.3048 - 1.1176) * cos(tl) / sin(tl), 1.9812, 2.3152);\n  let k = normalize(look - eye);\n  var up0 = vec3f(0.0, 1.0, 0.0);\n  if (abs(k.y) > 0.999) { up0 = vec3f(0.0, 0.0, 1.0); }\n  let th = side * params.roll * D2R;      // projSL rolls -(Side roll), projSR +(Side roll); theta = -roll\n  let up = up0 * cos(th) + cross(k, up0) * sin(th) + k * dot(k, up0) * (1.0 - cos(th));\n  let f = -k;\n  let right = normalize(cross(up, f));\n  let tup = cross(f, right);\n  let p0 = 2.0 * max(params.throwRatio, 0.05);\n  let p5 = p0 * 1.6;\n  let a = tan(side * params.keyH * D2R) * p0;\n  let b = tan(params.keyV * D2R) * p5;\n  let n = vec2f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);\n  let m00 = p0 - n.x * a;\n  let m01 = -n.x * b;\n  let m10 = -n.y * a;\n  let m11 = p5 - n.y * b;\n  let det = m00 * m11 - m01 * m10;\n  let xc = (n.x * m11 - m01 * n.y) / det;\n  let yc = (m00 * n.y - m10 * n.x) / det;\n  let d = right * xc + tup * yc - f;\n  let t = (1.9812 - eye.y) / d.y;\n  let hit = eye + d * t;\n  let xf = hit.x / 0.3048;\n  let zf = (hit.z + 0.1232) / 0.3048;\n  let valid = t > 0.0 && abs(det) > 1e-6;\n  let onStage = valid && abs(xf) <= 24.0 && zf >= 0.0 && zf <= 16.0;\n  let planUv = clamp(vec2f((xf + 24.0) / 48.0, zf / 16.0), vec2f(0.0), vec2f(1.0));\n  let plan = textureSampleLevel(inputTexture, inputSampler, planUv, 0.0).rgb;\n  let sideColour = select(vec3f(0.2, 0.45, 1.0), vec3f(1.0, 0.25, 0.2), side > 0.0);\n  let m = i32(round(params.mode)) - 3;\n  var c = plan;\n  if (m == 1) { c = vec3f(1.0); }\n  if (m == 2) { c = sideColour; }\n  if (m != 1) {\n    let tag = label(vec2f(xf, zf) - vec2f(-side * 20.5, 7.2), vec4i(11, select(13, 12, side > 0.0), 0, 0), 2, 2.6);\n    c = mix(c, select(sideColour, vec3f(1.0), m == 2), tag);\n  }\n  if (params.blend > 0.5) {\n    let s = -side * (xf - params.blendCentre);\n    var w = select(0.0, 1.0, s >= 0.0);\n    if (params.blendWidth > 0.01) {\n      let u = clamp((s + params.blendWidth * 0.5) / params.blendWidth, 0.0, 1.0);\n      var fw = 1.0 - (1.0 - params.luminance) * pow(2.0 * (1.0 - u), params.power);\n      if (u < 0.5) { fw = params.luminance * pow(2.0 * u, params.power); }\n      w = pow(max(fw, 0.0), 1.0 / max(params.gamma, 0.01));\n    }\n    c = c * w;\n  }\n  if (!onStage) {\n    c = select(sideColour * 0.12, vec3f(0.0), params.mask > 0.5);\n  }\n  let edgePx = min(min(uv.x, 1.0 - uv.x) / max(pxs.x, 1e-6), min(uv.y, 1.0 - uv.y) / max(pxs.y, 1e-6));\n  if (params.mask < 0.5 && edgePx < 8.0) { c = sideColour; }\n  return vec4f(c * params.level + keep, 1.0);\n}\n",
+                "throwRatio": 1.14,
+                "tilt": 47.5,
+                "trim": 22.5833
+              },
+              "position": {
+                "x": -4300,
+                "y": 2160
+              },
+              "resolution": {
+                "height": 1200,
+                "mode": "fixed",
+                "width": 1920
+              },
+              "type": "customWgsl",
+              "ui": {
+                "preview": true
+              }
             }
           },
-          "revision": 3
+          "revision": 10
         },
         "inputs": [],
         "name": "StageFeeds",
@@ -11778,8 +12013,8 @@
           {
             "definition": {
               "default": 1,
-              "label": "Source: AE renders · test · grid",
-              "max": 2,
+              "label": "Source: live · test · grid · stage map · white · ID",
+              "max": 5,
               "min": 0,
               "step": 1,
               "type": "number"
@@ -11797,23 +12032,60 @@
               {
                 "key": "index",
                 "nodeId": "feedSR"
+              },
+              {
+                "key": "index",
+                "nodeId": "feedFX"
+              },
+              {
+                "key": "mode",
+                "nodeId": "warpSL"
+              },
+              {
+                "key": "mode",
+                "nodeId": "warpSR"
               }
             ]
           },
           {
             "definition": {
-              "default": 3,
-              "label": "Source FX: Syphon · test · map · MA3 bake",
-              "max": 3,
-              "min": 0,
-              "step": 1,
-              "type": "number"
+              "default": "info.v002.Syphon.D08031AE-9529-4744-8737-91D45521E8BC",
+              "label": "Syphon DS",
+              "type": "string"
             },
-            "key": "sourceFX",
+            "key": "serverDS",
             "targets": [
               {
-                "key": "index",
-                "nodeId": "feedFX"
+                "key": "source",
+                "nodeId": "syphonDS"
+              }
+            ]
+          },
+          {
+            "definition": {
+              "default": "info.v002.Syphon.CB90C220-0A7E-432E-92EE-507B60C7A037",
+              "label": "Syphon SL",
+              "type": "string"
+            },
+            "key": "serverSL",
+            "targets": [
+              {
+                "key": "source",
+                "nodeId": "syphonSL"
+              }
+            ]
+          },
+          {
+            "definition": {
+              "default": "info.v002.Syphon.C4BA3005-279B-446C-BD5A-8842E5AD8AB9",
+              "label": "Syphon SR",
+              "type": "string"
+            },
+            "key": "serverSR",
+            "targets": [
+              {
+                "key": "source",
+                "nodeId": "syphonSR"
               }
             ]
           },
@@ -11830,9 +12102,177 @@
                 "nodeId": "nd_9b04bc5bd9e6x"
               }
             ]
+          },
+          {
+            "definition": {
+              "default": 22.5833,
+              "label": "Truss trim, ft over deck",
+              "max": 35,
+              "min": 10,
+              "step": 0.0833,
+              "type": "number"
+            },
+            "key": "trussTrim",
+            "targets": [
+              {
+                "key": "trim",
+                "nodeId": "warpSL"
+              },
+              {
+                "key": "trim",
+                "nodeId": "warpSR"
+              }
+            ]
+          },
+          {
+            "definition": {
+              "default": 47.5,
+              "label": "Side tilt, ° down",
+              "max": 89,
+              "min": 10,
+              "step": 0.01,
+              "type": "number"
+            },
+            "key": "sideTilt",
+            "targets": [
+              {
+                "key": "tilt",
+                "nodeId": "warpSL"
+              },
+              {
+                "key": "tilt",
+                "nodeId": "warpSR"
+              }
+            ]
+          },
+          {
+            "definition": {
+              "default": 1.14,
+              "label": "Side throw ratio",
+              "max": 4,
+              "min": 0.5,
+              "step": 0.01,
+              "type": "number"
+            },
+            "key": "sideThrow",
+            "targets": [
+              {
+                "key": "throwRatio",
+                "nodeId": "warpSL"
+              },
+              {
+                "key": "throwRatio",
+                "nodeId": "warpSR"
+              }
+            ]
+          },
+          {
+            "definition": {
+              "default": 0,
+              "label": "Side keystone H, °",
+              "max": 45,
+              "min": -45,
+              "step": 0.01,
+              "type": "number"
+            },
+            "key": "sideKeyH",
+            "targets": [
+              {
+                "key": "keyH",
+                "nodeId": "warpSL"
+              },
+              {
+                "key": "keyH",
+                "nodeId": "warpSR"
+              }
+            ]
+          },
+          {
+            "definition": {
+              "default": 0,
+              "label": "Side keystone V, °",
+              "max": 30,
+              "min": -30,
+              "step": 0.1,
+              "type": "number"
+            },
+            "key": "sideKeyV",
+            "targets": [
+              {
+                "key": "keyV",
+                "nodeId": "warpSL"
+              },
+              {
+                "key": "keyV",
+                "nodeId": "warpSR"
+              }
+            ]
+          },
+          {
+            "definition": {
+              "default": 90,
+              "label": "Side roll, °",
+              "max": 180,
+              "min": -180,
+              "step": 1,
+              "type": "number"
+            },
+            "key": "sideRoll",
+            "targets": [
+              {
+                "key": "roll",
+                "nodeId": "warpSL"
+              },
+              {
+                "key": "roll",
+                "nodeId": "warpSR"
+              }
+            ]
+          },
+          {
+            "definition": {
+              "default": 1,
+              "label": "Side soft edge",
+              "max": 1,
+              "min": 0,
+              "step": 1,
+              "type": "number"
+            },
+            "key": "blend",
+            "targets": [
+              {
+                "key": "blend",
+                "nodeId": "warpSL"
+              },
+              {
+                "key": "blend",
+                "nodeId": "warpSR"
+              }
+            ]
+          },
+          {
+            "definition": {
+              "default": 8,
+              "label": "Soft edge width, ft",
+              "max": 25,
+              "min": 0,
+              "step": 0.5,
+              "type": "number"
+            },
+            "key": "blendWidth",
+            "targets": [
+              {
+                "key": "blendWidth",
+                "nodeId": "warpSL"
+              },
+              {
+                "key": "blendWidth",
+                "nodeId": "warpSR"
+              }
+            ]
           }
         ],
-        "version": 2
+        "version": 3
       },
       {
         "componentId": "stageSet",
@@ -14237,6 +14677,30 @@
           "portId": "below"
         }
       },
+      "e-blend-desk": {
+        "id": "e-blend-desk",
+        "order": 117,
+        "source": {
+          "nodeId": "blend",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "desk",
+          "portId": "controls"
+        }
+      },
+      "e-blendWidth-desk": {
+        "id": "e-blendWidth-desk",
+        "order": 118,
+        "source": {
+          "nodeId": "blendWidth",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "desk",
+          "portId": "controls"
+        }
+      },
       "e-cookie-SL": {
         "id": "e-cookie-SL",
         "source": {
@@ -14930,6 +15394,17 @@
           "portId": "controls"
         }
       },
+      "e-syphonEncode-syphonOut": {
+        "id": "e-syphonEncode-syphonOut",
+        "source": {
+          "nodeId": "syphonEncode",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "nd_a770ff16a5ddx",
+          "portId": "input"
+        }
+      },
       "e-talent-desk": {
         "id": "e-talent-desk",
         "order": 8,
@@ -15046,6 +15521,17 @@
           "nodeId": "projectorRig",
           "portId": "ds"
         }
+      },
+      "ed_a770ff16a5dd10": {
+        "id": "ed_a770ff16a5dd10",
+        "source": {
+          "nodeId": "layerQuad",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "syphonEncode",
+          "portId": "input"
+        }
       }
     },
     "groups": {},
@@ -15061,7 +15547,7 @@
           "max": 1,
           "min": 0,
           "step": 0,
-          "value": 0.4200303819444444
+          "value": 1
         },
         "position": {
           "x": -3800,
@@ -15092,6 +15578,41 @@
         },
         "type": "solid"
       },
+      "blend": {
+        "definitionVersion": 2,
+        "id": "blend",
+        "label": "toggle_blend",
+        "parameters": {
+          "caption": "Side soft edge",
+          "channel": "blend",
+          "defaultOn": true,
+          "on": true
+        },
+        "position": {
+          "x": -3500,
+          "y": -560
+        },
+        "type": "toggle"
+      },
+      "blendWidth": {
+        "definitionVersion": 2,
+        "id": "blendWidth",
+        "label": "slider_blendWidth",
+        "parameters": {
+          "caption": "Soft edge, ft",
+          "channel": "blendWidth",
+          "defaultValue": 8,
+          "max": 25,
+          "min": 0,
+          "step": 0.5,
+          "value": 8
+        },
+        "position": {
+          "x": -3200,
+          "y": -560
+        },
+        "type": "slider"
+      },
       "deckTone": {
         "definitionVersion": 2,
         "id": "deckTone",
@@ -15103,7 +15624,7 @@
           "max": 1,
           "min": 0,
           "step": 0.01,
-          "value": 0.6
+          "value": 1
         },
         "position": {
           "x": -2000,
@@ -15116,7 +15637,7 @@
         "id": "desk",
         "label": "panel_desk",
         "parameters": {
-          "board": "{\n  \"columns\": 6,\n  \"items\": [\n    {\"label\":\"Feeds and view\",\"rect\":{\"x\":0,\"y\":0,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_source\",\"rect\":{\"x\":0,\"y\":1,\"w\":3,\"h\":1}},\n    {\"member\":\"slider_shot\",\"rect\":{\"x\":3,\"y\":1,\"w\":3,\"h\":1}},\n    {\"member\":\"slider_orbit\",\"rect\":{\"x\":0,\"y\":2,\"w\":3,\"h\":1}},\n    {\"member\":\"slider_zoom\",\"rect\":{\"x\":3,\"y\":2,\"w\":3,\"h\":1}},\n    {\"label\":\"Stage\",\"rect\":{\"x\":0,\"y\":4,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_kabuki\",\"rect\":{\"x\":0,\"y\":5,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_leds\",\"rect\":{\"x\":2,\"y\":5,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_strobes\",\"rect\":{\"x\":4,\"y\":5,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_deckTone\",\"rect\":{\"x\":0,\"y\":6,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_scrim\",\"rect\":{\"x\":2,\"y\":6,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_work\",\"rect\":{\"x\":4,\"y\":6,\"w\":2,\"h\":1}},\n    {\"member\":\"toggle_talent\",\"rect\":{\"x\":0,\"y\":7,\"w\":2,\"h\":1}},\n    {\"label\":\"Atmosphere\",\"rect\":{\"x\":0,\"y\":8,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_haze\",\"rect\":{\"x\":0,\"y\":9,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_fog\",\"rect\":{\"x\":2,\"y\":9,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_beams\",\"rect\":{\"x\":4,\"y\":9,\"w\":2,\"h\":1}},\n    {\"label\":\"Presets\",\"rect\":{\"x\":0,\"y\":10,\"w\":6,\"h\":1}},\n    {\"member\":\"presets1\",\"rect\":{\"x\":0,\"y\":11,\"w\":6,\"h\":1}},\n    {\"label\":\"Projectors\",\"rect\":{\"x\":0,\"y\":12,\"w\":6,\"h\":1}},\n    {\"member\":\"slider_dsThrow\",\"rect\":{\"x\":0,\"y\":14,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_dsOffset\",\"rect\":{\"x\":2,\"y\":14,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_dsTilt\",\"rect\":{\"x\":4,\"y\":14,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_dsKeyV\",\"rect\":{\"x\":0,\"y\":15,\"w\":3,\"h\":1}},\n    {\"member\":\"slider_dsKeyH\",\"rect\":{\"x\":3,\"y\":15,\"w\":3,\"h\":1}},\n    {\"member\":\"slider_sideTilt\",\"rect\":{\"x\":0,\"y\":16,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_sideThrow\",\"rect\":{\"x\":2,\"y\":16,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_sideRoll\",\"rect\":{\"x\":4,\"y\":16,\"w\":2,\"h\":1}},\n    {\"member\":\"slider_sideKeyV\",\"rect\":{\"x\":0,\"y\":17,\"w\":3,\"h\":1}},\n    {\"member\":\"slider_sideKeyH\",\"rect\":{\"x\":3,\"y\":17,\"w\":3,\"h\":1}},\n    {\"member\":\"slider_trussTrim\",\"rect\":{\"x\":0,\"y\":13,\"w\":3,\"h\":1}},\n    {\"member\":\"slider_dsTrim\",\"rect\":{\"x\":3,\"y\":13,\"w\":3,\"h\":1}},\n    {\"member\":\"layer_quad\",\"rect\":{\"x\":4,\"y\":3,\"w\":2,\"h\":1}},\n    {\"member\":\"layer_single\",\"rect\":{\"x\":0,\"y\":3,\"w\":2,\"h\":1}},\n    {\"member\":\"layer_dual\",\"rect\":{\"x\":2,\"y\":3,\"w\":2,\"h\":1}}\n  ]\n}",
+          "board": "{\n  \"columns\": 6,\n  \"items\": [\n    {\n      \"label\": \"Feeds and view\",\n      \"rect\": {\n        \"x\": 0,\n        \"y\": 0,\n        \"w\": 6,\n        \"h\": 1\n      }\n    },\n    {\n      \"member\": \"slider_source\",\n      \"rect\": {\n        \"x\": 0,\n        \"y\": 1,\n        \"w\": 3,\n        \"h\": 1\n      }\n    },\n    {\n      \"member\": \"slider_shot\",\n      \"rect\": {\n        \"x\": 3,\n        \"y\": 1,\n        \"w\": 3,\n        \"h\": 1\n      }\n    },\n    {\n      \"member\": \"slider_orbit\",\n      \"rect\": {\n        \"x\": 0,\n        \"y\": 2,\n        \"w\": 3,\n        \"h\": 1\n      }\n    },\n    {\n      \"member\": \"slider_zoom\",\n      \"rect\": {\n        \"x\": 3,\n        \"y\": 2,\n        \"w\": 3,\n        \"h\": 1\n      }\n    },\n    {\n      \"label\": \"Stage\",\n      \"rect\": {\n        \"x\": 0,\n        \"y\": 4,\n        \"w\": 6,\n        \"h\": 1\n      }\n    },\n    {\n      \"member\": \"slider_kabuki\",\n      \"rect\": {\n        \"x\": 0,\n        \"y\": 5,\n        \"w\": 2,\n        \"h\": 1\n      }\n    },\n    {\n      \"member\": \"slider_leds\",\n      \"rect\": {\n        \"x\": 2,\n        \"y\": 5,\n        \"w\": 2,\n        \"h\": 1\n      }\n    },\n    {\n      \"member\": \"slider_strobes\",\n      \"rect\": {\n        \"x\": 4,\n        \"y\": 5,\n        \"w\": 2,\n        \"h\": 1\n      }\n    },\n    {\n      \"member\": \"slider_deckTone\",\n      \"rect\": {\n        \"x\": 0,\n        \"y\": 6,\n        \"w\": 2,\n        \"h\": 1\n      }\n    },\n    {\n      \"member\": \"slider_scrim\",\n      \"rect\": {\n        \"x\": 2,\n        \"y\": 6,\n        \"w\": 2,\n        \"h\": 1\n      }\n    },\n    {\n      \"member\": \"slider_work\",\n      \"rect\": {\n        \"x\": 4,\n        \"y\": 6,\n        \"w\": 2,\n        \"h\": 1\n      }\n    },\n    {\n      \"member\": \"toggle_talent\",\n      \"rect\": {\n        \"x\": 0,\n        \"y\": 7,\n        \"w\": 2,\n        \"h\": 1\n      }\n    },\n    {\n      \"label\": \"Atmosphere\",\n      \"rect\": {\n        \"x\": 0,\n        \"y\": 8,\n        \"w\": 6,\n        \"h\": 1\n      }\n    },\n    {\n      \"member\": \"slider_haze\",\n      \"rect\": {\n        \"x\": 0,\n        \"y\": 9,\n        \"w\": 2,\n        \"h\": 1\n      }\n    },\n    {\n      \"member\": \"slider_fog\",\n      \"rect\": {\n        \"x\": 2,\n        \"y\": 9,\n        \"w\": 2,\n        \"h\": 1\n      }\n    },\n    {\n      \"member\": \"slider_beams\",\n      \"rect\": {\n        \"x\": 4,\n        \"y\": 9,\n        \"w\": 2,\n        \"h\": 1\n      }\n    },\n    {\n      \"label\": \"Presets\",\n      \"rect\": {\n        \"x\": 0,\n        \"y\": 10,\n        \"w\": 6,\n        \"h\": 1\n      }\n    },\n    {\n      \"member\": \"presets1\",\n      \"rect\": {\n        \"x\": 0,\n        \"y\": 11,\n        \"w\": 6,\n        \"h\": 1\n      }\n    },\n    {\n      \"label\": \"Projectors\",\n      \"rect\": {\n        \"x\": 0,\n        \"y\": 12,\n        \"w\": 6,\n        \"h\": 1\n      }\n    },\n    {\n      \"member\": \"slider_dsThrow\",\n      \"rect\": {\n        \"x\": 0,\n        \"y\": 14,\n        \"w\": 2,\n        \"h\": 1\n      }\n    },\n    {\n      \"member\": \"slider_dsOffset\",\n      \"rect\": {\n        \"x\": 2,\n        \"y\": 14,\n        \"w\": 2,\n        \"h\": 1\n      }\n    },\n    {\n      \"member\": \"slider_dsTilt\",\n      \"rect\": {\n        \"x\": 4,\n        \"y\": 14,\n        \"w\": 2,\n        \"h\": 1\n      }\n    },\n    {\n      \"member\": \"slider_dsKeyV\",\n      \"rect\": {\n        \"x\": 0,\n        \"y\": 15,\n        \"w\": 3,\n        \"h\": 1\n      }\n    },\n    {\n      \"member\": \"slider_dsKeyH\",\n      \"rect\": {\n        \"x\": 3,\n        \"y\": 15,\n        \"w\": 3,\n        \"h\": 1\n      }\n    },\n    {\n      \"member\": \"slider_sideTilt\",\n      \"rect\": {\n        \"x\": 0,\n        \"y\": 16,\n        \"w\": 2,\n        \"h\": 1\n      }\n    },\n    {\n      \"member\": \"slider_sideThrow\",\n      \"rect\": {\n        \"x\": 2,\n        \"y\": 16,\n        \"w\": 2,\n        \"h\": 1\n      }\n    },\n    {\n      \"member\": \"slider_sideRoll\",\n      \"rect\": {\n        \"x\": 4,\n        \"y\": 16,\n        \"w\": 2,\n        \"h\": 1\n      }\n    },\n    {\n      \"member\": \"slider_sideKeyV\",\n      \"rect\": {\n        \"x\": 0,\n        \"y\": 17,\n        \"w\": 3,\n        \"h\": 1\n      }\n    },\n    {\n      \"member\": \"slider_sideKeyH\",\n      \"rect\": {\n        \"x\": 3,\n        \"y\": 17,\n        \"w\": 3,\n        \"h\": 1\n      }\n    },\n    {\n      \"member\": \"slider_trussTrim\",\n      \"rect\": {\n        \"x\": 0,\n        \"y\": 13,\n        \"w\": 3,\n        \"h\": 1\n      }\n    },\n    {\n      \"member\": \"slider_dsTrim\",\n      \"rect\": {\n        \"x\": 3,\n        \"y\": 13,\n        \"w\": 3,\n        \"h\": 1\n      }\n    },\n    {\n      \"member\": \"layer_quad\",\n      \"rect\": {\n        \"x\": 4,\n        \"y\": 3,\n        \"w\": 2,\n        \"h\": 1\n      }\n    },\n    {\n      \"member\": \"layer_single\",\n      \"rect\": {\n        \"x\": 0,\n        \"y\": 3,\n        \"w\": 2,\n        \"h\": 1\n      }\n    },\n    {\n      \"member\": \"layer_dual\",\n      \"rect\": {\n        \"x\": 2,\n        \"y\": 3,\n        \"w\": 2,\n        \"h\": 1\n      }\n    },\n    {\n      \"label\": \"Side feeds (test patterns, Source 3-5)\",\n      \"rect\": {\n        \"x\": 0,\n        \"y\": 18,\n        \"w\": 6,\n        \"h\": 1\n      }\n    },\n    {\n      \"member\": \"toggle_blend\",\n      \"rect\": {\n        \"x\": 0,\n        \"y\": 19,\n        \"w\": 2,\n        \"h\": 1\n      }\n    },\n    {\n      \"member\": \"slider_blendWidth\",\n      \"rect\": {\n        \"x\": 2,\n        \"y\": 19,\n        \"w\": 4,\n        \"h\": 1\n      }\n    }\n  ]\n}",
           "layout": "",
           "remote": false,
           "title": "Stage previz"
@@ -15272,7 +15793,7 @@
           "max": 1,
           "min": 0,
           "step": 0,
-          "value": 0.6036603009259259
+          "value": 1
         },
         "position": {
           "x": -4100,
@@ -15291,7 +15812,7 @@
           "max": 1,
           "min": 0,
           "step": 0,
-          "value": 0.6306061921296297
+          "value": 0.1710792824074074
         },
         "position": {
           "x": -4400,
@@ -15447,7 +15968,7 @@
         "id": "meshCurtain",
         "label": "mesh_curtain",
         "parameters": {
-          "bounds": "0,5.3506,-2.9682,8.4191",
+          "bounds": "-0.003,5.0628,-1.554,8.1507",
           "clipFrames": 0,
           "clips": "",
           "file": "media/stage-previz/stage-r2.glb",
@@ -15468,7 +15989,7 @@
         "id": "meshDeck",
         "label": "mesh_deck",
         "parameters": {
-          "bounds": "0,2.5167,-0.1232,8.8729",
+          "bounds": "0,2.6407,-1.3424,11.0547",
           "file": "media/stage-previz/stage-r2.glb",
           "parts": "1:ds_truss 2:proj_DS 3:proj_SL 4:proj_SR",
           "select": "deck.*",
@@ -15486,7 +16007,7 @@
         "id": "meshGrid",
         "label": "mesh_grid",
         "parameters": {
-          "bounds": "-0.0002,9.4286,-2.3148,9.1465",
+          "bounds": "-0.0002,9.4906,-1.8429,8.9714",
           "clipFrames": 0,
           "clips": "",
           "file": "media/stage-previz/stage-r2.glb",
@@ -15507,7 +16028,7 @@
         "id": "meshKabuki",
         "label": "mesh_kabuki",
         "parameters": {
-          "bounds": "0,5.3515,1.1714,8.1223",
+          "bounds": "0,5.0424,1.1202,7.8894",
           "clipFrames": 0,
           "clips": "",
           "file": "media/stage-previz/stage-r2.glb",
@@ -15528,7 +16049,7 @@
         "id": "meshLed",
         "label": "mesh_led",
         "parameters": {
-          "bounds": "0,4.575,-2.2084,5.601",
+          "bounds": "0,5.0038,-1.7365,5.56",
           "clipFrames": 0,
           "clips": "",
           "file": "media/stage-previz/stage-r2.glb",
@@ -15549,7 +16070,7 @@
         "id": "meshRig",
         "label": "mesh_rig",
         "parameters": {
-          "bounds": "0,12.7209,1.5996,9.816",
+          "bounds": "0,12.1597,4.5296,8.1378",
           "file": "media/stage-previz/stage-r2.glb",
           "parts": "1:ds_truss 2:proj_DS 3:proj_SL 4:proj_SR",
           "select": "rig.*",
@@ -15588,7 +16109,7 @@
         "id": "meshStrobe",
         "label": "mesh_strobe",
         "parameters": {
-          "bounds": "0.0254,2.7883,1.5786,7.6349",
+          "bounds": "0.0254,2.9123,1.5786,7.6349",
           "clipFrames": 0,
           "clips": "",
           "file": "media/stage-previz/stage-r2.glb",
@@ -15609,7 +16130,7 @@
         "id": "meshTalent",
         "label": "mesh_talent",
         "parameters": {
-          "bounds": "0,3.6539,0.3288,4.5028",
+          "bounds": "0,3.7779,0.3288,4.5028",
           "clipFrames": 0,
           "clips": "",
           "file": "media/stage-previz/stage-r2.glb",
@@ -15630,11 +16151,11 @@
         "id": "nd_9b04bc5bd9e652",
         "label": "presets1",
         "parameters": {
-          "current": "ds74_plot",
+          "current": "preset4",
           "curve": "smooth",
           "morph": 0,
           "morphs": "{\n  \"version\": 1,\n  \"records\": []\n}\n",
-          "presets": "{\n  \"version\": 1,\n  \"presets\": [\n    {\n      \"name\": \"ds74_plot\",\n      \"values\": {\n        \"slider_source\": {\n          \"value\": 0\n        },\n        \"slider_shot\": {\n          \"value\": 4\n        },\n        \"slider_kabuki\": {\n          \"value\": 1\n        },\n        \"slider_leds\": {\n          \"value\": 1\n        },\n        \"slider_work\": {\n          \"value\": 0\n        },\n        \"slider_haze\": {\n          \"value\": 0.6306061921296297\n        },\n        \"slider_fog\": {\n          \"value\": 0.6036603009259259\n        },\n        \"slider_beams\": {\n          \"value\": 0.4200303819444444\n        },\n        \"toggle_talent\": {\n          \"on\": true\n        },\n        \"slider_orbit\": {\n          \"value\": -3\n        },\n        \"slider_zoom\": {\n          \"value\": -50\n        },\n        \"slider_dsThrow\": {\n          \"value\": 0.74\n        },\n        \"slider_dsOffset\": {\n          \"value\": 0\n        },\n        \"slider_dsTilt\": {\n          \"value\": 19.083\n        },\n        \"slider_dsKeyV\": {\n          \"value\": 8.312\n        },\n        \"slider_dsKeyH\": {\n          \"value\": 0\n        },\n        \"slider_sideTilt\": {\n          \"value\": 39.5573\n        },\n        \"slider_sideThrow\": {\n          \"value\": 1.1603\n        },\n        \"slider_sideRoll\": {\n          \"value\": 90\n        },\n        \"slider_sideKeyV\": {\n          \"value\": 0\n        },\n        \"slider_sideKeyH\": {\n          \"value\": 27.5506\n        },\n        \"slider_deckTone\": {\n          \"value\": 0.6\n        },\n        \"slider_scrim\": {\n          \"value\": 0.35\n        },\n        \"slider_strobes\": {\n          \"value\": 0.5\n        },\n        \"slider_trussTrim\": {\n          \"value\": 22.5833\n        },\n        \"slider_dsTrim\": {\n          \"value\": 22.5833\n        }\n      }\n    },\n    {\n      \"name\": \"ds74_fill\",\n      \"values\": {\n        \"slider_source\": {\n          \"value\": 0\n        },\n        \"slider_shot\": {\n          \"value\": 4\n        },\n        \"slider_kabuki\": {\n          \"value\": 1\n        },\n        \"slider_leds\": {\n          \"value\": 1\n        },\n        \"slider_work\": {\n          \"value\": 0\n        },\n        \"slider_haze\": {\n          \"value\": 0.6306061921296297\n        },\n        \"slider_fog\": {\n          \"value\": 0.6036603009259259\n        },\n        \"slider_beams\": {\n          \"value\": 0.4200303819444444\n        },\n        \"toggle_talent\": {\n          \"on\": true\n        },\n        \"slider_orbit\": {\n          \"value\": -3\n        },\n        \"slider_zoom\": {\n          \"value\": -50\n        },\n        \"slider_dsThrow\": {\n          \"value\": 0.74\n        },\n        \"slider_dsOffset\": {\n          \"value\": -8.461\n        },\n        \"slider_dsTilt\": {\n          \"value\": 15.609\n        },\n        \"slider_dsKeyV\": {\n          \"value\": 6.729\n        },\n        \"slider_dsKeyH\": {\n          \"value\": 0\n        },\n        \"slider_sideTilt\": {\n          \"value\": 39.5573\n        },\n        \"slider_sideThrow\": {\n          \"value\": 1.1603\n        },\n        \"slider_sideRoll\": {\n          \"value\": 90\n        },\n        \"slider_sideKeyV\": {\n          \"value\": 0\n        },\n        \"slider_sideKeyH\": {\n          \"value\": 27.5506\n        },\n        \"slider_deckTone\": {\n          \"value\": 0.6\n        },\n        \"slider_scrim\": {\n          \"value\": 0.35\n        },\n        \"slider_strobes\": {\n          \"value\": 0.5\n        },\n        \"slider_trussTrim\": {\n          \"value\": 22.5833\n        },\n        \"slider_dsTrim\": {\n          \"value\": 22.5833\n        }\n      }\n    }\n  ]\n}\n",
+          "presets": "{\n  \"version\": 1,\n  \"presets\": [\n    {\n      \"name\": \"ds74_plot\",\n      \"values\": {\n        \"slider_source\": {\n          \"value\": 0\n        },\n        \"slider_shot\": {\n          \"value\": 4\n        },\n        \"slider_kabuki\": {\n          \"value\": 1\n        },\n        \"slider_leds\": {\n          \"value\": 1\n        },\n        \"slider_work\": {\n          \"value\": 0\n        },\n        \"slider_haze\": {\n          \"value\": 0.6306061921296297\n        },\n        \"slider_fog\": {\n          \"value\": 0.6036603009259259\n        },\n        \"slider_beams\": {\n          \"value\": 0.4200303819444444\n        },\n        \"toggle_talent\": {\n          \"on\": true\n        },\n        \"slider_orbit\": {\n          \"value\": -3\n        },\n        \"slider_zoom\": {\n          \"value\": -50\n        },\n        \"slider_dsThrow\": {\n          \"value\": 0.74\n        },\n        \"slider_dsOffset\": {\n          \"value\": 0\n        },\n        \"slider_dsTilt\": {\n          \"value\": 19.083\n        },\n        \"slider_dsKeyV\": {\n          \"value\": 8.312\n        },\n        \"slider_dsKeyH\": {\n          \"value\": 0\n        },\n        \"slider_sideTilt\": {\n          \"value\": 39.5573\n        },\n        \"slider_sideThrow\": {\n          \"value\": 1.1603\n        },\n        \"slider_sideRoll\": {\n          \"value\": 90\n        },\n        \"slider_sideKeyV\": {\n          \"value\": 0\n        },\n        \"slider_sideKeyH\": {\n          \"value\": 27.5506\n        },\n        \"slider_deckTone\": {\n          \"value\": 0.6\n        },\n        \"slider_scrim\": {\n          \"value\": 0.35\n        },\n        \"slider_strobes\": {\n          \"value\": 0.5\n        },\n        \"slider_trussTrim\": {\n          \"value\": 22.5833\n        },\n        \"slider_dsTrim\": {\n          \"value\": 22.5833\n        }\n      }\n    },\n    {\n      \"name\": \"ds74_fill\",\n      \"values\": {\n        \"slider_source\": {\n          \"value\": 0\n        },\n        \"slider_shot\": {\n          \"value\": 4\n        },\n        \"slider_kabuki\": {\n          \"value\": 1\n        },\n        \"slider_leds\": {\n          \"value\": 1\n        },\n        \"slider_work\": {\n          \"value\": 0\n        },\n        \"slider_haze\": {\n          \"value\": 0.6306061921296297\n        },\n        \"slider_fog\": {\n          \"value\": 0.6036603009259259\n        },\n        \"slider_beams\": {\n          \"value\": 0.4200303819444444\n        },\n        \"toggle_talent\": {\n          \"on\": true\n        },\n        \"slider_orbit\": {\n          \"value\": -3\n        },\n        \"slider_zoom\": {\n          \"value\": -50\n        },\n        \"slider_dsThrow\": {\n          \"value\": 0.74\n        },\n        \"slider_dsOffset\": {\n          \"value\": -8.461\n        },\n        \"slider_dsTilt\": {\n          \"value\": 15.609\n        },\n        \"slider_dsKeyV\": {\n          \"value\": 6.729\n        },\n        \"slider_dsKeyH\": {\n          \"value\": 0\n        },\n        \"slider_sideTilt\": {\n          \"value\": 39.5573\n        },\n        \"slider_sideThrow\": {\n          \"value\": 1.1603\n        },\n        \"slider_sideRoll\": {\n          \"value\": 90\n        },\n        \"slider_sideKeyV\": {\n          \"value\": 0\n        },\n        \"slider_sideKeyH\": {\n          \"value\": 27.5506\n        },\n        \"slider_deckTone\": {\n          \"value\": 0.6\n        },\n        \"slider_scrim\": {\n          \"value\": 0.35\n        },\n        \"slider_strobes\": {\n          \"value\": 0.5\n        },\n        \"slider_trussTrim\": {\n          \"value\": 22.5833\n        },\n        \"slider_dsTrim\": {\n          \"value\": 22.5833\n        }\n      }\n    },\n    {\n      \"name\": \"sides_C\",\n      \"values\": {\n        \"slider_source\": {\n          \"value\": 3\n        },\n        \"slider_shot\": {\n          \"value\": 4\n        },\n        \"slider_kabuki\": {\n          \"value\": 1\n        },\n        \"slider_leds\": {\n          \"value\": 1\n        },\n        \"slider_work\": {\n          \"value\": 0\n        },\n        \"slider_haze\": {\n          \"value\": 0.6306061921296297\n        },\n        \"slider_fog\": {\n          \"value\": 0.6036603009259259\n        },\n        \"slider_beams\": {\n          \"value\": 0.4200303819444444\n        },\n        \"toggle_talent\": {\n          \"on\": true\n        },\n        \"slider_orbit\": {\n          \"value\": -3\n        },\n        \"slider_zoom\": {\n          \"value\": -50\n        },\n        \"slider_dsThrow\": {\n          \"value\": 0.74\n        },\n        \"slider_dsOffset\": {\n          \"value\": 0\n        },\n        \"slider_dsTilt\": {\n          \"value\": 19.083\n        },\n        \"slider_dsKeyV\": {\n          \"value\": 8.312\n        },\n        \"slider_dsKeyH\": {\n          \"value\": 0\n        },\n        \"slider_sideTilt\": {\n          \"value\": 47.5\n        },\n        \"slider_sideThrow\": {\n          \"value\": 1.14\n        },\n        \"slider_sideRoll\": {\n          \"value\": 90\n        },\n        \"slider_sideKeyV\": {\n          \"value\": 0\n        },\n        \"slider_sideKeyH\": {\n          \"value\": 0\n        },\n        \"slider_deckTone\": {\n          \"value\": 0.6\n        },\n        \"slider_scrim\": {\n          \"value\": 0.35\n        },\n        \"slider_strobes\": {\n          \"value\": 0.5\n        },\n        \"slider_trussTrim\": {\n          \"value\": 22.5833\n        },\n        \"slider_dsTrim\": {\n          \"value\": 22.5833\n        },\n        \"toggle_blend\": {\n          \"on\": true\n        },\n        \"slider_blendWidth\": {\n          \"value\": 8\n        }\n      }\n    },\n    {\n      \"name\": \"preset4\",\n      \"values\": {\n        \"slider_source\": {\n          \"value\": 0\n        },\n        \"slider_shot\": {\n          \"value\": 4\n        },\n        \"slider_kabuki\": {\n          \"value\": 1\n        },\n        \"slider_leds\": {\n          \"value\": 1\n        },\n        \"slider_work\": {\n          \"value\": 0.5870225694444444\n        },\n        \"slider_haze\": {\n          \"value\": 0.3255208333333333\n        },\n        \"slider_fog\": {\n          \"value\": 1\n        },\n        \"slider_beams\": {\n          \"value\": 0.4133029513888889\n        },\n        \"toggle_talent\": {\n          \"on\": true\n        },\n        \"slider_orbit\": {\n          \"value\": -11\n        },\n        \"slider_zoom\": {\n          \"value\": -67.5\n        },\n        \"slider_dsThrow\": {\n          \"value\": 0.74\n        },\n        \"slider_dsOffset\": {\n          \"value\": 0\n        },\n        \"slider_dsTilt\": {\n          \"value\": 19.083\n        },\n        \"slider_dsKeyV\": {\n          \"value\": 8.312\n        },\n        \"slider_dsKeyH\": {\n          \"value\": 0\n        },\n        \"slider_sideTilt\": {\n          \"value\": 47.5\n        },\n        \"slider_sideThrow\": {\n          \"value\": 1.14\n        },\n        \"slider_sideRoll\": {\n          \"value\": 90\n        },\n        \"slider_sideKeyV\": {\n          \"value\": 0\n        },\n        \"slider_sideKeyH\": {\n          \"value\": 0\n        },\n        \"slider_deckTone\": {\n          \"value\": 1\n        },\n        \"slider_scrim\": {\n          \"value\": 0.86\n        },\n        \"slider_strobes\": {\n          \"value\": 0.5\n        },\n        \"slider_trussTrim\": {\n          \"value\": 22.5833\n        },\n        \"slider_dsTrim\": {\n          \"value\": 22.5833\n        }\n      }\n    }\n  ]\n}\n",
           "select": "",
           "targets": "slider_source.value slider_shot.value slider_kabuki.value slider_leds.value slider_work.value slider_haze.value slider_fog.value slider_beams.value toggle_talent.on slider_orbit.value slider_zoom.value slider_dsThrow.value slider_dsOffset.value slider_dsTilt.value slider_dsKeyV.value slider_dsKeyH.value slider_sideTilt.value slider_sideThrow.value slider_sideRoll.value slider_sideKeyV.value slider_sideKeyH.value slider_deckTone.value slider_scrim.value slider_strobes.value slider_trussTrim.value slider_dsTrim.value"
         },
@@ -15662,24 +16183,19 @@
         },
         "type": "cueList"
       },
-      "noteAE": {
+      "nd_a770ff16a5ddx": {
         "definitionVersion": 1,
-        "id": "noteAE",
-        "label": "note_aeBridge",
+        "id": "nd_a770ff16a5ddx",
+        "label": "syphonout1",
         "parameters": {
-          "body": "The feeds and the song come from the After Effects project ~/Documents/Loom AE Bridge/Loom AE Bridge.aep: its render queue writes renders/DS.mp4 (the DS projector), renders/SIDES.mp4 (both side projectors) and renders/AUDIO.wav (the song, cloud-9: 144.73 s, 147.99 BPM).\nLoom reads them from public/media/ae-bridge/ (movie_dsFeed and movie_sidesFeed inside stagefeeds1, audiofile_reference here), all locked to the timeline: 30 fps, the range is the song.\nTo refresh: re-render in After Effects (same file names), copy the renders into public/media/ae-bridge/, then reload the page (or Reload on each movie node).",
-          "color": "input",
-          "title": "After Effects bridge"
+          "enabled": true,
+          "name": "Loom"
         },
         "position": {
-          "x": -5600,
-          "y": -1420
+          "x": -2010.0977643790143,
+          "y": 1108.0085668215718
         },
-        "size": {
-          "height": 220,
-          "width": 560
-        },
-        "type": "annotate"
+        "type": "syphonOut"
       },
       "orbit": {
         "definitionVersion": 2,
@@ -15692,7 +16208,7 @@
           "max": 180,
           "min": -180,
           "step": 1,
-          "value": -3
+          "value": -11
         },
         "position": {
           "x": -1700,
@@ -15899,28 +16415,6 @@
         },
         "type": "customWgslMulti"
       },
-      "reference": {
-        "definitionVersion": 1,
-        "id": "reference",
-        "label": "audiofile_reference",
-        "parameters": {
-          "beatOffset": 0.029,
-          "beatsPerBar": 4,
-          "bpm": 147.99,
-          "extend": "hold",
-          "file": "media/stage-previz/ma3/twentyfiveeight.wav",
-          "monitor": true,
-          "play": true,
-          "playMode": "timeline",
-          "speed": 1,
-          "tempoMode": "declared"
-        },
-        "position": {
-          "x": -5600,
-          "y": -900
-        },
-        "type": "audioFileIn"
-      },
       "scrim": {
         "definitionVersion": 2,
         "id": "scrim",
@@ -15932,7 +16426,7 @@
           "max": 1,
           "min": 0,
           "step": 0.01,
-          "value": 0.35
+          "value": 1
         },
         "position": {
           "x": -1100,
@@ -15970,7 +16464,7 @@
           "max": 45,
           "min": -45,
           "step": 0.01,
-          "value": 27.5506
+          "value": 0
         },
         "position": {
           "x": -1700,
@@ -16027,7 +16521,7 @@
           "max": 4,
           "min": 0.5,
           "step": 0.01,
-          "value": 1.1603
+          "value": 1.14
         },
         "position": {
           "x": -2600,
@@ -16046,7 +16540,7 @@
           "max": 89,
           "min": 10,
           "step": 0.01,
-          "value": 39.5573
+          "value": 47.5
         },
         "position": {
           "x": -2900,
@@ -16059,10 +16553,10 @@
         "id": "source",
         "label": "slider_source",
         "parameters": {
-          "caption": "Source: live · test · grid",
+          "caption": "Source: live · test · grid · map · white · ID",
           "channel": "source",
           "defaultValue": 0,
-          "max": 2,
+          "max": 5,
           "min": 0,
           "step": 1,
           "value": 0
@@ -16125,11 +16619,105 @@
         "type": "component:stageCamera@1"
       },
       "stageFeeds": {
-        "definitionVersion": 2,
+        "definitionVersion": 1,
         "id": "stageFeeds",
         "label": "stagefeeds1",
         "parameters": {
-          "serverFX": "info.v002.Syphon.443D2874-EE79-4625-B1AD-FE42B4D7BF57",
+          "blend": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('toggle_blend').chan.blend"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1
+              }
+            },
+            "mode": "expression"
+          },
+          "blendWidth": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('slider_blendWidth').chan.blendWidth"
+              },
+              "static": {
+                "kind": "static",
+                "value": 8
+              }
+            },
+            "mode": "expression"
+          },
+          "serverDS": "info.v002.Syphon.43ECF50B-A51B-4189-B8DF-311556A23AA1",
+          "serverFX": "info.v002.Syphon.13B490A1-D8D9-4EA7-AF53-3496478803DB",
+          "serverSL": "info.v002.Syphon.785F8DB1-A3B9-4FFD-AE13-779A341E3909",
+          "serverSR": "info.v002.Syphon.E828AD45-F7C5-4EAD-9F49-D4E30A1AC367",
+          "sideKeyH": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('slider_sideKeyH').chan.sideKeyH"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "sideKeyV": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('slider_sideKeyV').chan.sideKeyV"
+              },
+              "static": {
+                "kind": "static",
+                "value": 0
+              }
+            },
+            "mode": "expression"
+          },
+          "sideRoll": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('slider_sideRoll').chan.sideRoll"
+              },
+              "static": {
+                "kind": "static",
+                "value": 90
+              }
+            },
+            "mode": "expression"
+          },
+          "sideThrow": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('slider_sideThrow').chan.sideThrow"
+              },
+              "static": {
+                "kind": "static",
+                "value": 1.14
+              }
+            },
+            "mode": "expression"
+          },
+          "sideTilt": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('slider_sideTilt').chan.sideTilt"
+              },
+              "static": {
+                "kind": "static",
+                "value": 47.5
+              }
+            },
+            "mode": "expression"
+          },
           "source": {
             "bindings": {
               "expression": {
@@ -16143,13 +16731,47 @@
             },
             "mode": "expression"
           },
-          "sourceFX": 3
+          "trussTrim": {
+            "bindings": {
+              "expression": {
+                "kind": "expression",
+                "source": "op('slider_trussTrim').chan.trussTrim"
+              },
+              "static": {
+                "kind": "static",
+                "value": 22.5833
+              }
+            },
+            "mode": "expression"
+          }
         },
         "position": {
           "x": -4400,
           "y": 900
         },
-        "type": "component:stageFeeds@2"
+        "state": {
+          "componentResolutionOverrides": {
+            "syphonDS": {
+              "height": 1200,
+              "mode": "fixed",
+              "width": 1920
+            },
+            "syphonSL": {
+              "height": 1200,
+              "mode": "fixed",
+              "width": 1920
+            },
+            "syphonSR": {
+              "height": 1200,
+              "mode": "fixed",
+              "width": 1920
+            }
+          }
+        },
+        "type": "component:stageFeeds@3",
+        "ui": {
+          "preview": false
+        }
       },
       "stageSet": {
         "definitionVersion": 1,
@@ -16453,6 +17075,20 @@
           "y": -1250
         },
         "type": "slider"
+      },
+      "syphonEncode": {
+        "definitionVersion": 1,
+        "id": "syphonEncode",
+        "label": "wgsl_syphonEncode",
+        "parameters": {
+          "level": 1,
+          "source": "struct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\n// sRGB-encode for Syphon Out: receivers expect display-encoded pixels, and Syphon Out sends its\n// input raw (VNB25). The same curve the Output node applies; values above 1 clip. Remove this node\n// once Syphon Out encodes by itself.\nstruct Params {\n  level: f32, // @default 1  Multiplies before the encode.\n};\n\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(2) var<uniform> frameU: SharedFrame;\n@group(0) @binding(3) var<uniform> params: Params;\n\nfn encode(c: vec3f) -> vec3f {\n  let x = clamp(c, vec3f(0.0), vec3f(1.0));\n  return select(1.055 * pow(x, vec3f(1.0 / 2.4)) - 0.055, x * 12.92, x <= vec3f(0.0031308));\n}\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let c = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);\n  return vec4f(encode(c.rgb * params.level) + frameU.time * 0.0, 1.0);\n}\n"
+        },
+        "position": {
+          "x": -2010,
+          "y": 1300
+        },
+        "type": "customWgsl"
       },
       "talent": {
         "definitionVersion": 2,
@@ -16776,7 +17412,7 @@
           "max": 80,
           "min": -80,
           "step": 0.5,
-          "value": -50
+          "value": -67.5
         },
         "position": {
           "x": -800,
@@ -16785,15 +17421,14 @@
         "type": "slider"
       }
     },
-    "revision": 12375
+    "revision": 14280
   },
-  "name": "stage-previz-14",
-  "projectId": "bea16621-ab8b-4aba-9f83-c152c8e49c08",
+  "name": "Stage previz 14",
+  "projectId": "example-stage-previz",
   "schemaVersion": 5,
   "settings": {
-    "fps": 30,
     "frameRange": {
-      "end": 5727,
+      "end": 599,
       "start": 0
     },
     "limits": {
@@ -16811,5 +17446,5 @@
     "randomSeed": 11,
     "workingFormat": "rgba16float"
   },
-  "updatedAt": "2026-10-13T00:00:00.000Z"
+  "updatedAt": "2026-10-14T20:13:17.122Z"
 }

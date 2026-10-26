@@ -11393,8 +11393,8 @@
                 "index": 1
               },
               "position": {
-                "x": -4100,
-                "y": 4080
+                "x": -3611.084150060879,
+                "y": 1363.8008336715511
               },
               "type": "switch"
             },
@@ -11449,8 +11449,8 @@
                 "file": "media/stage-previz/fx-pixel-map-r2.png"
               },
               "position": {
-                "x": -4400,
-                "y": 4240
+                "x": -3911.084150060879,
+                "y": 1523.8008336715511
               },
               "type": "movieFileIn"
             },
@@ -11477,8 +11477,8 @@
                 "xord": "srt"
               },
               "position": {
-                "x": -4107.667004055169,
-                "y": 3918.00644350228
+                "x": -3618.751154116048,
+                "y": 1201.8072771738312
               },
               "type": "transform",
               "ui": {
@@ -11494,8 +11494,8 @@
                 "operation": "multiply"
               },
               "position": {
-                "x": -4619.223753989178,
-                "y": 4354.836749289403
+                "x": -4130.307904050056,
+                "y": 1638.6375829609542
               },
               "type": "composite"
             },
@@ -11507,8 +11507,8 @@
                 "source": "info.v002.Syphon.F3118306-361C-4024-8EEC-A03D909269A7"
               },
               "position": {
-                "x": -4796.5820057409865,
-                "y": 3931.31386867906
+                "x": -4307.666155801866,
+                "y": 1215.114702350611
               },
               "resolution": {
                 "height": 1080,
@@ -11530,8 +11530,8 @@
                 "title": "Pixel lines + strobes: one feed"
               },
               "position": {
-                "x": -3500,
-                "y": 3920
+                "x": -3011.084150060879,
+                "y": 1203.8008336715511
               },
               "size": {
                 "height": 170,
@@ -11671,8 +11671,8 @@
                 "speed": 0.25
               },
               "position": {
-                "x": -4400,
-                "y": 4080
+                "x": -3911.084150060879,
+                "y": 1363.8008336715511
               },
               "type": "customWgsl"
             },
@@ -11714,7 +11714,7 @@
               "type": "movieFileIn"
             }
           },
-          "revision": 2
+          "revision": 3
         },
         "inputs": [],
         "name": "StageFeeds",
@@ -15045,6 +15045,17 @@
           "nodeId": "projectorRig",
           "portId": "ds"
         }
+      },
+      "ed_a770ff16a5dd10": {
+        "id": "ed_a770ff16a5dd10",
+        "source": {
+          "nodeId": "layerQuad",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "nd_a770ff16a5ddx",
+          "portId": "input"
+        }
       }
     },
     "groups": {},
@@ -15060,7 +15071,7 @@
           "max": 1,
           "min": 0,
           "step": 0,
-          "value": 0.4200303819444444
+          "value": 0.4133029513888889
         },
         "position": {
           "x": -3800,
@@ -15271,7 +15282,7 @@
           "max": 1,
           "min": 0,
           "step": 0,
-          "value": 0.6036603009259259
+          "value": 1
         },
         "position": {
           "x": -4100,
@@ -15290,7 +15301,7 @@
           "max": 1,
           "min": 0,
           "step": 0,
-          "value": 0.6306061921296297
+          "value": 0.3255208333333333
         },
         "position": {
           "x": -4400,
@@ -15446,7 +15457,7 @@
         "id": "meshCurtain",
         "label": "mesh_curtain",
         "parameters": {
-          "bounds": "0,5.3506,-2.9682,8.4191",
+          "bounds": "-0.003,5.0628,-1.554,8.1507",
           "clipFrames": 0,
           "clips": "",
           "file": "media/stage-previz/stage-r2.glb",
@@ -15467,7 +15478,7 @@
         "id": "meshDeck",
         "label": "mesh_deck",
         "parameters": {
-          "bounds": "0,2.5167,-0.1232,8.8729",
+          "bounds": "0,2.6407,-1.3424,11.0547",
           "file": "media/stage-previz/stage-r2.glb",
           "parts": "1:ds_truss 2:proj_DS 3:proj_SL 4:proj_SR",
           "select": "deck.*",
@@ -15485,7 +15496,7 @@
         "id": "meshGrid",
         "label": "mesh_grid",
         "parameters": {
-          "bounds": "-0.0002,9.4286,-2.3148,9.1465",
+          "bounds": "-0.0002,9.4906,-1.8429,8.9714",
           "clipFrames": 0,
           "clips": "",
           "file": "media/stage-previz/stage-r2.glb",
@@ -15506,7 +15517,7 @@
         "id": "meshKabuki",
         "label": "mesh_kabuki",
         "parameters": {
-          "bounds": "0,5.3515,1.1714,8.1223",
+          "bounds": "0,5.0424,1.1202,7.8894",
           "clipFrames": 0,
           "clips": "",
           "file": "media/stage-previz/stage-r2.glb",
@@ -15527,7 +15538,7 @@
         "id": "meshLed",
         "label": "mesh_led",
         "parameters": {
-          "bounds": "0,4.575,-2.2084,5.601",
+          "bounds": "0,5.0038,-1.7365,5.56",
           "clipFrames": 0,
           "clips": "",
           "file": "media/stage-previz/stage-r2.glb",
@@ -15548,7 +15559,7 @@
         "id": "meshRig",
         "label": "mesh_rig",
         "parameters": {
-          "bounds": "0,12.7209,1.5996,9.816",
+          "bounds": "0,12.1597,4.5296,8.1378",
           "file": "media/stage-previz/stage-r2.glb",
           "parts": "1:ds_truss 2:proj_DS 3:proj_SL 4:proj_SR",
           "select": "rig.*",
@@ -15587,7 +15598,7 @@
         "id": "meshStrobe",
         "label": "mesh_strobe",
         "parameters": {
-          "bounds": "0.0254,2.7883,1.5786,7.6349",
+          "bounds": "0.0254,2.9123,1.5786,7.6349",
           "clipFrames": 0,
           "clips": "",
           "file": "media/stage-previz/stage-r2.glb",
@@ -15608,7 +15619,7 @@
         "id": "meshTalent",
         "label": "mesh_talent",
         "parameters": {
-          "bounds": "0,3.6539,0.3288,4.5028",
+          "bounds": "0,3.7779,0.3288,4.5028",
           "clipFrames": 0,
           "clips": "",
           "file": "media/stage-previz/stage-r2.glb",
@@ -15661,6 +15672,20 @@
         },
         "type": "cueList"
       },
+      "nd_a770ff16a5ddx": {
+        "definitionVersion": 1,
+        "id": "nd_a770ff16a5ddx",
+        "label": "syphonout1",
+        "parameters": {
+          "enabled": true,
+          "name": "Loom"
+        },
+        "position": {
+          "x": -2010.0977643790143,
+          "y": 1108.0085668215718
+        },
+        "type": "syphonOut"
+      },
       "orbit": {
         "definitionVersion": 2,
         "id": "orbit",
@@ -15672,7 +15697,7 @@
           "max": 180,
           "min": -180,
           "step": 1,
-          "value": -3
+          "value": -39
         },
         "position": {
           "x": -1700,
@@ -15890,7 +15915,7 @@
           "max": 1,
           "min": 0,
           "step": 0.01,
-          "value": 0.35
+          "value": 0.86
         },
         "position": {
           "x": -1100,
@@ -16004,7 +16029,7 @@
           "max": 89,
           "min": 10,
           "step": 0.01,
-          "value": 39.5573
+          "value": 39.61
         },
         "position": {
           "x": -2900,
@@ -16087,10 +16112,10 @@
         "id": "stageFeeds",
         "label": "stagefeeds1",
         "parameters": {
-          "serverDS": "info.v002.Syphon.2A5EF456-DF6D-4FA7-BBA7-356376E4AA82",
-          "serverFX": "info.v002.Syphon.443D2874-EE79-4625-B1AD-FE42B4D7BF57",
+          "serverDS": "info.v002.Syphon.025422B9-12B4-4F3E-B67C-D7081A9EA2D3",
+          "serverFX": "info.v002.Syphon.13B490A1-D8D9-4EA7-AF53-3496478803DB",
           "serverSL": "info.v002.Syphon.CB90C220-0A7E-432E-92EE-507B60C7A037",
-          "serverSR": "info.v002.Syphon.B49CA3B2-7415-4B27-ABCA-FADE2ACF2628",
+          "serverSR": "info.v002.Syphon.7FF1F47F-E172-4AEF-AEC3-54651BE43671",
           "source": {
             "bindings": {
               "expression": {
@@ -16109,7 +16134,24 @@
           "x": -4400,
           "y": 900
         },
-        "type": "component:stageFeeds@1"
+        "state": {
+          "componentResolutionOverrides": {
+            "syphonDS": {
+              "height": 1080,
+              "mode": "fixed",
+              "width": 1920
+            },
+            "syphonSR": {
+              "height": 1080,
+              "mode": "fixed",
+              "width": 1920
+            }
+          }
+        },
+        "type": "component:stageFeeds@1",
+        "ui": {
+          "preview": false
+        }
       },
       "stageSet": {
         "definitionVersion": 1,
@@ -16692,7 +16734,7 @@
           "max": 1,
           "min": 0,
           "step": 0,
-          "value": 0
+          "value": 0.5870225694444444
         },
         "position": {
           "x": -4100,
@@ -16736,7 +16778,7 @@
           "max": 80,
           "min": -80,
           "step": 0.5,
-          "value": -50
+          "value": -56.5
         },
         "position": {
           "x": -800,
@@ -16745,7 +16787,7 @@
         "type": "slider"
       }
     },
-    "revision": 12375
+    "revision": 13319
   },
   "name": "Stage previz 12",
   "projectId": "example-stage-previz",
@@ -16770,5 +16812,5 @@
     "randomSeed": 11,
     "workingFormat": "rgba16float"
   },
-  "updatedAt": "2026-10-08T00:00:00.000Z"
+  "updatedAt": "2026-10-10T00:40:45.660Z"
 }
