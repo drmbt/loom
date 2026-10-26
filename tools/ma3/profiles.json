@@ -1,0 +1,1976 @@
+{
+ "Acme Pixel Line IP 1000mm@Mode 10": {
+  "footprint": 117,
+  "kind": "bar",
+  "source": "GDTF Acme@Pixel Line IP (Strobe 3 IP) 1000mm, Mode 10 (117 Ch), from the show's MVR",
+  "confidence": "gdtf",
+  "cells": {
+   "rgb": {
+    "sub": "1",
+    "count": 32,
+    "length_m": 1.0,
+    "axis": "x"
+   },
+   "white": {
+    "sub": "2",
+    "count": 16,
+    "length_m": 1.0,
+    "axis": "x"
+   }
+  },
+  "virtualDimmers": [
+   "1",
+   "2",
+   "1.1",
+   "1.2",
+   "1.3",
+   "1.4",
+   "1.5",
+   "1.6",
+   "1.7",
+   "1.8",
+   "1.9",
+   "1.10",
+   "1.11",
+   "1.12",
+   "1.13",
+   "1.14",
+   "1.15",
+   "1.16",
+   "1.17",
+   "1.18",
+   "1.19",
+   "1.20",
+   "1.21",
+   "1.22",
+   "1.23",
+   "1.24",
+   "1.25",
+   "1.26",
+   "1.27",
+   "1.28",
+   "1.29",
+   "1.30",
+   "1.31",
+   "1.32"
+  ],
+  "channels": [
+   {
+    "offset": [
+     1
+    ],
+    "sub": "",
+    "attr": "Dimmer",
+    "default": 100
+   },
+   {
+    "offset": [
+     2
+    ],
+    "sub": "",
+    "attr": "StrobeDuration"
+   },
+   {
+    "offset": [
+     3
+    ],
+    "sub": "",
+    "attr": "StrobeRate",
+    "physFrom": 1,
+    "physTo": 20
+   },
+   {
+    "offset": [
+     4
+    ],
+    "sub": "",
+    "attr": "StrobeMode1"
+   },
+   {
+    "offset": [
+     5
+    ],
+    "sub": "",
+    "attr": "Frost1"
+   },
+   {
+    "offset": [
+     6
+    ],
+    "sub": "1.1",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     7
+    ],
+    "sub": "1.1",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     8
+    ],
+    "sub": "1.1",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     9
+    ],
+    "sub": "1.2",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     10
+    ],
+    "sub": "1.2",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     11
+    ],
+    "sub": "1.2",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     12
+    ],
+    "sub": "1.3",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     13
+    ],
+    "sub": "1.3",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     14
+    ],
+    "sub": "1.3",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     15
+    ],
+    "sub": "1.4",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     16
+    ],
+    "sub": "1.4",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     17
+    ],
+    "sub": "1.4",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     18
+    ],
+    "sub": "1.5",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     19
+    ],
+    "sub": "1.5",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     20
+    ],
+    "sub": "1.5",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     21
+    ],
+    "sub": "1.6",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     22
+    ],
+    "sub": "1.6",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     23
+    ],
+    "sub": "1.6",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     24
+    ],
+    "sub": "1.7",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     25
+    ],
+    "sub": "1.7",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     26
+    ],
+    "sub": "1.7",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     27
+    ],
+    "sub": "1.8",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     28
+    ],
+    "sub": "1.8",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     29
+    ],
+    "sub": "1.8",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     30
+    ],
+    "sub": "1.9",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     31
+    ],
+    "sub": "1.9",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     32
+    ],
+    "sub": "1.9",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     33
+    ],
+    "sub": "1.10",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     34
+    ],
+    "sub": "1.10",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     35
+    ],
+    "sub": "1.10",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     36
+    ],
+    "sub": "1.11",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     37
+    ],
+    "sub": "1.11",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     38
+    ],
+    "sub": "1.11",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     39
+    ],
+    "sub": "1.12",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     40
+    ],
+    "sub": "1.12",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     41
+    ],
+    "sub": "1.12",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     42
+    ],
+    "sub": "1.13",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     43
+    ],
+    "sub": "1.13",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     44
+    ],
+    "sub": "1.13",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     45
+    ],
+    "sub": "1.14",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     46
+    ],
+    "sub": "1.14",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     47
+    ],
+    "sub": "1.14",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     48
+    ],
+    "sub": "1.15",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     49
+    ],
+    "sub": "1.15",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     50
+    ],
+    "sub": "1.15",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     51
+    ],
+    "sub": "1.16",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     52
+    ],
+    "sub": "1.16",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     53
+    ],
+    "sub": "1.16",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     54
+    ],
+    "sub": "1.17",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     55
+    ],
+    "sub": "1.17",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     56
+    ],
+    "sub": "1.17",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     57
+    ],
+    "sub": "1.18",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     58
+    ],
+    "sub": "1.18",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     59
+    ],
+    "sub": "1.18",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     60
+    ],
+    "sub": "1.19",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     61
+    ],
+    "sub": "1.19",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     62
+    ],
+    "sub": "1.19",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     63
+    ],
+    "sub": "1.20",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     64
+    ],
+    "sub": "1.20",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     65
+    ],
+    "sub": "1.20",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     66
+    ],
+    "sub": "1.21",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     67
+    ],
+    "sub": "1.21",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     68
+    ],
+    "sub": "1.21",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     69
+    ],
+    "sub": "1.22",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     70
+    ],
+    "sub": "1.22",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     71
+    ],
+    "sub": "1.22",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     72
+    ],
+    "sub": "1.23",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     73
+    ],
+    "sub": "1.23",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     74
+    ],
+    "sub": "1.23",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     75
+    ],
+    "sub": "1.24",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     76
+    ],
+    "sub": "1.24",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     77
+    ],
+    "sub": "1.24",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     78
+    ],
+    "sub": "1.25",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     79
+    ],
+    "sub": "1.25",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     80
+    ],
+    "sub": "1.25",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     81
+    ],
+    "sub": "1.26",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     82
+    ],
+    "sub": "1.26",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     83
+    ],
+    "sub": "1.26",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     84
+    ],
+    "sub": "1.27",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     85
+    ],
+    "sub": "1.27",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     86
+    ],
+    "sub": "1.27",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     87
+    ],
+    "sub": "1.28",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     88
+    ],
+    "sub": "1.28",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     89
+    ],
+    "sub": "1.28",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     90
+    ],
+    "sub": "1.29",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     91
+    ],
+    "sub": "1.29",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     92
+    ],
+    "sub": "1.29",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     93
+    ],
+    "sub": "1.30",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     94
+    ],
+    "sub": "1.30",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     95
+    ],
+    "sub": "1.30",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     96
+    ],
+    "sub": "1.31",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     97
+    ],
+    "sub": "1.31",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     98
+    ],
+    "sub": "1.31",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     99
+    ],
+    "sub": "1.32",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     100
+    ],
+    "sub": "1.32",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     101
+    ],
+    "sub": "1.32",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     102
+    ],
+    "sub": "2.1",
+    "attr": "Dimmer"
+   },
+   {
+    "offset": [
+     103
+    ],
+    "sub": "2.2",
+    "attr": "Dimmer"
+   },
+   {
+    "offset": [
+     104
+    ],
+    "sub": "2.3",
+    "attr": "Dimmer"
+   },
+   {
+    "offset": [
+     105
+    ],
+    "sub": "2.4",
+    "attr": "Dimmer"
+   },
+   {
+    "offset": [
+     106
+    ],
+    "sub": "2.5",
+    "attr": "Dimmer"
+   },
+   {
+    "offset": [
+     107
+    ],
+    "sub": "2.6",
+    "attr": "Dimmer"
+   },
+   {
+    "offset": [
+     108
+    ],
+    "sub": "2.7",
+    "attr": "Dimmer"
+   },
+   {
+    "offset": [
+     109
+    ],
+    "sub": "2.8",
+    "attr": "Dimmer"
+   },
+   {
+    "offset": [
+     110
+    ],
+    "sub": "2.9",
+    "attr": "Dimmer"
+   },
+   {
+    "offset": [
+     111
+    ],
+    "sub": "2.10",
+    "attr": "Dimmer"
+   },
+   {
+    "offset": [
+     112
+    ],
+    "sub": "2.11",
+    "attr": "Dimmer"
+   },
+   {
+    "offset": [
+     113
+    ],
+    "sub": "2.12",
+    "attr": "Dimmer"
+   },
+   {
+    "offset": [
+     114
+    ],
+    "sub": "2.13",
+    "attr": "Dimmer"
+   },
+   {
+    "offset": [
+     115
+    ],
+    "sub": "2.14",
+    "attr": "Dimmer"
+   },
+   {
+    "offset": [
+     116
+    ],
+    "sub": "2.15",
+    "attr": "Dimmer"
+   },
+   {
+    "offset": [
+     117
+    ],
+    "sub": "2.16",
+    "attr": "Dimmer"
+   }
+  ]
+ },
+ "GLP JDC Burst 1@Mode 3 12-Segment": {
+  "footprint": 87,
+  "kind": "burst",
+  "source": "GDTF GLP@JDC Burst 1 Mode 3 12-Segment (87ch), prelim01 FW V0.3.0-rc.1, from the show's MVR",
+  "confidence": "gdtf",
+  "cells": {
+   "rgbw": {
+    "sub": "4",
+    "count": 12,
+    "grid": [
+     6,
+     2
+    ],
+    "pitch_m": [
+     0.06,
+     0.09
+    ]
+   },
+   "white": {
+    "sub": "3",
+    "count": 12,
+    "length_m": 0.36,
+    "axis": "x"
+   }
+  },
+  "modules": {
+   "white": "1",
+   "rgbw": "2"
+  },
+  "virtualDimmers": [
+   "4.1",
+   "4.2",
+   "4.3",
+   "4.4",
+   "4.5",
+   "4.6",
+   "4.7",
+   "4.8",
+   "4.9",
+   "4.10",
+   "4.11",
+   "4.12"
+  ],
+  "channels": [
+   {
+    "offset": [
+     1,
+     2
+    ],
+    "sub": "",
+    "attr": "Tilt",
+    "physFrom": -92.5,
+    "physTo": 92.5
+   },
+   {
+    "offset": [
+     3
+    ],
+    "sub": "",
+    "attr": "Control1"
+   },
+   {
+    "offset": [
+     6,
+     7
+    ],
+    "sub": "1",
+    "attr": "Dimmer"
+   },
+   {
+    "offset": [
+     8
+    ],
+    "sub": "1",
+    "attr": "StrobeDuration"
+   },
+   {
+    "offset": [
+     9
+    ],
+    "sub": "1",
+    "attr": "StrobeRate"
+   },
+   {
+    "offset": [
+     10
+    ],
+    "sub": "1",
+    "attr": "Shutter1"
+   },
+   {
+    "offset": [
+     11,
+     12
+    ],
+    "sub": "2",
+    "attr": "Dimmer"
+   },
+   {
+    "offset": [
+     13
+    ],
+    "sub": "2",
+    "attr": "StrobeDuration"
+   },
+   {
+    "offset": [
+     14
+    ],
+    "sub": "2",
+    "attr": "StrobeRate"
+   },
+   {
+    "offset": [
+     15
+    ],
+    "sub": "2",
+    "attr": "Shutter1"
+   },
+   {
+    "offset": [
+     16
+    ],
+    "sub": "2",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     17
+    ],
+    "sub": "2",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     18
+    ],
+    "sub": "2",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     19
+    ],
+    "sub": "2",
+    "attr": "ColorRGB_W"
+   },
+   {
+    "offset": [
+     20,
+     21
+    ],
+    "sub": "3",
+    "attr": "Dimmer",
+    "default": 100
+   },
+   {
+    "offset": [
+     22
+    ],
+    "sub": "3",
+    "attr": "StrobeDuration"
+   },
+   {
+    "offset": [
+     23
+    ],
+    "sub": "3",
+    "attr": "StrobeRate"
+   },
+   {
+    "offset": [
+     24,
+     25
+    ],
+    "sub": "4",
+    "attr": "Dimmer",
+    "default": 100
+   },
+   {
+    "offset": [
+     26
+    ],
+    "sub": "4",
+    "attr": "StrobeDuration"
+   },
+   {
+    "offset": [
+     27
+    ],
+    "sub": "4",
+    "attr": "StrobeRate"
+   },
+   {
+    "offset": [
+     28
+    ],
+    "sub": "3.1",
+    "attr": "Dimmer"
+   },
+   {
+    "offset": [
+     29
+    ],
+    "sub": "3.2",
+    "attr": "Dimmer"
+   },
+   {
+    "offset": [
+     30
+    ],
+    "sub": "3.3",
+    "attr": "Dimmer"
+   },
+   {
+    "offset": [
+     31
+    ],
+    "sub": "3.4",
+    "attr": "Dimmer"
+   },
+   {
+    "offset": [
+     32
+    ],
+    "sub": "3.5",
+    "attr": "Dimmer"
+   },
+   {
+    "offset": [
+     33
+    ],
+    "sub": "3.6",
+    "attr": "Dimmer"
+   },
+   {
+    "offset": [
+     34
+    ],
+    "sub": "3.7",
+    "attr": "Dimmer"
+   },
+   {
+    "offset": [
+     35
+    ],
+    "sub": "3.8",
+    "attr": "Dimmer"
+   },
+   {
+    "offset": [
+     36
+    ],
+    "sub": "3.9",
+    "attr": "Dimmer"
+   },
+   {
+    "offset": [
+     37
+    ],
+    "sub": "3.10",
+    "attr": "Dimmer"
+   },
+   {
+    "offset": [
+     38
+    ],
+    "sub": "3.11",
+    "attr": "Dimmer"
+   },
+   {
+    "offset": [
+     39
+    ],
+    "sub": "3.12",
+    "attr": "Dimmer"
+   },
+   {
+    "offset": [
+     40
+    ],
+    "sub": "4.1",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     41
+    ],
+    "sub": "4.1",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     42
+    ],
+    "sub": "4.1",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     43
+    ],
+    "sub": "4.1",
+    "attr": "ColorRGB_W"
+   },
+   {
+    "offset": [
+     44
+    ],
+    "sub": "4.2",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     45
+    ],
+    "sub": "4.2",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     46
+    ],
+    "sub": "4.2",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     47
+    ],
+    "sub": "4.2",
+    "attr": "ColorRGB_W"
+   },
+   {
+    "offset": [
+     48
+    ],
+    "sub": "4.3",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     49
+    ],
+    "sub": "4.3",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     50
+    ],
+    "sub": "4.3",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     51
+    ],
+    "sub": "4.3",
+    "attr": "ColorRGB_W"
+   },
+   {
+    "offset": [
+     52
+    ],
+    "sub": "4.4",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     53
+    ],
+    "sub": "4.4",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     54
+    ],
+    "sub": "4.4",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     55
+    ],
+    "sub": "4.4",
+    "attr": "ColorRGB_W"
+   },
+   {
+    "offset": [
+     56
+    ],
+    "sub": "4.5",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     57
+    ],
+    "sub": "4.5",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     58
+    ],
+    "sub": "4.5",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     59
+    ],
+    "sub": "4.5",
+    "attr": "ColorRGB_W"
+   },
+   {
+    "offset": [
+     60
+    ],
+    "sub": "4.6",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     61
+    ],
+    "sub": "4.6",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     62
+    ],
+    "sub": "4.6",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     63
+    ],
+    "sub": "4.6",
+    "attr": "ColorRGB_W"
+   },
+   {
+    "offset": [
+     64
+    ],
+    "sub": "4.7",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     65
+    ],
+    "sub": "4.7",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     66
+    ],
+    "sub": "4.7",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     67
+    ],
+    "sub": "4.7",
+    "attr": "ColorRGB_W"
+   },
+   {
+    "offset": [
+     68
+    ],
+    "sub": "4.8",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     69
+    ],
+    "sub": "4.8",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     70
+    ],
+    "sub": "4.8",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     71
+    ],
+    "sub": "4.8",
+    "attr": "ColorRGB_W"
+   },
+   {
+    "offset": [
+     72
+    ],
+    "sub": "4.9",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     73
+    ],
+    "sub": "4.9",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     74
+    ],
+    "sub": "4.9",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     75
+    ],
+    "sub": "4.9",
+    "attr": "ColorRGB_W"
+   },
+   {
+    "offset": [
+     76
+    ],
+    "sub": "4.10",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     77
+    ],
+    "sub": "4.10",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     78
+    ],
+    "sub": "4.10",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     79
+    ],
+    "sub": "4.10",
+    "attr": "ColorRGB_W"
+   },
+   {
+    "offset": [
+     80
+    ],
+    "sub": "4.11",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     81
+    ],
+    "sub": "4.11",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     82
+    ],
+    "sub": "4.11",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     83
+    ],
+    "sub": "4.11",
+    "attr": "ColorRGB_W"
+   },
+   {
+    "offset": [
+     84
+    ],
+    "sub": "4.12",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     85
+    ],
+    "sub": "4.12",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     86
+    ],
+    "sub": "4.12",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     87
+    ],
+    "sub": "4.12",
+    "attr": "ColorRGB_W"
+   }
+  ]
+ },
+ "Martin Mac Aura XB@Standard - RGB": {
+  "footprint": 14,
+  "kind": "mover",
+  "source": "Martin MAC Aura XB User Manual, https://www.martin.com/en/site_elements/mac-aura-xb-user-manual p.15 (STD = 14 ch), p.17 (zoom 53\u00b0->11\u00b0, pan 540\u00b0, tilt 232\u00b0), pp.23-25 Table 2 DMX protocol",
+  "confidence": "manual",
+  "virtualDimmers": [],
+  "channels": [
+   {
+    "offset": [
+     4,
+     5
+    ],
+    "sub": "",
+    "attr": "Pan",
+    "physFrom": -270,
+    "physTo": 270
+   },
+   {
+    "offset": [
+     6,
+     7
+    ],
+    "sub": "",
+    "attr": "Tilt",
+    "physFrom": -116,
+    "physTo": 116
+   },
+   {
+    "offset": [
+     1
+    ],
+    "sub": "",
+    "attr": "Shutter1",
+    "fixed": true,
+    "default": 8.627
+   },
+   {
+    "offset": [
+     2
+    ],
+    "sub": "",
+    "attr": "Dimmer"
+   },
+   {
+    "offset": [
+     3
+    ],
+    "sub": "",
+    "attr": "Zoom",
+    "invert": true,
+    "note": "MA Zoom % runs narrow -> wide; this fixture's DMX runs wide -> narrow"
+   },
+   {
+    "offset": [
+     10
+    ],
+    "sub": "",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     11
+    ],
+    "sub": "",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     12
+    ],
+    "sub": "",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     13
+    ],
+    "sub": "",
+    "attr": "ColorRGB_W"
+   },
+   {
+    "offset": [
+     14
+    ],
+    "sub": "",
+    "attr": "CTO"
+   }
+  ],
+  "decode": {
+   "zoomDeg": [
+    53,
+    11
+   ]
+  }
+ },
+ "Elation Proteus Lucius@Standard": {
+  "footprint": 43,
+  "kind": "mover",
+  "source": "Elation 'PROTEUS LUCIUS DMX Traits' 2023-03-17 (Standard/Extended columns), https://goknight.com/content/documentation/ELATION%20PROTEUS%20LUCIUS%20-%20DMX%20Traits%202023-03-17.pdf pp.1-10; same table in Proteus Lucius User Manual p.31-41 https://goknight.com/content/documentation/Proteus%20Lucius%20User%20Manual.pdf (spec p.42: zoom 5.5-50\u00b0); pan/tilt angles from https://www.elationlighting.com/products/proteus-lucius ('Pan Angle: 540\u00b0/630\u00b0', 'Tilt Angle: 250\u00b0')",
+  "confidence": "manual",
+  "virtualDimmers": [],
+  "channels": [
+   {
+    "offset": [
+     1,
+     2
+    ],
+    "sub": "",
+    "attr": "Pan",
+    "physFrom": -270,
+    "physTo": 270
+   },
+   {
+    "offset": [
+     3,
+     4
+    ],
+    "sub": "",
+    "attr": "Tilt",
+    "physFrom": -125,
+    "physTo": 125
+   },
+   {
+    "offset": [
+     5
+    ],
+    "sub": "",
+    "attr": "ColorSub_C",
+    "source": "ColorRGB_R",
+    "invert": true
+   },
+   {
+    "offset": [
+     6
+    ],
+    "sub": "",
+    "attr": "ColorSub_M",
+    "source": "ColorRGB_G",
+    "invert": true
+   },
+   {
+    "offset": [
+     7
+    ],
+    "sub": "",
+    "attr": "ColorSub_Y",
+    "source": "ColorRGB_B",
+    "invert": true
+   },
+   {
+    "offset": [
+     8
+    ],
+    "sub": "",
+    "attr": "CTO"
+   },
+   {
+    "offset": [
+     23,
+     24
+    ],
+    "sub": "",
+    "attr": "Zoom"
+   },
+   {
+    "offset": [
+     25
+    ],
+    "sub": "",
+    "attr": "Shutter1",
+    "fixed": true,
+    "default": 18.824
+   },
+   {
+    "offset": [
+     26,
+     27
+    ],
+    "sub": "",
+    "attr": "Dimmer"
+   }
+  ],
+  "decode": {
+   "zoomDeg": [
+    5.5,
+    50
+   ],
+   "note": "pan/tilt angles from Elation's product page (the manual's menu disagrees); zoom 5.5-50 deg assumed linear"
+  }
+ },
+ "Robe Robin ColorStrobe@Mode 1": {
+  "footprint": 9,
+  "kind": "strobe",
+  "source": "Robe 'Robin ColorStrobe - DMX protocol' v1.0, https://www.robe.cz/res/downloads/dmx_charts/Robin_ColourStrobe_DMX_charts.pdf p.1-2 (Mode 1 column); mode list in User_manual_Robin_ColorStrobe v1.5 \u00a76.1 ('Mode 1 - 9 control channels (default)'); strobe 0.3-30 Hz / 13-860 ms from https://robe.cz/api/robe/pdfs/en/product/692",
+  "confidence": "manual",
+  "virtualDimmers": [],
+  "channels": [
+   {
+    "offset": [
+     1
+    ],
+    "sub": "",
+    "attr": "ColorRGB_R",
+    "default": 100
+   },
+   {
+    "offset": [
+     2
+    ],
+    "sub": "",
+    "attr": "ColorRGB_G",
+    "default": 100
+   },
+   {
+    "offset": [
+     3
+    ],
+    "sub": "",
+    "attr": "ColorRGB_B",
+    "default": 100
+   },
+   {
+    "offset": [
+     4
+    ],
+    "sub": "",
+    "attr": "ColorRGB_W"
+   },
+   {
+    "offset": [
+     5
+    ],
+    "sub": "",
+    "attr": "CTC"
+   },
+   {
+    "offset": [
+     7
+    ],
+    "sub": "",
+    "attr": "Dimmer"
+   }
+  ],
+  "decode": {}
+ },
+ "Robe Robin iForte FS@Mode 1 - Standard 16 bit": {
+  "footprint": 54,
+  "kind": "mover",
+  "source": "Robe 'Robin iForte/Robin iForte FS - DMX protocol' v1.6, https://www.robe.cz/res/downloads/dmx_charts/Robin_iForte_iForte_FS_DMX_charts.pdf pp.1-15 (Mode 1 column); zoom 5\u00b0-55\u00b0 from https://www.robe.cz/iforte-fs",
+  "confidence": "manual",
+  "virtualDimmers": [],
+  "channels": [
+   {
+    "offset": [
+     1,
+     2
+    ],
+    "sub": "",
+    "attr": "Pan",
+    "physFrom": -270,
+    "physTo": 270
+   },
+   {
+    "offset": [
+     3,
+     4
+    ],
+    "sub": "",
+    "attr": "Tilt",
+    "physFrom": -135,
+    "physTo": 135
+   },
+   {
+    "offset": [
+     14
+    ],
+    "sub": "",
+    "attr": "ColorSub_C",
+    "source": "ColorRGB_R",
+    "invert": true
+   },
+   {
+    "offset": [
+     15
+    ],
+    "sub": "",
+    "attr": "ColorSub_M",
+    "source": "ColorRGB_G",
+    "invert": true
+   },
+   {
+    "offset": [
+     16
+    ],
+    "sub": "",
+    "attr": "ColorSub_Y",
+    "source": "ColorRGB_B",
+    "invert": true
+   },
+   {
+    "offset": [
+     17
+    ],
+    "sub": "",
+    "attr": "CTO"
+   },
+   {
+    "offset": [
+     39,
+     40
+    ],
+    "sub": "",
+    "attr": "Zoom",
+    "invert": true,
+    "note": "MA Zoom % runs narrow -> wide; this fixture's DMX runs wide -> narrow"
+   },
+   {
+    "offset": [
+     52
+    ],
+    "sub": "",
+    "attr": "Shutter1",
+    "fixed": true,
+    "default": 18.824
+   },
+   {
+    "offset": [
+     53,
+     54
+    ],
+    "sub": "",
+    "attr": "Dimmer"
+   }
+  ],
+  "decode": {
+   "zoomDeg": [
+    55,
+    5
+   ]
+  }
+ }
+}

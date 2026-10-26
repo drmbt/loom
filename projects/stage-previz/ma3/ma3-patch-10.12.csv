@@ -1,0 +1,171 @@
+layer,fid,name,gdtf,mode,universe,address,x_mm,y_mm,z_mm,previz_x_m,previz_y_m,previz_z_m,rot3x3
+Hosue Spot,601,Proteus Lucius,Elation@Proteus Lucius,Standard,2,334,-5129,1473,8574,-5.129,-3.317,8.574,1 0 0 0 1 -0.001 -0 0.001 1
+Hosue Spot,602,Proteus Lucius,Elation@Proteus Lucius,Standard,2,377,-3803,1473,8574,-3.803,-3.317,8.574,1 0 0 0 1 -0.001 -0 0.001 1
+Hosue Spot,603,Proteus Lucius,Elation@Proteus Lucius,Standard,2,420,-2480,1473,8574,-2.48,-3.317,8.574,1 0 0 0 1 -0.001 -0 0.001 1
+Hosue Spot,604,Proteus Lucius,Elation@Proteus Lucius,Standard,2,463,-1189,1473,8574,-1.189,-3.317,8.574,1 0 0 0 1 -0.001 -0 0.001 1
+Hosue Spot,605,Proteus Lucius,Elation@Proteus Lucius,Standard,3,1,1263,1473,8574,1.263,-3.317,8.574,1 0 0 0 1 -0.001 -0 0.001 1
+Hosue Spot,606,Proteus Lucius,Elation@Proteus Lucius,Standard,3,44,2649,1473,8574,2.649,-3.317,8.574,1 0 0 0 1 -0.001 -0 0.001 1
+Hosue Spot,607,Proteus Lucius,Elation@Proteus Lucius,Standard,3,87,3915,1473,8574,3.915,-3.317,8.574,1 0 0 0 1 -0.001 -0 0.001 1
+Hosue Spot,608,Proteus Lucius,Elation@Proteus Lucius,Standard,3,130,5214,1473,8574,5.214,-3.317,8.574,1 0 0 0 1 -0.001 -0 0.001 1
+Hosue Spot,609,Proteus Lucius,Elation@Proteus Lucius,Standard,3,173,-5129,5234,8574,-5.129,0.444,8.574,1 0 0 0 1 -0.001 -0 0.001 1
+Hosue Spot,610,Proteus Lucius,Elation@Proteus Lucius,Standard,3,216,-3803,5234,8574,-3.803,0.444,8.574,1 0 0 0 1 -0.001 -0 0.001 1
+Hosue Spot,611,Proteus Lucius,Elation@Proteus Lucius,Standard,3,259,-2480,5234,8574,-2.48,0.444,8.574,1 0 0 0 1 -0.001 -0 0.001 1
+Hosue Spot,612,Proteus Lucius,Elation@Proteus Lucius,Standard,3,302,-1189,5234,8574,-1.189,0.444,8.574,1 0 0 0 1 -0.001 -0 0.001 1
+Hosue Spot,613,Proteus Lucius,Elation@Proteus Lucius,Standard,3,345,1263,5234,8574,1.263,0.444,8.574,1 0 0 0 1 -0.001 -0 0.001 1
+Hosue Spot,614,Proteus Lucius,Elation@Proteus Lucius,Standard,3,388,2649,5234,8574,2.649,0.444,8.574,1 0 0 0 1 -0.001 -0 0.001 1
+Hosue Spot,615,Proteus Lucius,Elation@Proteus Lucius,Standard,3,431,3915,5234,8574,3.915,0.444,8.574,1 0 0 0 1 -0.001 -0 0.001 1
+Hosue Spot,616,Proteus Lucius,Elation@Proteus Lucius,Standard,4,1,5214,5234,8574,5.214,0.444,8.574,1 0 0 0 1 -0.001 -0 0.001 1
+House FOH,701,Proteus Lucius,Elation@Proteus Lucius,Standard,4,44,-5729,-6085,8678,-5.729,-10.875,8.678,1 0 0 0 1 -0.001 -0 0.001 1
+House FOH,702,Proteus Lucius,Elation@Proteus Lucius,Standard,4,87,-4435,-6085,8678,-4.435,-10.875,8.678,1 0 0 0 1 -0.001 -0 0.001 1
+House FOH,703,Proteus Lucius,Elation@Proteus Lucius,Standard,4,130,-3140,-6085,8678,-3.14,-10.875,8.678,1 0 0 0 1 -0.001 -0 0.001 1
+House FOH,704,Proteus Lucius,Elation@Proteus Lucius,Standard,4,173,-1845,-6085,8678,-1.845,-10.875,8.678,1 0 0 0 1 -0.001 -0 0.001 1
+House FOH,705,Proteus Lucius,Elation@Proteus Lucius,Standard,4,216,-551,-6085,8678,-0.551,-10.875,8.678,1 0 0 0 1 -0.001 -0 0.001 1
+House FOH,706,Proteus Lucius,Elation@Proteus Lucius,Standard,4,259,744,-6085,8678,0.744,-10.875,8.678,1 0 0 0 1 -0.001 -0 0.001 1
+House FOH,707,Proteus Lucius,Elation@Proteus Lucius,Standard,4,302,2038,-6085,8678,2.038,-10.875,8.678,1 0 0 0 1 -0.001 -0 0.001 1
+House FOH,708,Proteus Lucius,Elation@Proteus Lucius,Standard,4,345,3333,-6085,8678,3.333,-10.875,8.678,1 0 0 0 1 -0.001 -0 0.001 1
+House FOH,709,Proteus Lucius,Elation@Proteus Lucius,Standard,4,388,4627,-6085,8678,4.627,-10.875,8.678,1 0 0 0 1 -0.001 -0 0.001 1
+House FOH,710,Proteus Lucius,Elation@Proteus Lucius,Standard,4,431,5922,-6085,8678,5.922,-10.875,8.678,1 0 0 0 1 -0.001 -0 0.001 1
+House Strobe,901,ColorStrobe,Robe@Robin ColorStrobe,Mode 1,1,281,-5746,1164,8856,-5.746,-3.626,8.856,1 0 0 0 -0.001 -0.999999 -0 0.999999 -0.001
+House Strobe,902,ColorStrobe,Robe@Robin ColorStrobe,Mode 1,1,290,-4100,1164,8856,-4.1,-3.626,8.856,1 0 0 0 -0.001 -0.999999 -0 0.999999 -0.001
+House Strobe,903,ColorStrobe,Robe@Robin ColorStrobe,Mode 1,1,299,-2454,1164,8856,-2.454,-3.626,8.856,1 0 0 0 -0.001 -0.999999 -0 0.999999 -0.001
+House Strobe,904,ColorStrobe,Robe@Robin ColorStrobe,Mode 1,1,308,-808,1164,8856,-0.808,-3.626,8.856,1 0 0 0 -0.001 -0.999999 -0 0.999999 -0.001
+House Strobe,905,ColorStrobe,Robe@Robin ColorStrobe,Mode 1,1,317,838,1164,8856,0.838,-3.626,8.856,1 0 0 0 -0.001 -0.999999 -0 0.999999 -0.001
+House Strobe,906,ColorStrobe,Robe@Robin ColorStrobe,Mode 1,1,326,2484,1164,8856,2.484,-3.626,8.856,1 0 0 0 -0.001 -0.999999 -0 0.999999 -0.001
+House Strobe,907,ColorStrobe,Robe@Robin ColorStrobe,Mode 1,1,335,4129,1164,8856,4.129,-3.626,8.856,1 0 0 0 -0.001 -0.999999 -0 0.999999 -0.001
+House Strobe,908,ColorStrobe,Robe@Robin ColorStrobe,Mode 1,1,344,5775,1164,8856,5.775,-3.626,8.856,1 0 0 0 -0.001 -0.999999 -0 0.999999 -0.001
+House Strobe,909,ColorStrobe,Robe@Robin ColorStrobe,Mode 1,1,353,-5746,5014,8767,-5.746,0.224,8.767,1 0 0 0 -0.001 -0.999999 -0 0.999999 -0.001
+House Strobe,910,ColorStrobe,Robe@Robin ColorStrobe,Mode 1,1,362,-4100,5014,8767,-4.1,0.224,8.767,1 0 0 0 -0.001 -0.999999 -0 0.999999 -0.001
+House Strobe,911,ColorStrobe,Robe@Robin ColorStrobe,Mode 1,1,371,-2454,5014,8767,-2.454,0.224,8.767,1 0 0 0 -0.001 -0.999999 -0 0.999999 -0.001
+House Strobe,912,ColorStrobe,Robe@Robin ColorStrobe,Mode 1,1,380,-808,5014,8767,-0.808,0.224,8.767,1 0 0 0 -0.001 -0.999999 -0 0.999999 -0.001
+House Strobe,913,ColorStrobe,Robe@Robin ColorStrobe,Mode 1,1,389,838,5014,8767,0.838,0.224,8.767,1 0 0 0 -0.001 -0.999999 -0 0.999999 -0.001
+House Strobe,914,ColorStrobe,Robe@Robin ColorStrobe,Mode 1,1,398,2484,5014,8767,2.484,0.224,8.767,1 0 0 0 -0.001 -0.999999 -0 0.999999 -0.001
+House Strobe,915,ColorStrobe,Robe@Robin ColorStrobe,Mode 1,1,407,4129,5014,8767,4.129,0.224,8.767,1 0 0 0 -0.001 -0.999999 -0 0.999999 -0.001
+House Strobe,916,ColorStrobe,Robe@Robin ColorStrobe,Mode 1,1,416,5775,5014,8767,5.775,0.224,8.767,1 0 0 0 -0.001 -0.999999 -0 0.999999 -0.001
+House Wash,501,Mac Aura XB,Martin@Mac Aura XB_0,Standard - RGB,1,1,-5729,1136,8571,-5.729,-3.654,8.571,1 0 0 0 1 -0.001 -0 0.001 1
+House Wash,502,Mac Aura XB,Martin@Mac Aura XB_0,Standard - RGB,1,15,-4435,1136,8571,-4.435,-3.654,8.571,1 0 0 0 1 -0.001 -0 0.001 1
+House Wash,503,Mac Aura XB,Martin@Mac Aura XB_0,Standard - RGB,1,29,-3140,1136,8571,-3.14,-3.654,8.571,1 0 0 0 1 -0.001 -0 0.001 1
+House Wash,504,Mac Aura XB,Martin@Mac Aura XB_0,Standard - RGB,1,43,-1845,1136,8571,-1.845,-3.654,8.571,1 0 0 0 1 -0.001 -0 0.001 1
+House Wash,505,Mac Aura XB,Martin@Mac Aura XB_0,Standard - RGB,1,57,-551,1136,8571,-0.551,-3.654,8.571,1 0 0 0 1 -0.001 -0 0.001 1
+House Wash,506,Mac Aura XB,Martin@Mac Aura XB_0,Standard - RGB,1,71,744,1136,8571,0.744,-3.654,8.571,1 0 0 0 1 -0.001 -0 0.001 1
+House Wash,507,Mac Aura XB,Martin@Mac Aura XB_0,Standard - RGB,1,85,2038,1136,8571,2.038,-3.654,8.571,1 0 0 0 1 -0.001 -0 0.001 1
+House Wash,508,Mac Aura XB,Martin@Mac Aura XB_0,Standard - RGB,1,99,3333,1136,8571,3.333,-3.654,8.571,1 0 0 0 1 -0.001 -0 0.001 1
+House Wash,509,Mac Aura XB,Martin@Mac Aura XB_0,Standard - RGB,1,113,4627,1136,8571,4.627,-3.654,8.571,1 0 0 0 1 -0.001 -0 0.001 1
+House Wash,510,Mac Aura XB,Martin@Mac Aura XB_0,Standard - RGB,1,127,5922,1136,8571,5.922,-3.654,8.571,1 0 0 0 1 -0.001 -0 0.001 1
+House Wash,511,Mac Aura XB,Martin@Mac Aura XB_0,Standard - RGB,1,267,-4506,5244,8552,-4.506,0.454,8.552,1 0 0 0 1 -0.001 -0 0.001 1
+House Wash,512,Mac Aura XB,Martin@Mac Aura XB_0,Standard - RGB,1,141,-3191,5244,8552,-3.191,0.454,8.552,1 0 0 0 1 -0.001 -0 0.001 1
+House Wash,513,Mac Aura XB,Martin@Mac Aura XB_0,Standard - RGB,1,155,-1876,5244,8552,-1.876,0.454,8.552,1 0 0 0 1 -0.001 -0 0.001 1
+House Wash,514,Mac Aura XB,Martin@Mac Aura XB_0,Standard - RGB,1,169,-561,5244,8552,-0.561,0.454,8.552,1 0 0 0 1 -0.001 -0 0.001 1
+House Wash,515,Mac Aura XB,Martin@Mac Aura XB_0,Standard - RGB,1,183,754,5244,8552,0.754,0.454,8.552,1 0 0 0 1 -0.001 -0 0.001 1
+House Wash,516,Mac Aura XB,Martin@Mac Aura XB_0,Standard - RGB,1,197,2069,5244,8552,2.069,0.454,8.552,1 0 0 0 1 -0.001 -0 0.001 1
+House Wash,517,Mac Aura XB,Martin@Mac Aura XB_0,Standard - RGB,1,211,3383,5244,8552,3.383,0.454,8.552,1 0 0 0 1 -0.001 -0 0.001 1
+House Wash,518,Mac Aura XB,Martin@Mac Aura XB_0,Standard - RGB,1,225,4698,5244,8552,4.698,0.454,8.552,1 0 0 0 1 -0.001 -0 0.001 1
+House Wash,519,Mac Aura XB,Martin@Mac Aura XB_0,Standard - RGB,1,239,6013,5244,8552,6.013,0.454,8.552,1 0 0 0 1 -0.001 -0 0.001 1
+House Wash,520,Mac Aura XB,Martin@Mac Aura XB_0,Standard - RGB,1,253,-5820,5244,8552,-5.82,0.454,8.552,1 0 0 0 1 -0.001 -0 0.001 1
+JDC Bursts,301,JDC Burst 1,GLP@JDC Burst 1,Mode 3 12-Segment (87ch),61,1,-6706,242,1524,-6.706,-4.548,1.524,1 0 0 0 -1 0 0 -0 -1
+JDC Bursts,302,JDC Burst 1,GLP@JDC Burst 1,Mode 3 12-Segment (87ch),61,88,-4023,242,1524,-4.023,-4.548,1.524,1 0 0 0 -1 0 0 -0 -1
+JDC Bursts,303,JDC Burst 1,GLP@JDC Burst 1,Mode 3 12-Segment (87ch),61,175,-1341,242,1524,-1.341,-4.548,1.524,1 0 0 0 -1 0 0 -0 -1
+JDC Bursts,304,JDC Burst 1,GLP@JDC Burst 1,Mode 3 12-Segment (87ch),61,262,1341,242,1524,1.341,-4.548,1.524,1 0 0 0 -1 0 0 -0 -1
+JDC Bursts,305,JDC Burst 1,GLP@JDC Burst 1,Mode 3 12-Segment (87ch),61,349,4023,242,1524,4.023,-4.548,1.524,1 0 0 0 -1 0 0 -0 -1
+JDC Bursts,306,JDC Burst 1,GLP@JDC Burst 1,Mode 3 12-Segment (87ch),62,1,6706,242,1524,6.706,-4.548,1.524,1 0 0 0 -1 0 0 -0 -1
+JDC Bursts,307,JDC Burst 1,GLP@JDC Burst 1,Mode 3 12-Segment (87ch),62,88,-6706,1188,1524,-6.706,-3.602,1.524,1 0 0 0 -1 0 0 -0 -1
+JDC Bursts,308,JDC Burst 1,GLP@JDC Burst 1,Mode 3 12-Segment (87ch),62,175,-4023,1188,1524,-4.023,-3.602,1.524,1 0 0 0 -1 0 0 -0 -1
+JDC Bursts,309,JDC Burst 1,GLP@JDC Burst 1,Mode 3 12-Segment (87ch),62,262,-1341,1188,1524,-1.341,-3.602,1.524,1 0 0 0 -1 0 0 -0 -1
+JDC Bursts,310,JDC Burst 1,GLP@JDC Burst 1,Mode 3 12-Segment (87ch),62,349,1341,1188,1524,1.341,-3.602,1.524,1 0 0 0 -1 0 0 -0 -1
+JDC Bursts,311,JDC Burst 1,GLP@JDC Burst 1,Mode 3 12-Segment (87ch),63,1,4023,1188,1524,4.023,-3.602,1.524,1 0 0 0 -1 0 0 -0 -1
+JDC Bursts,312,JDC Burst 1,GLP@JDC Burst 1,Mode 3 12-Segment (87ch),63,88,6706,1188,1524,6.706,-3.602,1.524,1 0 0 0 -1 0 0 -0 -1
+JDC Bursts,313,JDC Burst 1,GLP@JDC Burst 1,Mode 3 12-Segment (87ch),63,175,-6706,2133,1524,-6.706,-2.657,1.524,1 0 0 0 -1 0 0 -0 -1
+JDC Bursts,314,JDC Burst 1,GLP@JDC Burst 1,Mode 3 12-Segment (87ch),63,262,-4023,2133,1524,-4.023,-2.657,1.524,1 0 0 0 -1 0 0 -0 -1
+JDC Bursts,315,JDC Burst 1,GLP@JDC Burst 1,Mode 3 12-Segment (87ch),63,349,-1341,2133,1524,-1.341,-2.657,1.524,1 0 0 0 -1 0 0 -0 -1
+JDC Bursts,316,JDC Burst 1,GLP@JDC Burst 1,Mode 3 12-Segment (87ch),64,1,1341,2133,1524,1.341,-2.657,1.524,1 0 0 0 -1 0 0 -0 -1
+JDC Bursts,317,JDC Burst 1,GLP@JDC Burst 1,Mode 3 12-Segment (87ch),64,88,4023,2133,1524,4.023,-2.657,1.524,1 0 0 0 -1 0 0 -0 -1
+JDC Bursts,318,JDC Burst 1,GLP@JDC Burst 1,Mode 3 12-Segment (87ch),64,175,6706,2133,1524,6.706,-2.657,1.524,1 0 0 0 -1 0 0 -0 -1
+JDC Bursts,319,JDC Burst 1,GLP@JDC Burst 1,Mode 3 12-Segment (87ch),64,262,-6706,3079,1524,-6.706,-1.711,1.524,1 0 0 0 -1 0 0 -0 -1
+JDC Bursts,320,JDC Burst 1,GLP@JDC Burst 1,Mode 3 12-Segment (87ch),64,349,-4023,3079,1524,-4.023,-1.711,1.524,1 0 0 0 -1 0 0 -0 -1
+JDC Bursts,321,JDC Burst 1,GLP@JDC Burst 1,Mode 3 12-Segment (87ch),65,1,-1341,3079,1524,-1.341,-1.711,1.524,1 0 0 0 -1 0 0 -0 -1
+JDC Bursts,322,JDC Burst 1,GLP@JDC Burst 1,Mode 3 12-Segment (87ch),65,88,1341,3079,1524,1.341,-1.711,1.524,1 0 0 0 -1 0 0 -0 -1
+JDC Bursts,323,JDC Burst 1,GLP@JDC Burst 1,Mode 3 12-Segment (87ch),65,175,4023,3079,1524,4.023,-1.711,1.524,1 0 0 0 -1 0 0 -0 -1
+JDC Bursts,324,JDC Burst 1,GLP@JDC Burst 1,Mode 3 12-Segment (87ch),65,262,6706,3079,1524,6.706,-1.711,1.524,1 0 0 0 -1 0 0 -0 -1
+JDC Bursts,325,JDC Burst 1,GLP@JDC Burst 1,Mode 3 12-Segment (87ch),65,349,-6706,4024,1524,-6.706,-0.766,1.524,1 0 0 0 -1 0 0 -0 -1
+JDC Bursts,326,JDC Burst 1,GLP@JDC Burst 1,Mode 3 12-Segment (87ch),66,1,-4023,4024,1524,-4.023,-0.766,1.524,1 0 0 0 -1 0 0 -0 -1
+JDC Bursts,327,JDC Burst 1,GLP@JDC Burst 1,Mode 3 12-Segment (87ch),66,88,-1341,4024,1524,-1.341,-0.766,1.524,1 0 0 0 -1 0 0 -0 -1
+JDC Bursts,328,JDC Burst 1,GLP@JDC Burst 1,Mode 3 12-Segment (87ch),66,175,1341,4024,1524,1.341,-0.766,1.524,1 0 0 0 -1 0 0 -0 -1
+JDC Bursts,329,JDC Burst 1,GLP@JDC Burst 1,Mode 3 12-Segment (87ch),66,262,4023,4024,1524,4.023,-0.766,1.524,1 0 0 0 -1 0 0 -0 -1
+JDC Bursts,330,JDC Burst 1,GLP@JDC Burst 1,Mode 3 12-Segment (87ch),66,349,6706,4024,1524,6.706,-0.766,1.524,1 0 0 0 -1 0 0 -0 -1
+JDC Bursts,401,JDC Burst 1,GLP@JDC Burst 1,Mode 3 12-Segment (87ch),23,57,-3048,6136,1524,-3.048,1.346,1.524,1 0 0 0 -1 0 0 -0 -1
+JDC Bursts,402,JDC Burst 1,GLP@JDC Burst 1,Mode 3 12-Segment (87ch),23,144,-1829,6136,1524,-1.829,1.346,1.524,1 0 0 0 -1 0 0 -0 -1
+JDC Bursts,403,JDC Burst 1,GLP@JDC Burst 1,Mode 3 12-Segment (87ch),23,231,1829,6136,1524,1.829,1.346,1.524,1 0 0 0 -1 0 0 -0 -1
+JDC Bursts,404,JDC Burst 1,GLP@JDC Burst 1,Mode 3 12-Segment (87ch),23,318,3048,6136,1524,3.048,1.346,1.524,1 0 0 0 -1 0 0 -0 -1
+JDC Bursts,405,JDC Burst 1,GLP@JDC Burst 1,Mode 3 12-Segment (87ch),23,405,-610,6136,1524,-0.61,1.346,1.524,1 0 0 0 -1 0 0 -0 -1
+JDC Bursts,406,JDC Burst 1,GLP@JDC Burst 1,Mode 3 12-Segment (87ch),24,1,610,6136,1524,0.61,1.346,1.524,1 0 0 0 -1 0 0 -0 -1
+JDC Bursts,407,JDC Burst 1,GLP@JDC Burst 1,Mode 3 12-Segment (87ch),24,88,4267,6136,1524,4.267,1.346,1.524,1 0 0 0 -1 0 0 -0 -1
+JDC Bursts,408,JDC Burst 1,GLP@JDC Burst 1,Mode 3 12-Segment (87ch),24,175,-4267,6136,1524,-4.267,1.346,1.524,1 0 0 0 -1 0 0 -0 -1
+JDC Bursts,409,JDC Burst 1,GLP@JDC Burst 1,Mode 3 12-Segment (87ch),26,1,-1832,4622,2019,-1.832,-0.168,2.019,1 0 0 0 -1 0 0 -0 -1
+JDC Bursts,410,JDC Burst 1,GLP@JDC Burst 1,Mode 3 12-Segment (87ch),26,88,-611,4622,2019,-0.611,-0.168,2.019,1 0 0 0 -1 0 0 -0 -1
+JDC Bursts,411,JDC Burst 1,GLP@JDC Burst 1,Mode 3 12-Segment (87ch),26,175,611,4622,2019,0.611,-0.168,2.019,1 0 0 0 -1 0 0 -0 -1
+JDC Bursts,412,JDC Burst 1,GLP@JDC Burst 1,Mode 3 12-Segment (87ch),26,262,1826,4622,2019,1.826,-0.168,2.019,1 0 0 0 -1 0 0 -0 -1
+PixelLine,201,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),31,1,-4000,8403,7562,-4.0,3.613,7.562,1 0 0 0 0 -1 -0 1 0
+PixelLine,202,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),31,118,-3000,8403,7562,-3.0,3.613,7.562,1 0 0 0 0 -1 -0 1 0
+PixelLine,203,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),31,235,-2000,8403,7562,-2.0,3.613,7.562,1 0 0 0 0 -1 -0 1 0
+PixelLine,204,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),31,352,-1000,8403,7562,-1.0,3.613,7.562,1 0 0 0 0 -1 -0 1 0
+PixelLine,205,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),32,1,0,8403,7562,-0.0,3.613,7.562,1 0 0 0 0 -1 -0 1 0
+PixelLine,206,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),32,118,1000,8403,7562,1.0,3.613,7.562,1 0 0 0 0 -1 -0 1 0
+PixelLine,207,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),32,235,2000,8403,7562,2.0,3.613,7.562,1 0 0 0 0 -1 -0 1 0
+PixelLine,208,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),32,352,3000,8403,7562,3.0,3.613,7.562,1 0 0 0 0 -1 -0 1 0
+PixelLine,209,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),33,1,4000,8403,7562,4.0,3.613,7.562,1 0 0 0 0 -1 -0 1 0
+PixelLine,210,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),33,118,-4000,8403,6646,-4.0,3.613,6.646,1 0 0 0 0 -1 -0 1 0
+PixelLine,211,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),33,235,-3000,8403,6646,-3.0,3.613,6.646,1 0 0 0 0 -1 -0 1 0
+PixelLine,212,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),33,352,-2000,8403,6646,-2.0,3.613,6.646,1 0 0 0 0 -1 -0 1 0
+PixelLine,213,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),34,1,-1000,8403,6646,-1.0,3.613,6.646,1 0 0 0 0 -1 -0 1 0
+PixelLine,214,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),34,118,0,8403,6646,-0.0,3.613,6.646,1 0 0 0 0 -1 -0 1 0
+PixelLine,215,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),34,235,1000,8403,6646,1.0,3.613,6.646,1 0 0 0 0 -1 -0 1 0
+PixelLine,216,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),34,352,2000,8403,6646,2.0,3.613,6.646,1 0 0 0 0 -1 -0 1 0
+PixelLine,217,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),35,1,3000,8403,6646,3.0,3.613,6.646,1 0 0 0 0 -1 -0 1 0
+PixelLine,218,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),35,118,4000,8403,6646,4.0,3.613,6.646,1 0 0 0 0 -1 -0 1 0
+PixelLine,219,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),35,235,-4000,8403,5718,-4.0,3.613,5.718,1 0 0 0 0 -1 -0 1 0
+PixelLine,220,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),35,352,-3000,8403,5718,-3.0,3.613,5.718,1 0 0 0 0 -1 -0 1 0
+PixelLine,221,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),36,1,-2000,8403,5718,-2.0,3.613,5.718,1 0 0 0 0 -1 -0 1 0
+PixelLine,222,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),36,118,-1000,8403,5718,-1.0,3.613,5.718,1 0 0 0 0 -1 -0 1 0
+PixelLine,223,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),36,235,0,8403,5718,-0.0,3.613,5.718,1 0 0 0 0 -1 -0 1 0
+PixelLine,224,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),36,352,1000,8403,5718,1.0,3.613,5.718,1 0 0 0 0 -1 -0 1 0
+PixelLine,225,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),37,1,2000,8403,5718,2.0,3.613,5.718,1 0 0 0 0 -1 -0 1 0
+PixelLine,226,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),37,118,3000,8403,5718,3.0,3.613,5.718,1 0 0 0 0 -1 -0 1 0
+PixelLine,227,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),37,235,4000,8403,5718,4.0,3.613,5.718,1 0 0 0 0 -1 -0 1 0
+PixelLine,228,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),37,352,-4000,8403,4788,-4.0,3.613,4.788,1 0 0 0 0 -1 -0 1 0
+PixelLine,229,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),38,1,-3000,8403,4788,-3.0,3.613,4.788,1 0 0 0 0 -1 -0 1 0
+PixelLine,230,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),38,118,-2000,8403,4788,-2.0,3.613,4.788,1 0 0 0 0 -1 -0 1 0
+PixelLine,231,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),38,235,-1000,8403,4788,-1.0,3.613,4.788,1 0 0 0 0 -1 -0 1 0
+PixelLine,232,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),38,352,0,8403,4788,-0.0,3.613,4.788,1 0 0 0 0 -1 -0 1 0
+PixelLine,233,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),39,1,1000,8403,4788,1.0,3.613,4.788,1 0 0 0 0 -1 -0 1 0
+PixelLine,234,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),39,118,2000,8403,4788,2.0,3.613,4.788,1 0 0 0 0 -1 -0 1 0
+PixelLine,235,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),39,235,3000,8403,4788,3.0,3.613,4.788,1 0 0 0 0 -1 -0 1 0
+PixelLine,236,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),39,352,4000,8403,4788,4.0,3.613,4.788,1 0 0 0 0 -1 -0 1 0
+PixelLine,237,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),40,1,-4000,4799,3648,-4.0,0.009,3.648,1 0 0 0 0 -1 -0 1 0
+PixelLine,238,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),40,118,-3000,4799,3648,-3.0,0.009,3.648,1 0 0 0 0 -1 -0 1 0
+PixelLine,239,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),40,235,-2000,4799,3648,-2.0,0.009,3.648,1 0 0 0 0 -1 -0 1 0
+PixelLine,240,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),40,352,-1000,4799,3648,-1.0,0.009,3.648,1 0 0 0 0 -1 -0 1 0
+PixelLine,241,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),41,1,0,4799,3648,-0.0,0.009,3.648,1 0 0 0 0 -1 -0 1 0
+PixelLine,242,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),41,118,1000,4799,3648,1.0,0.009,3.648,1 0 0 0 0 -1 -0 1 0
+PixelLine,243,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),41,235,2000,4799,3648,2.0,0.009,3.648,1 0 0 0 0 -1 -0 1 0
+PixelLine,244,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),41,352,3000,4799,3648,3.0,0.009,3.648,1 0 0 0 0 -1 -0 1 0
+PixelLine,245,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),42,1,4000,4799,3648,4.0,0.009,3.648,1 0 0 0 0 -1 -0 1 0
+PixelLine,246,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),42,118,-4000,4799,3026,-4.0,0.009,3.026,1 0 0 0 0 -1 -0 1 0
+PixelLine,247,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),42,235,-3000,4799,3026,-3.0,0.009,3.026,1 0 0 0 0 -1 -0 1 0
+PixelLine,248,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),42,352,-2000,4799,3026,-2.0,0.009,3.026,1 0 0 0 0 -1 -0 1 0
+PixelLine,249,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),43,1,-1000,4799,3026,-1.0,0.009,3.026,1 0 0 0 0 -1 -0 1 0
+PixelLine,250,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),43,118,0,4799,3026,-0.0,0.009,3.026,1 0 0 0 0 -1 -0 1 0
+PixelLine,251,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),43,235,1000,4799,3026,1.0,0.009,3.026,1 0 0 0 0 -1 -0 1 0
+PixelLine,252,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),43,352,2000,4799,3026,2.0,0.009,3.026,1 0 0 0 0 -1 -0 1 0
+PixelLine,253,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),44,1,3000,4799,3026,3.0,0.009,3.026,1 0 0 0 0 -1 -0 1 0
+PixelLine,254,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),44,118,4000,4799,3026,4.0,0.009,3.026,1 0 0 0 0 -1 -0 1 0
+PixelLine,255,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),44,235,-4000,4799,2401,-4.0,0.009,2.401,1 0 0 0 0 -1 -0 1 0
+PixelLine,256,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),44,352,-3000,4799,2401,-3.0,0.009,2.401,1 0 0 0 0 -1 -0 1 0
+PixelLine,257,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),45,1,-2000,4799,2401,-2.0,0.009,2.401,1 0 0 0 0 -1 -0 1 0
+PixelLine,258,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),45,118,-1000,4799,2401,-1.0,0.009,2.401,1 0 0 0 0 -1 -0 1 0
+PixelLine,259,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),45,235,0,4799,2401,-0.0,0.009,2.401,1 0 0 0 0 -1 -0 1 0
+PixelLine,260,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),45,352,1000,4799,2401,1.0,0.009,2.401,1 0 0 0 0 -1 -0 1 0
+PixelLine,261,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),46,1,2000,4799,2401,2.0,0.009,2.401,1 0 0 0 0 -1 -0 1 0
+PixelLine,262,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),46,118,3000,4799,2401,3.0,0.009,2.401,1 0 0 0 0 -1 -0 1 0
+PixelLine,263,Pixel Line IP - Strobe 3 IP,Acme@Pixel Line IP (Strobe 3 IP) 1000mm,Mode 10 (117 Ch),46,235,4000,4799,2401,4.0,0.009,2.401,1 0 0 0 0 -1 -0 1 0
+Robin FS,101,Robin iForte,Robe lighting@Robin iForte FS Mode 1 - Standard 16 bit,Mode 1 - Standard 16 bit,22,352,609,-1939,8786,0.609,-6.729,8.786,1 0 0 0 1 -0 -0 0 1
+Robin FS,102,Robin iForte,Robe lighting@Robin iForte FS Mode 1 - Standard 16 bit,Mode 1 - Standard 16 bit,22,408,-611,-1938,8786,-0.611,-6.728,8.786,1 0 0 0 1 -0 -0 0 1
+Robin FS,103,Robin iForte,Robe lighting@Robin iForte FS Mode 1 - Standard 16 bit,Mode 1 - Standard 16 bit,23,1,0,6489,8825,-0.0,1.699,8.825,1 0 0 0 1 -0 -0 0 1

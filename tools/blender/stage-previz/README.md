@@ -39,6 +39,34 @@ node --import ./src/tooling/alias-hooks.ts src/projects/stage-previz/build.ts
 three `fx-pixel-map.*` → `fx-pixel-map-r2.*` (the PNG to `public/media/stage-previz/` too). `build.ts`
 and `upgrade.ts` still name `stage.glb`.
 
+### Revision 3: every patched fixture (`--layout r3`)
+
+`layout_r3.py` is revision 2 plus every fixture in the MA3 show at its patched position, read
+from `projects/stage-previz/ma3/fixtures-r3.csv` (`fid,layer,kind,type,x_m,y_m,z_m,u,v,w,note`,
+in this frame, u/v/w the fixture's MVR basis, the beam along −w). It ships as `stage-r3.glb`:
+
+```bash
+$B --background --factory-startup --python tools/blender/stage-previz/build.py -- --layout r3 \
+   --out renders/stage-previz-r3/stage.glb [--preview renders/stage-previz-r3/preview]
+cp renders/stage-previz-r3/stage.glb public/media/stage-previz/stage-r3.glb
+```
+
+What changes from revision 2 (still the default, and it still builds byte for byte as before):
+
+- **No emitter quads and no FX pixel map** (`--fxmap` is skipped): Loom draws the pixels and the
+  strobe light itself, as instances from the same CSV.
+- `led.pixel_bars`: one dark 1.0 x 0.09 x 0.09 m housing per Pixel Line IP bar (63), centred on
+  its CSV position, long along u. The pixel trusses and the rack stay in `grid.pixel_lines`.
+- `strobe.bursts`: one JDC Burst 1 body per row (42), beam up. Under a grate its top face sits
+  just under the grating, on a stand from its CSV base; the four at y −0.17 stand on the stage grate.
+- `grid.movers`: a yoke and head hung under each mover's CSV position (Mac Aura XB, Proteus
+  Lucius, iForte FS), on a drop to its truss. `grid.color_strobes`: the ColorStrobes, facing the
+  audience, bracketed to their truss's downstage face.
+- `grid.house_trusses`: 12" box trusses derived from the CSV (`layout_r3.house_trusses()`): the
+  hanging fixtures clustered by y, each truss over its row's x range plus 0.6 m each end (2 m at
+  least), centred between the row's hang points, 0.3 m over the movers' z. The build prints them,
+  and any pixel bar further than 0.15 m from a revision 2 truss or rack line.
+
 The first command takes about 5 s. The second copies the GLB to
 `public/media/stage-previz/stage.glb` and writes `projects/stage-previz/stage-previz.loom.json`
 (a file already there is kept unless you pass `--force`).

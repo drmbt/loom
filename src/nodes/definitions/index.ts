@@ -30,6 +30,7 @@ import { matteNode } from "./matte.ts";
 import { personMaskNode } from "./person-mask.ts";
 import { mediaNodeDefinitions } from "./media.ts";
 import { floatMapInNode } from "./float-map-in.ts";
+import { ma3ShowInNode } from "./ma3-show-in.ts";
 import { screenInNode } from "./screen-in.ts";
 export { screenInNode, SCREEN_IN_TYPE } from "./screen-in.ts";
 import { syphonInNode } from "./syphon-in.ts";
@@ -307,6 +308,7 @@ export const coreNodeDefinitions: readonly NodeDefinition[] = [
   personMaskNode,
   ...mediaNodeDefinitions,
   floatMapInNode,
+  ma3ShowInNode,
   screenInNode,
   syphonInNode,
   ndiInNode,

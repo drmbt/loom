@@ -53,6 +53,7 @@ export const HEADLESS_ABSENT_PROBLEM_SOURCES: Readonly<Record<string, string>> =
     "media playback lives in the browser's media elements and the tab's file store, and this process has neither.",
   fileReferences: "the files a document refers to live in a browser tab's file store, and this process holds none.",
   floatMaps: "prepared numerical files load from the browser's retained file handles; headless callers supply explicit numerical media sources instead.",
+  ma3Shows: "MA3 show files are played by the page's frame loop (`use-ma3-show-sources.ts`), which this process does not run.",
   screenCapture: "screen capture is `getDisplayMedia`, a browser API.",
   meshes: "mesh imports load from a browser tab's file store, and this process holds none.",
   nativeInputs:

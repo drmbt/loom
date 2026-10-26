@@ -435,6 +435,8 @@ export const NODE_REPRODUCIBILITY: Readonly<Record<string, Reproducibility>> = {
   clipTrack: "pure",
   // A saved float map is fixed data; preparation never runs during rendering.
   floatMapIn: "pure",
+  // VN131: a function of timeline time and the show file, replayed from the top each frame.
+  ma3ShowIn: "pure",
   audioFileIn: "pure",
 };
 

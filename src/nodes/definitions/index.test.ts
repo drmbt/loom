@@ -171,6 +171,9 @@ describe("core catalogue (T70, T40)", () => {
       "movieFileIn",
       "webcam",
       "text",
+      // VN131: the grandMA3 show player (DMX out). floatMapIn, which sits before it in the
+      // registry, is missing from this list upstream already.
+      "ma3ShowIn",
       "screenIn",
       "syphonIn",
       "ndiIn",
