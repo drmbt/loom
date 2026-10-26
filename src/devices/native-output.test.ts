@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, describe, it, expect, vi } from "vitest";
 import type { LoomBackend } from "@runtime/backend/index.ts";
-import { attachNativeOutput, desktopOutputBridge, type DesktopOutputBridge } from "./native-output.ts";
+import { attachNativeOutput, desktopOutputBridge, nativeOutputEncodes, type DesktopOutputBridge } from "./native-output.ts";
+import { DEFAULT_COLOR_POLICY } from "@domain/types/graph.ts";
 
 afterEach(() => { delete (window as Window & { loomDesktop?: unknown }).loomDesktop; });
 
@@ -64,7 +65,7 @@ describe("native output surface ownership", () => {
     const canvas = h.canvas;
     expect(canvas.ownerDocument).toBe(h.doc);
     expect([canvas.width, canvas.height]).toEqual([1920, 1080]);
-    expect(h.present).toHaveBeenCalledWith(canvas, { outputId: "a", label: "native-sdr-output" });
+    expect(h.present).toHaveBeenCalledWith(canvas, { outputId: "a", label: "native-sdr-output", displayEncode: false });
     h.attached.update({ resourceId: "b", size: [1280, 720] });
     expect([canvas.width, canvas.height]).toEqual([1280, 720]);
     expect(h.presentation.setOutput).toHaveBeenCalledWith("b");
@@ -77,5 +78,46 @@ describe("native output surface ownership", () => {
     h.attached.dispose();
     expect(h.presentation.dispose).toHaveBeenCalledTimes(1);
     expect(() => h.attached.update({ resourceId: "b", size: [1, 1] })).toThrow("closed");
+  });
+});
+
+/*
+ * VNB25: the Output node's decision (`sinkDisplayTransform`, tone map `none`), read against
+ * the space the compiler published for the source a native output is wired to.
+ */
+describe("native output display encode", () => {
+  const none = { workingSpace: "linear", displayTransform: "none" } as const;
+  it.each([
+    ["rgba16float", "linear", DEFAULT_COLOR_POLICY, true],
+    ["rgba8unorm", "linear", DEFAULT_COLOR_POLICY, true],
+    // Presented through a non-decoding view (T1307): the bytes are already display values.
+    ["rgba8unorm-srgb", "linear", DEFAULT_COLOR_POLICY, false],
+    ["rgba16float", "encoded", DEFAULT_COLOR_POLICY, false],
+    ["rgba8unorm", "encoded", DEFAULT_COLOR_POLICY, false],
+    ["rgba16float", "data", DEFAULT_COLOR_POLICY, false],
+    ["rgba16float", "linear", none, false],
+  ] as const)("%s %s under %o encodes: %s", (format, space, policy, expected) => {
+    expect(nativeOutputEncodes({ format, space }, policy)).toBe(expected);
+  });
+  it("swaps the presentation in place on an encode change, and the frame count never drops", () => {
+    const made: Array<{ setOutput: ReturnType<typeof vi.fn>; dispose: ReturnType<typeof vi.fn>; describe: () => { presentedFrames: number } }> = [];
+    const present = vi.fn(() => {
+      const handle = { setOutput: vi.fn(), dispose: vi.fn(), describe: () => ({ presentedFrames: 5 }) };
+      made.push(handle); return handle;
+    });
+    const canvas = { width: 0, height: 0, getContext: () => null };
+    const attached = attachNativeOutput({ present } as unknown as LoomBackend, { resourceId: "a", size: [4, 4], encode: true }, canvas);
+    expect(present).toHaveBeenLastCalledWith(canvas, { outputId: "a", label: "native-sdr-output", displayEncode: true });
+    attached.update({ resourceId: "b", size: [4, 4], encode: true });
+    expect(made[0]!.setOutput).toHaveBeenCalledWith("b");
+    expect(present).toHaveBeenCalledTimes(1);
+    expect(attached.presentedFrames()).toBe(5);
+    attached.update({ resourceId: "c", size: [8, 8], encode: false });
+    expect(made[0]!.dispose).toHaveBeenCalledOnce();
+    expect(present).toHaveBeenLastCalledWith(canvas, { outputId: "c", label: "native-sdr-output", displayEncode: false });
+    expect([canvas.width, canvas.height]).toEqual([8, 8]);
+    expect(attached.presentedFrames()).toBe(10);
+    attached.dispose();
+    expect(made[1]!.dispose).toHaveBeenCalledOnce();
   });
 });
