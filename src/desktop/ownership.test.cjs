@@ -64,3 +64,11 @@ test('Vision main-process client never blocks IPC or reads image bytes', () => {
   assert.match(source, /napi_tsfn_nonblocking/);
   assert.match(source, /uncertain leases retained/);
 });
+
+test('VN85: the FFGL host reads surface bytes only in the study build', () => {
+  const source = readFileSync(join(__dirname, '../devices/native/ffgl-host.mm'), 'utf8');
+  const production = source.replace(/#ifdef LOOM_FFGL_STUDY\n[\s\S]*?#endif/g, '');
+  assert.doesNotMatch(production, /IOSurfaceGetBaseAddress|IOSurfaceLock|glReadPixels|readStudySurface|createStudySurface/);
+  assert.match(production, /"process"/);
+  assert.match(source, /readStudySurface/);
+});

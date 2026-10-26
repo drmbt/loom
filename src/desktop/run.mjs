@@ -11,6 +11,7 @@ import { setTimeout, clearTimeout } from 'node:timers';
 import { buildNativeOutput } from '../devices/native/build-native.mjs';
 import { buildNativeVision } from '../devices/native/vision-build.mjs';
 import { buildNativeNdi } from '../devices/native/ndi-build.mjs';
+import { buildFfglHost } from '../devices/native/ffgl-build.mjs';
 import { retireVisionServices } from '../devices/native/vision-workers.mjs';
 import { createRequire } from 'node:module';
 
@@ -63,6 +64,12 @@ nativeDirectory = process.platform === 'darwin' && process.arch === 'arm64'
 const nativeAddon = process.platform === 'darwin' && process.arch === 'arm64'
   ? buildNativeOutput(nativeDirectory, { receiver: smoke }) : undefined;
 if (nativeDirectory) buildNativeVision(nativeDirectory);
+// VN85: the native FFGL host is optional. A failed build is logged and the app starts without it.
+let ffglAddon;
+if (nativeDirectory) {
+  try { ffglAddon = buildFfglHost(nativeDirectory); }
+  catch (error) { console.error('LOOM_FFGL_HOST_UNAVAILABLE', String(error)); }
+}
 if (process.env.LOOM_NDI_SDK && !nativeDirectory) throw new Error('NDI development currently requires the Apple Silicon desktop host');
 if (process.env.LOOM_NDI_OUTPUT_MODE !== undefined && !process.env.LOOM_NDI_SDK)
   throw new Error('NDI output mode requires the explicitly configured external SDK');
@@ -75,6 +82,7 @@ server = await startDesktopRenderer({ root, smoke, production, signal: startupAb
   if (nativeAddon) env.LOOM_NATIVE_OUTPUT_ADDON = nativeAddon;
   if (nativeAddon) env.LOOM_NATIVE_INPUT_ADDON = join(nativeDirectory, 'native-input.node');
   if (nativeDirectory) env.LOOM_NATIVE_VISION_DIRECTORY = nativeDirectory;
+  if (ffglAddon) env.LOOM_NATIVE_FFGL_ADDON = ffglAddon;
   if (ndiAddon) env.LOOM_NATIVE_NDI_ADDON = ndiAddon;
   if (smoke && env.LOOM_DESKTOP_NDI_TEST === '1') {
     if (!ndiAddon) throw new Error('NDI app smoke requires an explicit LOOM_NDI_SDK');

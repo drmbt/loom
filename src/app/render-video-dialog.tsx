@@ -6,6 +6,8 @@ import { frameRangeLimit } from "@domain/transport/range-limit.ts";
 import { NumberField } from "@ui/controls/number-field.tsx";
 import { ResolutionControl } from "@ui/controls/resolution-control.tsx";
 import { BooleanField } from "@ui/controls/boolean-field.tsx";
+import { TextField } from "@ui/controls/text-field.tsx";
+import { resolveStartTimecode } from "@runtime/export/index.ts";
 import type { EditPhase, NumericSpec } from "@ui/controls/types.ts";
 import { Button } from "@ui/primitives/button.tsx";
 import { ShareFill } from "@ui/primitives/share-fill.tsx";
@@ -65,12 +67,17 @@ export function RenderVideoDialog({
   const totalFrames = session.frames;
   const duration = totalFrames / fps;
   const support = session.encoderSupport;
+  // VN104: blank means "the default" (00:00:00:00 plus the in point; VN72's reference start
+  // once it exists), and the note under the field says which label the file will carry.
+  const typedStart = session.renderSettings.startTimecode ?? "";
+  const startTimecode = resolveStartTimecode(typedStart, range.start, fps);
+  const startValid = !("error" in startTimecode);
   const audioReady = !session.includeAudio || session.audioRequirement.kind === "none" ||
     (session.audioRequirement.kind === "required" && session.audioSupport?.supported === true);
   const soundtrackSummary = !session.includeAudio || session.audioRequirement.kind === "none"
     ? "video only"
     : session.audioRequirement.kind === "required"
-      ? "video + mono AAC"
+      ? "video + stereo AAC"
       : "soundtrack unavailable";
   const progressPercent = session.progress.stage === "preroll"
     ? session.progress.totalPreRollFrames === 0
@@ -96,10 +103,10 @@ export function RenderVideoDialog({
       : session.progress.stage === "audio"
         ? `Encoding audio · ${String(session.progress.completedAudioFrames)} / ${String(session.progress.totalAudioFrames)} samples (${String(progressPercent)}%)`
         : session.progress.stage === "finalizing"
-          ? "Finalizing MP4…"
-          : "Saving MP4…";
+          ? "Finalizing movie…"
+          : "Saving movie…";
   const canRender = !session.rendering && session.frames > 0 && session.outputReady &&
-    support?.supported === true && audioReady;
+    support?.supported === true && audioReady && startValid;
   const performanceText = session.progress.stage === "frames" && session.recentFramesPerSecond !== null
     ? `Elapsed ${(session.elapsedMilliseconds / 1000).toFixed(1)} s · recent ${session.recentFramesPerSecond.toFixed(1)} frames/s`
     : `Elapsed ${(session.elapsedMilliseconds / 1000).toFixed(1)} s`;
@@ -115,7 +122,7 @@ export function RenderVideoDialog({
       <DialogContent data-testid="render-video-dialog" aria-describedby="render-video-description">
         <DialogTitle>Render video</DialogTitle>
         <DialogDescription id="render-video-description">
-          Exact-frame H.264 MP4 · slower than real time
+          Exact-frame H.264 MOV · timecode · slower than real time
         </DialogDescription>
 
         <div className={styles.body}>
@@ -159,6 +166,23 @@ export function RenderVideoDialog({
                 />
               </div>
             </div>
+            <div className={styles.row}>
+              <span className={styles.label}>start timecode</span>
+              <div className={styles.scalar}>
+                <TextField
+                  label="Start timecode"
+                  describedBy="render-start-timecode-note"
+                  disabled={session.rendering}
+                  value={typedStart}
+                  onChange={(next) => session.setRenderSettings({ startTimecode: next.trim() === "" ? undefined : next.trim() })}
+                />
+              </div>
+            </div>
+            <p className={styles.note} id="render-start-timecode-note" role={startValid ? undefined : "alert"}>
+              {"error" in startTimecode
+                ? `Start timecode: ${startTimecode.error}`
+                : `File starts at ${startTimecode.label}${typedStart === "" ? " (00:00:00:00 + in point)" : ""}${startTimecode.dropFrame ? " · drop-frame" : ""}`}
+            </p>
             {/*
               VN71 — a take starts AT its in point from cleared temporal state, so a feedback
               trail or a simulation begins there. This many project frames are played first and
@@ -185,7 +209,7 @@ export function RenderVideoDialog({
               onChange={next => session.setIncludeAudio(next)} />
           </div>
           <p className={styles.note}>
-            Soundtrack: one locked Audio File In · mono AAC · 48 kHz
+            Soundtrack: one locked Audio File In · stereo AAC · 48 kHz
           </p>
           </section>
 
@@ -201,9 +225,9 @@ export function RenderVideoDialog({
               : session.audioRequirement.kind === "invalid"
                 ? `Audio unavailable: ${session.audioRequirement.reason}`
                 : session.audioSupport === null
-                  ? "Checking mono AAC soundtrack support…"
+                  ? "Checking stereo AAC soundtrack support…"
                   : session.audioSupport.supported
-                    ? `AAC ready (${session.audioSupport.codec} · mono · 48 kHz)`
+                    ? `AAC ready (${session.audioSupport.codec} · stereo · 48 kHz)`
                     : `AAC unavailable: ${session.audioSupport.reason ?? "unsupported configuration"}`}
           </div>
 
@@ -254,7 +278,7 @@ export function RenderVideoDialog({
           ) : (
             <>
               <Button variant="outline" size="md" onClick={() => onOpenChange(false)}>Close</Button>
-              <Button size="md" disabled={!canRender} onClick={onRender}>Render MP4</Button>
+              <Button size="md" disabled={!canRender} onClick={onRender}>Render video</Button>
             </>
           )}
         </DialogFooter>

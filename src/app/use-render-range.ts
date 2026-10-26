@@ -13,6 +13,7 @@ import type { CompiledGraph } from "@compiler/index.ts";
 import { presentsPicture } from "@compiler/index.ts";
 import type { AudioEncoderSupport, AudioPcmProvider, EncoderFinishProgress, ExportInterface, ExportOutput, OutputRef, VideoEncoderSupport } from "@runtime/export/index.ts";
 import { ExportError, loadVideoEncoder, probeAudioEncoderSupport, probeVideoEncoderSupport } from "@runtime/export/index.ts";
+import { RENDER_CONTAINER, renderContainerFile, resolveStartTimecode } from "@runtime/export/index.ts";
 import type { RenderCanvasCapture } from "./render-canvas-capture.ts";
 import type { RenderAudioRequirement } from "./use-audio-input.ts";
 import { transportHolderFor } from "./transport-commands.ts";
@@ -98,6 +99,11 @@ export interface RenderJobSettings {
    * unless the user asks for it.
    */
   readonly preRollFrames?: number | undefined;
+  /**
+   * VN104: the file's start timecode as typed in the dialog. Absent or blank, the take is
+   * labelled by `resolveStartTimecode`'s fallbacks (00:00:00:00 plus the in point).
+   */
+  readonly startTimecode?: string | undefined;
 }
 
 export interface UseRenderRangeInputs {
@@ -119,6 +125,13 @@ export interface UseRenderRangeInputs {
    * node supplies nothing and the loop is unchanged.
    */
   readonly onFrameRendered?: ((frameIndex: number) => Promise<void>) | undefined;
+  /**
+   * VNB19: awaited after the transport's own `prepareFrame` and BEFORE the step that renders
+   * `frameIndex` (timeline frames at the project `fps`), so a timeline-locked movie has
+   * sought to and presented that frame's picture before it is uploaded. A take only; live
+   * stepping never waits on a seek.
+   */
+  readonly prepareMedia?: ((frameIndex: number, fps: number) => Promise<void>) | undefined;
   /** Await preparation before replay; an optional cleanup releases its export ownership. */
   readonly beforeRender?: (() => Promise<void | (() => void)>) | undefined;
   /** Mutes only speaker monitoring for every take; returned cleanup restores it. */
@@ -139,12 +152,9 @@ export interface UseRenderRangeInputs {
   readonly write?: typeof writeTextFile;
 }
 
-const VIDEO_PICKER_TYPES = [
-  {
-    description: "MPEG-4 video",
-    accept: { "video/mp4": [".mp4"] } as Readonly<Record<string, readonly string[]>>,
-  },
-];
+// VN104: the take is written as QuickTime (.mov), which carries its start timecode natively.
+const RENDER_FILE = renderContainerFile(RENDER_CONTAINER);
+const VIDEO_PICKER_TYPES = RENDER_FILE.pickerTypes;
 
 function refuse(
   code: string,
@@ -170,7 +180,7 @@ function videoFileName(
   end: number,
 ): string {
   const stem = projectName.replace(/\.loom\.json$/i, "").replace(/[^\w.-]+/g, "_") || "untitled";
-  return `${stem}.${String(resolution.width)}x${String(resolution.height)}.${String(start)}-${String(end)}.mp4`;
+  return `${stem}.${String(resolution.width)}x${String(resolution.height)}.${String(start)}-${String(end)}${RENDER_FILE.extension}`;
 }
 
 export function useRenderRange(inputs: UseRenderRangeInputs): RenderRangeSession {
@@ -492,8 +502,14 @@ export function useRenderRange(inputs: UseRenderRangeInputs): RenderRangeSession
           }
           if (controller.signal.aborted) throw new RenderRangeCancelledError();
           capture = live.createCapture(described);
+          const startTimecode = resolveStartTimecode(liveRenderSettings.startTimecode, liveRange.start, renderFps);
+          if ("error" in startTimecode) {
+            return refuse("export.failed", `Start timecode: ${startTimecode.error}`);
+          }
           const encoder = await (live.loadEncoder ?? loadVideoEncoder)(
             {
+              timecode: startTimecode,
+              container: RENDER_CONTAINER,
               ...(includeSoundtrack && preparedAudio !== null ? { audio: preparedAudio.pcm } : {}),
               captureFrame: capture.captureFrame,
               onFinishProgress,
@@ -531,7 +547,12 @@ export function useRenderRange(inputs: UseRenderRangeInputs): RenderRangeSession
               latestFrame: live.latestFrame,
               resetAbsoluteClock: transport.resetAbsoluteClock,
               resetState: transport.resetState,
-              ...(transport.prepareFrame === undefined ? {} : { prepareFrame: transport.prepareFrame }),
+              ...(transport.prepareFrame === undefined && live.prepareMedia === undefined ? {} : {
+                prepareFrame: async (frameIndex: number) => {
+                  await transport.prepareFrame?.(frameIndex);
+                  await live.prepareMedia?.(frameIndex, timelineFps);
+                },
+              }),
             },
           });
           disposeRendered = rendered.dispose ?? null;
@@ -559,7 +580,7 @@ export function useRenderRange(inputs: UseRenderRangeInputs): RenderRangeSession
           const output = {
             fileName: videoFileName(live.name(), liveRenderSettings.resolution, liveRange.start, liveRange.end),
             text: rendered.bytes,
-            mime: "video/mp4",
+            mime: RENDER_FILE.mime,
             pickerTypes: VIDEO_PICKER_TYPES,
           };
           const beginSaveCommit = (): void => {

@@ -496,6 +496,8 @@ export function App({
   // T1029: the Person Mask's CPU half — Apple Vision over the same shared client.
   const vision = useVisionBridge({
     scope: runtime.bus,
+    bus: runtime.bus,
+    invocation: runtime.invocation,
     deviceClient: osc.deviceClient,
     backend: () => backendRef.current,
     // T1067: the FLAT document, so a coverage spent inside a component resolves too.
@@ -1496,6 +1498,8 @@ export function App({
       await depth.settle(frameIndex);
       await vision.settle(frameIndex);
     },
+    // VNB19: a timeline-locked movie has presented each frame's picture before the step renders it.
+    prepareMedia: media.prepareFrame,
   });
   prepareRenderDestinationRef.current = renderRange.prepareDestination;
 

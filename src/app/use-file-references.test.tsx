@@ -184,3 +184,28 @@ describe("retained file runtime projection", () => {
     expect(document.nodes[broken.id]!.parameters["file"]).toBe("loom-file:not-a-valid-reference");
   });
 });
+
+describe("VN106: clip track region media", () => {
+  it("resolves a region's retained media through the same broker, leaving the stored track alone", async () => {
+    const { newRegion, serializeClipTrack, parseClipTrack } = await import("@domain/regions/model.ts");
+    const stored = serializeClipTrack({ version: 1, id: "t", name: "t", regions: [
+      newRegion("r1", CLIP, { length: 240000 }),
+      newRegion("r2", "https://example.test/b.mp4", { timelineStart: 240000, length: 240000 }),
+    ] });
+    const clip: GraphNode = { id: "clip", type: "clipTrack", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: { track: stored } };
+    const document = graph(clip);
+    const view = renderHook(() => useFileReferences(flatDocument(document)));
+    const mediaOf = () => {
+      const parsed = parseClipTrack(view.result.current.graph.nodes["clip"]!.parameters["track"]);
+      if (!parsed.ok) throw new Error(parsed.reason);
+      return parsed.track.regions.map((region) => region.media);
+    };
+    expect(broker.acquire).toHaveBeenCalledWith(CLIP);
+    expect(mediaOf()).toEqual(["", "https://example.test/b.mp4"]);
+    expect(view.result.current.diagnostics[0]).toMatchObject({ code: "asset.reference.pending", nodeId: "clip" });
+    act(() => broker.publish(CLIP, { kind: "ready", url: "blob:session-clip" } as RetainedFileSnapshot));
+    expect(mediaOf()).toEqual(["blob:session-clip", "https://example.test/b.mp4"]);
+    expect(view.result.current.diagnostics).toEqual([]);
+    expect(document.nodes["clip"]!.parameters["track"]).toBe(stored);
+  });
+});

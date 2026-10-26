@@ -33,6 +33,7 @@ import { floatMapInNode } from "./float-map-in.ts";
 import { screenInNode } from "./screen-in.ts";
 export { screenInNode, SCREEN_IN_TYPE } from "./screen-in.ts";
 import { syphonInNode } from "./syphon-in.ts";
+import { ffglNode } from "./ffgl.ts";
 import { ndiInNode } from "./ndi-in.ts";
 import { syphonOutNode } from "./syphon-out.ts";
 import { windowOutNode } from "./window-out.ts";
@@ -43,6 +44,7 @@ export { ndiOutNode, NDI_OUT_TYPE } from "./ndi-out.ts";
 export { syphonOutNode, SYPHON_OUT_TYPE } from "./syphon-out.ts";
 export { windowOutNode, WINDOW_OUT_TYPE } from "./window-out.ts";
 export { syphonInNode, SYPHON_IN_TYPE } from "./syphon-in.ts";
+export { ffglNode, FFGL_TYPE_NAME, ffglSourceIdFor } from "./ffgl.ts";
 export { ndiInNode, NDI_IN_TYPE } from "./ndi-in.ts";
 import { valueGraphNodeDefinitions } from "./value-graph-nodes.ts";
 import { valueStructureNodeDefinitions } from "./value-structure-nodes.ts";
@@ -50,6 +52,7 @@ import { controlNodeDefinitions } from "./controls.ts";
 import { presetsNode } from "./presets.ts";
 import { cueListNode } from "./cue-list.ts";
 import { automationNode } from "./automation.ts";
+import { clipTrackNode } from "./clip-track.ts";
 export { audioFileInNode, audioInNode, audioPatternNode } from "./audio.ts";
 export { cameraNode, geometryNode, lightNode, renderNode, sceneNodeDefinitions } from "./scene.ts";
 import { audioFileInNode, audioInNode, audioPatternNode } from "./audio.ts";
@@ -127,6 +130,7 @@ export { midiInNode } from "./midi.ts";
 export { presetsNode } from "./presets.ts";
 export { cueListNode } from "./cue-list.ts";
 export { automationNode, AUTOMATION_NODE_TYPE } from "./automation.ts";
+export { clipTrackNode, CLIP_TRACK_NODE_TYPE } from "./clip-track.ts";
 export { oscInNode, oscOutNode } from "./osc.ts";
 export {
   annotateNode,
@@ -311,6 +315,8 @@ export const coreNodeDefinitions: readonly NodeDefinition[] = [
   ndiOutNode,
   spoutInNode,
   spoutOutNode,
+  // VN85: a Resolume FFGL plugin, run by the desktop's native host.
+  ffglNode,
   ...valueGraphNodeDefinitions,
   ...valueStructureNodeDefinitions,
   ...controlNodeDefinitions,
@@ -320,6 +326,8 @@ export const coreNodeDefinitions: readonly NodeDefinition[] = [
   cueListNode,
   // VN61: keyframed lanes over the playhead, each published as a channel.
   automationNode,
+  // VN101: regions of media on the timeline, one texture per track.
+  clipTrackNode,
   audioInNode,
   audioFileInNode,
   audioPatternNode,

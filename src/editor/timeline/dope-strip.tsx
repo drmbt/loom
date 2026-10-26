@@ -10,6 +10,7 @@ import type { GraphPatchOperation } from "@domain/types/patch.ts";
 import { DOPE_ROW_HEIGHT, dopeHit, dopeRows, refsAtTicks, retimeColumns } from "./dope-sheet.ts";
 import { beginGesture, type GestureWriter } from "./gesture-writer.ts";
 import { snapTicks, type KeyRef, type SnapMode } from "./timeline-edits.ts";
+import type { BeatGrid } from "./beat-grid.ts";
 import { lanesStored, type AutomationNodeView } from "./timeline-model.ts";
 import { tokenColour } from "./timeline-draw.ts";
 import { tickToX, type TimelineView } from "./timeline-view.ts";
@@ -28,6 +29,8 @@ export interface DopeStripProps {
   readonly view: TimelineView;
   readonly rate: FrameRate;
   readonly snap: SnapMode;
+  /** VN68: the reference's beat grid, for the beat snap modes. */
+  readonly grid?: BeatGrid | null;
   readonly playheadTicks: () => number | null;
   readonly bus: LoomBus;
   readonly invocation: InvocationContext;
@@ -138,7 +141,7 @@ export function DopeStrip(props: DopeStripProps) {
     const dx = event.clientX - current.x;
     if (!current.moved && Math.abs(dx) < 3) return;
     current.moved = true;
-    const retimed = retimeColumns(current.origin, current.ticks, snapTicks(dx * view.ticksPerPixel, props.snap, rate));
+    const retimed = retimeColumns(current.origin, current.ticks, snapTicks(dx * view.ticksPerPixel, props.snap, rate, props.grid ?? null, true));
     const operations: GraphPatchOperation[] = [];
     // Every node in scope is written, moved or not, so a drag back to the start restores it.
     for (const [nodeId, origin] of current.origin) {

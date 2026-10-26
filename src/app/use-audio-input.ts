@@ -27,7 +27,7 @@ import type { MediaControlRegistry } from "./media-commands.ts";
 import { audioLatencyEstimate, type AudioLatencyEstimate } from "./audio-latency.ts";
 import { createPreAnalyser, readTrackAtPlayhead } from "./audio-pre-analysis.ts";
 import type { OfflineAnalysis } from "./audio-offline-analysis.ts";
-import { createOfflineAudioCapture } from "./offline-render-audio.ts";
+import { createOfflineAudioMix } from "./offline-render-audio.ts";
 import type { OfflineAudioCapture } from "./offline-render-audio.ts";
 import type { AudioPcmProvider } from "@runtime/export/index.ts";
 import {
@@ -941,17 +941,22 @@ export function useAudioInput(
         message: [preAnalysisMessage(analysis), outcome.fallback].filter((part) => part !== null).join(" "),
       };
     }
-    const capture = createOfflineAudioCapture(
-      pcm,
-      pcm.samples.length / pcm.sampleRate,
+    // VN104: the soundtrack is a stereo mix. Today it has ONE source, this capture's file
+    // (its PCM is the pre-analysis mixdown, so it feeds both channels); other timeline-locked
+    // audio files and movie audio join `createOfflineAudioMix` as further sources.
+    const sourceId = config.nodeId;
+    const mix = createOfflineAudioMix(
+      [{ id: sourceId, channels: [pcm.samples], sampleRate: pcm.sampleRate }],
       range,
       timelineRate,
       outputRate,
+      48_000,
     );
+    const capture: OfflineAudioCapture = { note: (state) => mix.note(sourceId, state) };
     renderCaptureRef.current = capture;
     let closed = false;
     return {
-      pcm: () => capture.source(),
+      pcm: () => mix.source(),
       close() {
         if (closed) return;
         closed = true;

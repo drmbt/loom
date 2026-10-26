@@ -24,6 +24,14 @@ import type { PhoneDoorView } from "@editor/controls/phone-door-copy.ts";
 import { createParameterEditor } from "@editor/inspector/parameter-editor.ts";
 import { useKeymapPane } from "@editor/keymap/index.ts";
 import { readNodeDragPayload } from "@editor/library/index.ts";
+import {
+  captureDroppedFiles,
+  mediaDropLabel,
+  mediaDropOperations,
+  resolveDroppedMedia,
+  type CapturedFile,
+} from "@editor/media-drop/media-drop.ts";
+import { retainedFiles } from "@ui/files/retained-files.ts";
 import { ContextMenuHost } from "@editor/menus/index.ts";
 import type { NodeDragPayload } from "@editor/library/index.ts";
 import {
@@ -1046,26 +1054,31 @@ function GraphPaneInner({
    * and placed where it landed, through `component.import` on this pane's bus (so inside a
    * component the drop lands inside it, and §V83 is checked against where it lands). A
    * refusal — a whole project, a malformed file — changes nothing and says why.
+   *
+   * VN99 — a VIDEO, STILL or AUDIO file becomes a Movie File In / Audio File In at the drop
+   * point, every file of the drop in ONE patch (one undo), its file retained as the
+   * inspector's picker retains one (`media-drop.ts`). A movie whose codec the browser cannot
+   * decode is refused by name; any other file is refused, and neither changes the document.
    */
   const importFiles = useCallback(
-    async (files: readonly File[], at: { x: number; y: number }) => {
-      for (const [index, file] of files.entries()) {
-        if (!file.name.toLowerCase().endsWith(".json")) {
-          onCommandRefused?.({
-            status: "rejected",
-            diagnostics: [
-              {
-                severity: "error",
-                code: "component.import.notAComponent",
-                message: `"${file.name}" is not a component file; only .loom.json component files can be dropped on the canvas.`,
-              },
-            ],
-          });
-          continue;
-        }
+    async (captured: readonly CapturedFile[], at: { x: number; y: number }) => {
+      const resolved = await resolveDroppedMedia(captured, {
+        files: typeof indexedDB === "undefined" ? null : retainedFiles(),
+        createObjectURL: (file) => URL.createObjectURL(file),
+      });
+      if (resolved.refusals.length > 0) onCommandRefused?.({ status: "rejected", diagnostics: [...resolved.refusals] });
+      if (resolved.media.length > 0) {
+        // Names are free against the graph this pane shows (inside a component, its inside).
+        const operations = mediaDropOperations(graph, resolved.media, at);
+        // A refused patch reaches the app through `onPatchResult`, as every canvas patch does.
+        await selectCreatedNodes(bus, invocation, (await dispatch(operations, mediaDropLabel(resolved.media))) ?? null);
+      }
+      for (const [index, file] of resolved.components.entries()) {
         const text = await file.text();
         // Several files fan out down-right, so their instances do not land on one another.
-        const position = { x: at.x + index * 40, y: at.y + index * 40 };
+        // Below a row of media from the same drop, when there is one.
+        const below = resolved.media.length > 0 ? 160 : 0;
+        const position = { x: at.x + index * 40, y: at.y + below + index * 40 };
         const result = await bus.execute("component.import", { text, fileName: file.name, position }, invocation);
         if (result.status !== "applied" || result.output.nodeId === null) {
           onCommandRefused?.(result);
@@ -1077,20 +1090,21 @@ function GraphPaneInner({
         });
       }
     },
-    [bus, invocation, onCommandRefused],
+    [bus, dispatch, graph, invocation, onCommandRefused],
   );
 
   const onDrop = useCallback(
     (event: ReactDragEvent<HTMLDivElement>) => {
       const payload = readNodeDragPayload(event.dataTransfer);
       if (payload === null) {
-        const files = Array.from(event.dataTransfer.files ?? []);
+        // Synchronously, inside the event: the browser empties the items when it returns.
+        const captured = captureDroppedFiles(event.dataTransfer);
         // A drag carrying no file and no node (a URL, text from another app) is not ours.
-        if (files.length === 0) return;
+        if (captured.length === 0) return;
         // Ours from here, including a file we refuse: the browser's default for a dropped
         // file is to navigate the tab to it, which would close the project.
         event.preventDefault();
-        void importFiles(files, flowPosition({ x: event.clientX, y: event.clientY }));
+        void importFiles(captured, flowPosition({ x: event.clientX, y: event.clientY }));
         return;
       }
       event.preventDefault();

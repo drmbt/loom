@@ -239,10 +239,23 @@ export interface LibraryCatalogue {
   read(fileName: string): string | undefined;
 }
 
+/**
+ * VN100 — files on the machine the LOCAL HELPER runs on, read-only and SCOPED: only an
+ * ltc-lab show (`.ltcshow.tar`, `project.json` / its tour, the audio a read project names).
+ * The headless MCP server supplies it (`src/mcp/local-files.ts`); a page never does, so a
+ * tool given a path in a browser-bridged session refuses it by name. Anything outside the
+ * scope is refused by the port, naming the path.
+ */
+export interface LocalFilesPort {
+  size(path: string): Promise<number>;
+  read(path: string, offset: number, length: number): Promise<Uint8Array>;
+}
+
 export interface AgentPorts {
   readonly preview?: PreviewExport | undefined;
   readonly points?: PointsExport | undefined;
   readonly library?: LibraryCatalogue | undefined;
+  readonly localFiles?: LocalFilesPort | undefined;
 }
 
 export type AgentPortName = keyof AgentPorts;

@@ -95,7 +95,8 @@ it("a close before open resolves retires the late session", async () => {
 });
 
 it("VNB13: a Syphon source's frames are bottom row first and say so; NDI and Spout frames are top first", async () => {
-  expect([...BOTTOM_UP_TRANSPORTS]).toEqual(["syphon"]);
+  // VN85: the native FFGL host's output surface is bottom-first too (an OpenGL render target).
+  expect([...BOTTOM_UP_TRANSPORTS]).toEqual(["syphon", "ffgl"]);
   const syphon = setup({ transport: "syphon" }); await syphon.input.ready; await syphon.deliver();
   expect(syphon.input.source.currentFrame()).toMatchObject({ image: syphon.owned, flipY: true });
   syphon.input.dispose();

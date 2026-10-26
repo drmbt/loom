@@ -37,7 +37,8 @@ test('compiled desktop includes native HTML but excludes smoke fixtures from ord
   });
   assert.equal(production.outDir, '/owned-build');
   const smoke = rendererBuildOptions('/project', '/owned-build', true);
-  assert.equal(Object.keys(smoke.rollupOptions.input).length, 6);
+  // VN85 added the ffgl graph fixture: app, output, inference + four fixtures.
+  assert.equal(Object.keys(smoke.rollupOptions.input).length, 7);
   assert.equal(smoke.rollupOptions.preserveEntrySignatures, 'strict');
 });
 
@@ -48,6 +49,7 @@ test('smoke imports explicit development paths or manifest entries, never a gues
   }]));
   assert.deepEqual(rendererFixtureModules(manifest), {
     output: '/assets/output-hash.js', input: '/assets/input-hash.js', vision: '/assets/vision-hash.js',
+    ffgl: '/assets/ffgl-hash.js',
   });
   delete manifest[development.input.slice(1)];
   assert.throws(() => rendererFixtureModules(manifest), /Missing compiled desktop fixture/);

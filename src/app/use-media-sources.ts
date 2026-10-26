@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RuntimeDiagnostic } from "@domain/types/diagnostics.ts";
-import type { FrameEvaluationInput } from "@domain/types/frame.ts";
+import { frameFromClock, type FrameEvaluationInput } from "@domain/types/frame.ts";
 import type { FlatGraph, GraphDocument } from "@domain/types/graph.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { ParameterValue } from "@domain/types/parameters.ts";
@@ -9,6 +9,9 @@ import { isSilencedSource } from "@domain/graph/bypass.ts";
 import { resolveStored } from "@domain/parameters/index.ts";
 import { storedStaticValue } from "@domain/parameters/slots.ts";
 import { mediaNodeDefinitions, mediaSourceIdFor, phoneCameraName } from "@nodes/definitions/index.ts";
+import { CLIP_TRACK_NODE_TYPE } from "@nodes/definitions/clip-track.ts";
+import { parseClipTrack, type ClipTrack } from "@domain/regions/model.ts";
+import { createClipTrackPlayer, type ClipTrackPlayer } from "./clip-track-player.ts";
 import type { NodeRegistryView } from "@nodes/registry/registry.ts";
 import type { LoomBackend } from "@runtime/backend/index.ts";
 import type { CameraStatus } from "./camera-request.ts";
@@ -17,9 +20,12 @@ import type { MediaControlRegistry } from "./media-commands.ts";
 import type { PhoneCameraOpener } from "./use-phone-cameras.ts";
 import {
   createMediaTransportRunner,
+  nodeParameterReader,
   playableMedia,
+  seekAndPresent,
   type MediaTransportRunner,
   type PlayableMedia,
+  type PresentableMedia,
 } from "./media-playback.ts";
 import { createMovieAudioPlayback, movieLoopOf, type MovieAudioPlayback } from "./movie-audio-playback.ts";
 import { appMovieAudioOutput } from "./app-audio-context.ts";
@@ -201,6 +207,40 @@ function mediaRequests(graph: GraphDocument): MediaRequest[] {
     });
   }
   return requests;
+}
+
+/**
+ * VN101 — the Clip Track nodes, in document order, that are not silenced. Only their ids:
+ * the regions are read per frame, so editing a region never re-opens the track's player.
+ */
+function clipTrackNodes(graph: GraphDocument): NodeId[] {
+  return Object.keys(graph.nodes).sort().filter((nodeId) => {
+    const node = graph.nodes[nodeId];
+    return node !== undefined && node.type === CLIP_TRACK_NODE_TYPE && !isSilencedSource(node);
+  });
+}
+
+/** A transparent frame for a clip track's gaps: a 2×2 cleared canvas, uploaded like a video frame. */
+function transparentFrame(): { image: unknown } {
+  const canvas = typeof document === "undefined" ? null : document.createElement("canvas");
+  if (canvas !== null) {
+    canvas.width = 2;
+    canvas.height = 2;
+  }
+  return { image: canvas };
+}
+
+/** Parse a track's text once per distinct text: a frame costs a lookup, not a JSON.parse. */
+function trackParser(): (text: unknown) => { track: ClipTrack | null; reason: string | null } {
+  let lastText: unknown = Symbol("none");
+  let last: { track: ClipTrack | null; reason: string | null } = { track: null, reason: null };
+  return (text) => {
+    if (text === lastText) return last;
+    lastText = text;
+    const parsed = parseClipTrack(text);
+    last = parsed.ok ? { track: parsed.track, reason: null } : { track: null, reason: parsed.reason };
+    return last;
+  };
 }
 
 const TEXT_ALIGNS = new Set(["left", "center", "right"]);
@@ -396,6 +436,16 @@ export interface MediaWiring {
    * notices, and an element left running would drift arbitrarily far while nothing moved.
    */
   setRunning(running: boolean): void;
+  /**
+   * VNB19 — A TAKE'S FRAME, MADE EXACT BEFORE IT IS RENDERED. Pauses every timeline-locked
+   * movie on where frame `frameIndex` (at `fps`) puts it and resolves once each has
+   * presented that decoded frame (`seekAndPresent`). The render range awaits it after
+   * `prepareFrame` and before the step; the step then finds no drift and seeks nothing, so
+   * the frame it uploads is the frame's own. Without it the step's seek lands after the
+   * render, and every take was a frame late (more while the decoder caught up). Live
+   * stepping never calls this: awaiting a seek would stall play.
+   */
+  prepareFrame(frameIndex: number, fps: number): Promise<void>;
   /** Silence movie monitoring for an export, including exports using realtime frames. */
   muteMonitorForRender(): () => void;
   /**
@@ -486,6 +536,8 @@ export function useMediaSources(
     new Map<NodeId, {
       runner: MediaTransportRunner;
       audio: MovieAudioPlayback;
+      /** VNB19: the element a take pre-seeks (`prepareFrame`). Under the lock it is the one shown. */
+      element: PresentableMedia;
       partner: () => void;
       release: () => void;
     }>(),
@@ -499,6 +551,17 @@ export function useMediaSources(
   const camerasRef = useRef(
     new Map<NodeId, { requested: CameraRequest; camera: OpenedCamera | null; message?: string }>(),
   );
+  /** VN101 — live clip-track players by node, with the reader that resolves their parameters per frame. */
+  const clipPlayersRef = useRef(
+    new Map<NodeId, {
+      player: ClipTrackPlayer;
+      read: (frame: FrameEvaluationInput) => { track: ClipTrack | null; tempo: number };
+    }>(),
+  );
+  const clipNodes = useMemo(() => clipTrackNodes(graph), [graph]);
+  const clipKey = clipNodes.join("\n");
+  const clipNodesRef = useRef(clipNodes);
+  clipNodesRef.current = clipNodes;
   const runningRef = useRef(true);
   /** The value graph's resolver, refreshed per frame by `sync`. */
   const channelsRef = useRef<ChannelResolver | undefined>(undefined);
@@ -849,7 +912,9 @@ export function useMediaSources(
               const dropped = audio.releasePartner();
               if (dropped !== null) unload(dropped);
             };
-            livePlayers.set(request.nodeId, { runner, audio, partner, release: dropPartner });
+            livePlayers.set(request.nodeId, {
+              runner, audio, partner, release: dropPartner, element: playable as PresentableMedia,
+            });
             playerOpened.push(request.nodeId);
             const release = controls?.register(request.nodeId, {
               cue: () => runner.cue(),
@@ -923,6 +988,74 @@ export function useMediaSources(
   }, [backend, controls, environment, key, reloadNonce, phones]);
 
   /**
+   * VN101 — one player per Clip Track node, its source registered under the key the node's
+   * compile declares. Keyed on the SET of clip-track nodes only: regions are read per frame
+   * (`sync`), so an edit to them reaches the player without re-opening anything.
+   */
+  useEffect(() => {
+    if (backend === null) return;
+    const env = environment ?? browserMediaEnvironment();
+    const players = clipPlayersRef.current;
+    const mine: NodeId[] = [];
+    const unregisters: Array<() => void> = [];
+    for (const nodeId of clipNodesRef.current) {
+      const report = (message: string | null) => {
+        setPlaybackDiagnostics((previous) => {
+          const others = previous.filter((entry) => !(entry.nodeId === nodeId && entry.code === "media.unavailable"));
+          return message === null ? others : [...others, diagnostic(nodeId, message, "Check the region's media: transcode DXV, HAP or ProRes first (VN103), or pick the file again.")];
+        });
+      };
+      const player = createClipTrackPlayer({
+        open: async (url) => {
+          const element = await env.openFile(url);
+          const playable = playableMedia(element);
+          if (playable === null) throw new Error("The file opened as something that cannot be driven.");
+          playable.pause();
+          return element as MediaElement & PresentableMedia;
+        },
+        blank: transparentFrame,
+        release: (element) => {
+          element.pause();
+          if (typeof HTMLMediaElement !== "undefined" && element instanceof HTMLMediaElement) {
+            element.removeAttribute("src");
+            element.load();
+          }
+        },
+        report: (region, message) => report(`Region "${region.id}" of "${nodeId}" could not be played: ${message}`),
+      });
+      const parse = trackParser();
+      const reader = nodeParameterReader(nodeId, {
+        graph: () => graphRef.current,
+        registry: runtimeRef.current.registry,
+        channels: () => channelsRef.current,
+        flattening: () => runtimeRef.current.flattened.current(),
+      });
+      let reported: string | null = null;
+      const read = (frame: FrameEvaluationInput) => {
+        const values = reader(frame);
+        if (values === null) return { track: null, tempo: 120 };
+        const parsed = parse(values("track"));
+        if (parsed.reason !== reported) {
+          reported = parsed.reason;
+          report(parsed.reason === null ? null : `The regions of "${nodeId}" do not parse: ${parsed.reason}`);
+        }
+        const tempo = values("tempo");
+        return { track: parsed.track, tempo: typeof tempo === "number" && Number.isFinite(tempo) ? tempo : 120 };
+      };
+      unregisters.push(backend.registerMediaSource(mediaSourceIdFor(nodeId), player.source));
+      players.set(nodeId, { player, read });
+      mine.push(nodeId);
+    }
+    return () => {
+      for (const unregister of unregisters) unregister();
+      for (const nodeId of mine) {
+        players.get(nodeId)?.player.dispose();
+        players.delete(nodeId);
+      }
+    };
+  }, [backend, environment, clipKey]);
+
+  /**
    * What each Text node draws, pushed after registration (T243, T312).
    *
    * Separate from the effect above because the two change on different clocks: typing
@@ -959,6 +1092,29 @@ export function useMediaSources(
       else if (loop === "native") release();
       audio.sync(stepped, frame.mode);
     }
+    // VN101: clip tracks after the movies, from the same frame and the same channels.
+    for (const { player, read } of clipPlayersRef.current.values()) {
+      const { track, tempo } = read(frame);
+      player.sync(frame, track, tempo);
+    }
+  }, []);
+
+  const prepareFrame = useCallback(async (frameIndex: number, fps: number) => {
+    if (!(fps > 0) || !Number.isFinite(frameIndex)) return;
+    const frame: FrameEvaluationInput = frameFromClock({
+      timeSeconds: frameIndex / fps, deltaSeconds: 1 / fps, frameIndex, mode: "offline", randomSeed: 0, fps,
+    });
+    const waits: Promise<void>[] = [];
+    for (const { runner, audio, element } of playersRef.current.values()) {
+      const target = runner.target(frame, audio.duration());
+      if (target !== null) waits.push(seekAndPresent(element, target));
+    }
+    // VN101: a clip track's active region, opened if it must be, on the frame's source time.
+    for (const { player, read } of clipPlayersRef.current.values()) {
+      const { track, tempo } = read(frame);
+      waits.push(player.prepare(frame, track, tempo));
+    }
+    await Promise.all(waits);
   }, []);
 
   const setRunning = useCallback((running: boolean) => {
@@ -968,6 +1124,7 @@ export function useMediaSources(
     // Stop where we are rather than letting the element run on its own clock — that is
     // the state that made "pause" and "the picture froze but the sound kept going".
     for (const { audio } of playersRef.current.values()) audio.pause();
+    for (const { player } of clipPlayersRef.current.values()) player.pause();
   }, []);
 
   const muteMonitorForRender = useCallback(() => {
@@ -1025,5 +1182,5 @@ export function useMediaSources(
     setPlaybackDiagnostics([]);
   }, []);
   const allDiagnostics = useMemo(() => [...diagnostics, ...playbackDiagnostics], [diagnostics, playbackDiagnostics]);
-  return { diagnostics: allDiagnostics, clearDiagnostics, sync, setRunning, muteMonitorForRender, cameraStatus };
+  return { diagnostics: allDiagnostics, clearDiagnostics, sync, prepareFrame, setRunning, muteMonitorForRender, cameraStatus };
 }

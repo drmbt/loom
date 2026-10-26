@@ -29,6 +29,8 @@ describe("the code-parameter census (T492)", () => {
     expect(census).toEqual([
       // VN61: automation lanes, structured data the timeline edits.
       "automation.lanes:json",
+      // VN101: a clip track's regions, structured data the regions editor (VN106) will edit.
+      "clipTrack.track:json",
       // T1500b: the cue list, hand-editable structured data like the bank.
       "cueList.cues:json",
       "customWgsl.source:wgsl",
@@ -177,6 +179,8 @@ describe("core catalogue (T70, T40)", () => {
       "ndiOut",
       "spoutIn",
       "spoutOut",
+      // VN85: a Resolume FFGL plugin in the desktop's native host.
+      "ffgl",
       "mouse",
       "channelIn",
       "valueMath",
@@ -229,6 +233,8 @@ describe("core catalogue (T70, T40)", () => {
       "cueList",
       // VN61: keyframed lanes over the playhead, each published as a channel.
       "automation",
+      // VN101: regions of media on the timeline, one texture per track.
+      "clipTrack",
       // T414: sound as channels — the value family's third input source after Mouse
       // and the trio. Deliberately named for what it IS, not a TD analog.
       "audioIn",

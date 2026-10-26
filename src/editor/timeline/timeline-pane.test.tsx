@@ -294,3 +294,35 @@ describe("review — selection belongs to its automation node", () => {
     runtime.dispose();
   });
 });
+
+describe("VN68 — snapping to the reference track's beat grid", () => {
+  it("beat snap is offered only with a declared tempo, and an Alt-click then lands on the beat", async () => {
+    const { runtime, autoId } = await runtimeWith();
+    const { canvas, view } = await mount(runtime);
+    const snapSelect = view.container.querySelector<HTMLSelectElement>('select[aria-label="snap"]')!;
+    const beatOption = () => Array.from(snapSelect.options).find((option) => option.value === "beats")!;
+    expect(beatOption().disabled).toBe(true);
+
+    // The reference: a track at 120 bpm with beat one 0.5 s into the file, locked to the timeline.
+    const added = await runtime.bus.execute("graph.applyPatch", {
+      baseRevision: runtime.bus.store.getRevision(), label: "reference",
+      operations: [{
+        op: "addNode", ref: "$track", type: "audioFileIn", position: { x: 400, y: 0 }, label: "audiofile_reference",
+        parameters: { playMode: "timeline", tempoMode: "declared", bpm: 120, beatOffset: 0.5 },
+      }],
+    } as never, runtime.invocation);
+    expect(added.output.status).toBe("applied");
+    await settle();
+    expect(beatOption().disabled).toBe(false);
+    await act(async () => { fireEvent.change(snapSelect, { target: { value: "beats" } }); });
+
+    // 0.9 s is under the pointer; the nearest beat is 1.0 s (beats at 0.5, 1.0, 1.5 …).
+    await act(async () => {
+      fireEvent.pointerDown(canvas, { clientX: 90, clientY: yOf(0.5), altKey: true, button: 0, pointerId: 1 });
+      fireEvent.pointerUp(canvas, { clientX: 90, clientY: yOf(0.5), pointerId: 1 });
+    });
+    await settle();
+    expect(lanesOf(runtime, autoId)[0]!.keys.map((key) => key.t)).toEqual([0, S, 2 * S]);
+    runtime.dispose();
+  });
+});

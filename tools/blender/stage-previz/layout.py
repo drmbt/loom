@@ -1,8 +1,11 @@
 """Every coordinate of the stage, in one place (metres, Blender Z up, audience at -Y).
 
-ESTIMATES. These were read off the designer's ISO renders and the front elevation, not a
-plot. Change the numbers here and rebuild; the Loom session re-reads the projector and
-camera positions from the GLB, so nothing else needs editing.
+REVISION 2 (2026-10-08, VN79): the tour's dimensioned front elevation and top plan. Heights
+are the elevation's dimensions above the HOUSE DECK (which is 5'0" here and "may be different
+in each venue"); plan positions are the plan's dimensions from the stage's downstage edge.
+What the drawings do not dimension is read off them at their scale and says so where it is
+set. The first export (2026-10-06, `public/media/stage-previz/stage.glb`) came from the
+estimates this revision replaces; this one ships as `stage-r2.glb`.
 
 Axes: X = stage width (+X is STAGE LEFT, the audience's right), Y = depth (+Y upstage),
 Z = up. glTF / Loom space is (x, z, -y): Loom +Z points at the audience.
@@ -18,16 +21,17 @@ def ft(feet, inches=0.0):
     return feet * FT + inches * IN
 
 
-# ---- the deck: 4' x 8' decks, 4' across the stage ----------------------------------------
-# The scale reference. The front elevation shows exactly 12 decks across the stage front
-# (48'); 4 rows of 8' make it 32' deep. Everything else is measured against these.
+# ---- the house deck: 4' x 8' decks, 4' across the stage ----------------------------------
+# The plan: 15 decks across (60', "30'-0"" each side of centre) and 5 rows of 8' deep (40'),
+# its downstage edge the stage's. The grated stage deck on it is 48' across (STAGE_W).
 DECK_PANEL = (4 * FT, 8 * FT)
-DECK_COLS, DECK_ROWS = 12, 4
-DECK_W = DECK_COLS * DECK_PANEL[0]   # 48'
-DECK_D = DECK_ROWS * DECK_PANEL[1]   # 32'
-DECK_Y1 = 5.0            # upstage edge
-DECK_Y0 = DECK_Y1 - DECK_D           # downstage edge
-DECK_H = 1.4             # house deck top above the house floor ("may be different in each venue")
+DECK_COLS, DECK_ROWS = 15, 5
+DECK_W = DECK_COLS * DECK_PANEL[0]   # 60'
+DECK_D = DECK_ROWS * DECK_PANEL[1]   # 40'
+DECK_Y0 = 5.0 - 32 * FT  # downstage edge (where the first export had it, so the cameras still frame it)
+DECK_Y1 = DECK_Y0 + DECK_D           # upstage edge
+DECK_H = ft(5)           # house deck top above the house floor (elevation: 5'0", "may be different in each venue")
+STAGE_W = 48 * FT        # the grated stage deck, the strobe grid and the side projectors' deck edges
 DECK_TOP_T = 0.08        # black top sheet thickness
 
 # ---- the blowthrough decks (Vectorworks: Top Plan - Strobes, Front Elevation) -------------
@@ -35,7 +39,7 @@ DECK_TOP_T = 0.08        # black top sheet thickness
 # 48' x 16' (its two downstage rows of decks) and the riser's top. Light blows up through them.
 GRATE_H = ft(1, 6)
 GRATE_TOP = DECK_H + GRATE_H         # the walking surface downstage, and where the side images land
-DS_STRIP = (DECK_Y0, DECK_Y0 + 2 * DECK_PANEL[1])   # the grated stage deck: 16' deep, 48' wide
+DS_STRIP = (DECK_Y0, DECK_Y0 + 2 * DECK_PANEL[1])   # the grated stage deck: 16' deep, 48' wide (plan: 16'-0")
 
 # ---- the upstage riser, with a stair at each end facing downstage ------------------------
 # Eight decks across (32') and one deep (8'), directly upstage of the grated stage deck (the
@@ -43,7 +47,7 @@ DS_STRIP = (DECK_Y0, DECK_Y0 + 2 * DECK_PANEL[1])   # the grated stage deck: 16'
 # elevation), over a solid platform 1'6" below it where its strobes sit. Each stair is one deck
 # wide, beside the riser's face, climbing UPSTAGE from the riser's front line, from the stage
 # grate to the riser top.
-RISER_X = 8 * DECK_PANEL[0] / 2      # half width of the face between the stairs
+RISER_X = 8 * DECK_PANEL[0] / 2      # half width of the face between the stairs (plan: 16'-0 1/8")
 RISER_Y = (DS_STRIP[1], DS_STRIP[1] + DECK_PANEL[1])  # downstage face .. upstage face
 RISER_TOP = DECK_H + ft(7, 7)        # its grated walking surface
 RISER_DECK = RISER_TOP - GRATE_H     # the platform under the grate
@@ -52,16 +56,26 @@ STAIR_W = DECK_PANEL[0]  # each stair, beside the riser
 STAIR_STEPS = 8          # risers per stair, stage grate to riser top; the 8th is the landing
 STAIR_GOING = 0.28
 
-# ---- upstage wall: curtain, and the LED batten grid in front of it ----------------------
-CURTAIN_Y = 4.35         # the pipe line
-CURTAIN_TOP = 9.3        # absolute z of the pipe
-CURTAIN_X = 7.3          # half width along the pipe
-CURTAIN_FLAT_X = 18 * FT # the scrim is ~36' wide (measured off the 4' x 8' decks); beyond it the drape is tied back
-CURTAIN_TIE = (7.0, 2.6) # where each tied-back end pools on the deck (|x|, y)
+# ---- upstage wall: the scrim, flush against the riser's upstage face ----------------------
+CURTAIN_Y = RISER_Y[1] + 0.12   # the pipe line: the riser's upstage face (plan: 24'-0"), the pleats clear of it
+CURTAIN_TOP = DECK_H + ft(23, 1)  # the drape's top (elevation: 23'-1")
+CURTAIN_X = 18 * FT      # half width along the pipe (elevation, at its scale: 36')
+CURTAIN_FLAT_X = 15 * FT # the straight fall, the width of the pixel trusses behind it; beyond it each
+                         # side is gathered out and down, round the stair, to pool in front of it
+# Each side's swag, from the elevation and the plan at their scale: (|x|, feet from the stage's
+# downstage edge, feet above the house deck). Out along the scrim's line past the stair's
+# upstage end, down the stair's offstage side, gathered there (the elevation's gather, 20'-21'
+# off centre, 11' up), and pooled round the stair's foot; a column's pool runs from POOL_NEAR
+# (the swag's inner edge: in front of the stair) to POOL_FAR (the pipe's end: beside it).
+CURTAIN_SWAG_OUT = (ft(22, 6), ft(23), ft(17))
+CURTAIN_GATHER = (ft(21, 6), ft(18), ft(10))
+CURTAIN_POOL_NEAR = (ft(19), ft(14))
+CURTAIN_POOL_FAR = (ft(24, 6), ft(19))
+CURTAIN_BUNCH = 0.32     # how far the gathered cloth heaps off its own line, metres
 CURTAIN_PLEAT = (0.055, 0.42)     # amplitude, wavelength
 
-GRID_Y = 4.75            # the hung pixel-line trusses, 40 cm BEHIND the scrim, their bars toward
-                         # the house: Loom draws the scrim additively, so their light shows through it
+GRID_Y = DECK_Y0 + ft(28, 1)    # the hung pixel-line trusses, 4' BEHIND the scrim (plan: 28'-1"), their bars
+                         # toward the house: Loom draws the scrim additively, so their light shows through it
 
 # ---- pixel lines: ACME Pixel Line IP x 63 (the fixture list), 7 rows of 9 one-metre bars ----
 # Front elevation: three rows on a rack in front of the riser (Schedule 40 pipe on four 2' x 2'
@@ -74,7 +88,9 @@ PIXELS_PER_BAR = 39      # ASSUMED from the 117-channel DMX footprint: 39 RGB pi
 PIXEL_BARS_PER_ROW = 9
 PIXEL_ROW_W = 30 * FT    # nine bars, end to end with a hair between them
 PIXEL_RACK_Z = (ft(2, 11), ft(4, 11), ft(7, 0))
-PIXEL_TRUSS_Z = (ft(8, 11), ft(11, 11), ft(14, 11), ft(17, 11))
+# The hung rows: the elevation dimensions one at 16'-11" and draws the four 3' apart, the top
+# at 19'-11" (read at its scale; the extension line it hangs that dimension on is drawn off).
+PIXEL_TRUSS_Z = (ft(10, 11), ft(13, 11), ft(16, 11), ft(19, 11))
 PIXEL_RACK_Y = RISER_Y[0] - 0.18     # the rack's bar line, just in front of the riser face
 PIXEL_RACK_POSTS = (-ft(13, 6), -ft(4), ft(4), ft(13, 6))
 PIXEL_TRUSS = ft(1)      # TC1212 section
@@ -90,7 +106,7 @@ STROBE_WINDOW = (0.46, 0.15)         # its light through the grating
 def strobes():
     """[(id, (x, y), floor z, grate top z)] for all 38, stage first (downstage row first, SR to SL)."""
     out = []
-    xs = [-DECK_W / 2 + ft(2) + i * ft(8, 10) for i in range(6)]
+    xs = [-STAGE_W / 2 + ft(2) + i * ft(8, 10) for i in range(6)]
     ys = [DS_STRIP[1] - (ft(2, 10) + j * ft(3, 1)) for j in range(5)]
     for j, y in enumerate(reversed(ys)):
         for i, x in enumerate(xs):
@@ -123,7 +139,7 @@ FX_SIZE = (1920, 1080)
 # The template draws each zone a pixel bigger on every side than the texel it is sampled at
 # (a bar row is three rows tall), so a feed that arrives a pixel off still lands.
 FX_ZONE_PAD = 1
-FX_TOP_Z = (ft(2, 11) - FT, ft(17, 11) + FT)   # the top half's height range, above the house deck
+FX_TOP_Z = (min(PIXEL_RACK_Z) - FT, max(PIXEL_TRUSS_Z) + FT)   # the top half's height range, above the house deck
 
 
 def fx_texel_bar(x, z):
@@ -137,40 +153,41 @@ def fx_texel_bar(x, z):
 def fx_texel_strobe(x, y):
     """The bottom-half texel (column, row) that the strobe at plan position (x, y) shows."""
     w, h = FX_SIZE
-    col = (x + DECK_W / 2) / DECK_W * w
+    col = (x + STAGE_W / 2) / STAGE_W * w
     depth = (y - DECK_Y0) / (RISER_Y[1] - DECK_Y0)
     row = h - depth * (h / 2)
     return min(max(int(col), 0), w - 1), min(max(int(row), h // 2), h - 1)
 
 # ---- midstage kabuki (sheer), downstage of the riser and its pixel-line rack ---------------
+# Not on the revision 2 plot; kept, on its own pipe, flown out in every preset.
 KABUKI_Y = RISER_Y[0] - 0.55
-KABUKI_TOP = 9.3
+KABUKI_TOP = CURTAIN_TOP
 KABUKI_X = 7.0
 KABUKI_FLAT_X = 5.5
 KABUKI_TIE = (6.9, -0.9)
 KABUKI_PLEAT = (0.045, 0.36)
 
-# ---- the flown frame: upstage truss + kabuki truss + two side trusses --------------------
-TRUSS_Z = 9.6            # centre line
-TRUSS_W = 0.4            # box truss section
-TRUSS_X = 8.6
-TRUSS_US_Y = 4.1
-TRUSS_DS_Y = KABUKI_Y    # the kabuki truss, over its pipe
+# ---- the flown frame: two 50' trusses across the stage ------------------------------------
+# The plan: the scrim's truss over the scrim, and a front truss 8' from the downstage edge that
+# carries the side projectors. Both at the elevation's trim: 22'-7" to the bottom chord.
+TRUSS_W = FT             # TC1212 12" box truss (the fixture list)
+TRUSS_Z = DECK_H + ft(22, 7) + TRUSS_W / 2   # centre line
+TRUSS_X = 25 * FT        # half length
+TRUSS_US_Y = CURTAIN_Y + TRUSS_W / 2 + 0.03  # the scrim hangs off its downstage face
+TRUSS_DS_Y = DECK_Y0 + ft(8)                 # the front truss
 
 # ---- projectors (lens position, aim point) -----------------------------------------------
 # Barco UDX-4K40: native 3840 x 2400, 16:10.
 PROJ_ASPECT = 16.0 / 10.0
-# Side projectors hang under the downstage corners of the frame, angled down and inward,
-# used as light: a volumetric cone through the haze onto the downstage deck.
+# Side projectors hang from the front truss toward its ends (plan: over the middle of the
+# downstage strip, 19' off centre; elevation: lens 20'-5" above the house deck, at its scale),
+# angled down and inward, used as light: a volumetric cone through the haze onto the downstage deck.
 # They are rolled 90° (portrait; Loom's Side roll fader): rolled, an image's LONG side lies in
 # the projector's tilt plane, so each pans straight across the stage. The beams CROSS: each
 # image's far edge lands on the opposite deck edge, and its depth on the deck is the downstage
 # strip's (the two downstage deck rows, 16'); where its near edge falls follows, and so does the
-# overlap in the middle. They hang from outriggers off the frame's downstage corners, over the
-# middle of that strip, because a footprint centres on its projector's depth.
-DS_STRIP = (DECK_Y0, DECK_Y0 + 2 * DECK_PANEL[1])   # the two downstage rows of decks: 16'
-PROJ_SIDE_LENS = (8.15, (DS_STRIP[0] + DS_STRIP[1]) / 2, 8.55)   # +x is stage left; SR mirrors x
-OUTRIGGER_Y = (TRUSS_DS_Y, PROJ_SIDE_LENS[1] - 0.5)       # the outrigger trusses, frame corner → downstage
+# overlap in the middle. A footprint centres on its projector's depth, the middle of that strip.
+PROJ_SIDE_LENS = (ft(19), TRUSS_DS_Y, DECK_H + ft(20, 5))   # +x is stage left; SR mirrors x
 
 
 def side_rig():
@@ -190,7 +207,7 @@ def side_rig():
     lx, ly, lz = PROJ_SIDE_LENS
     drop = lz - GRATE_TOP                              # the images land on the grated stage deck
     depth = DS_STRIP[1] - DS_STRIP[0]
-    far = math.atan2(drop, lx + DECK_W / 2)            # down to the opposite deck edge
+    far = math.atan2(drop, lx + STAGE_W / 2)           # down to the opposite deck edge
 
     def lens(tilt):                                    # tan(half the long side) for the depth
         return depth * PROJ_ASPECT * math.sin(tilt) / (2 * drop)
@@ -214,30 +231,31 @@ def side_rig():
 
 
 PROJ_SIDE_AIM, PROJ_SIDE_THROW, _, PROJ_SIDE_KEYSTONE, PROJ_SIDE_NEAR = side_rig()
-# The downstage (IMAG) projector hangs from its own 4' truss at the side projectors' truss
-# height, close in on a 0.37 short-throw lens: 16' from lens to scrim at zero tilt, which
-# overthrows the 36' scrim (16 / 0.37 = 43.2' wide). It hangs from a clamp under the truss
-# and tilts about that clamp, so its lens sits DS_LENS_FORWARD ahead of and DS_LENS_DROP
-# below the clamp. Loom moves the truss in z and tilts the body; these are the rest values.
-DS_TRUSS_HALF = 2 * FT   # a 4' truss, across the stage
-DS_THROW_FT = 16.0       # lens to scrim at zero tilt
-DS_THROW_RATIO = 0.37
+# The downstage (IMAG) projector hangs from its own 8' truss (plan: 6'-4" downstage of the
+# stage's edge, 4'-0" each side of centre) at the frame's trim, on a drop: its lens 19'-8"
+# above the house deck (elevation, at its scale). It hangs from a clamp under the truss and
+# tilts about that clamp, so its lens sits DS_LENS_FORWARD ahead of and DS_LENS_DROP below
+# the clamp. Loom moves the truss in z and tilts the body; these are the rest values.
+DS_TRUSS_HALF = 4 * FT   # an 8' truss, across the stage
+DS_TRUSS_Y = DECK_Y0 - ft(6, 4)
+DS_THROW_RATIO = 0.74
 DS_LENS_FORWARD = 0.12 + 0.75 / 2   # the fixture body's half length plus its lens barrel
-DS_LENS_DROP = 0.3 / 2 + 0.035      # clamp on top of the cage, lens at body centre height
-DS_CLAMP = (0.0, CURTAIN_Y - DS_THROW_FT * FT - DS_LENS_FORWARD, TRUSS_Z - TRUSS_W / 2 - 0.12)
+DS_CLAMP = (0.0, DS_TRUSS_Y, TRUSS_Z - TRUSS_W / 2 - 0.12)
+DS_LENS_DROP = DS_CLAMP[2] - (DECK_H + ft(19, 8))   # clamp to lens, at zero tilt
 
 # ---- house -------------------------------------------------------------------------------
 HOUSE = (-30.0, 12.0)    # floor y extent (x is +-25)
-PEDESTALS_X = (-6.2, -2.2, 2.2, 6.2)
-PEDESTAL_Y = DECK_Y0 - 1.0
-TRIPOD = (-6.6, -7.6)
+PEDESTALS_X = (-ft(16), -ft(5, 6), ft(5, 6), ft(16))   # plan: on the floor, 1' off the downstage edge
+PEDESTAL_Y = DECK_Y0 - ft(1)
+PEDESTAL_TOP = DECK_H - ft(0, 6)
+TRIPOD = (-ft(23, 6), DECK_Y0 - ft(2, 7))
 
 # ---- talent stand-ins (two dancers downstage, a vocalist on the riser) -------------------
 TALENT = ((-3.6, -2.0, GRATE_TOP), (3.6, -2.0, GRATE_TOP), (0.0, (RISER_Y[0] + RISER_Y[1]) / 2, RISER_TOP))
 
 
 def canvas():
-    """The flat part of the upstage curtain that the DS projector must fill (x0, x1, z0, z1)."""
+    """The flat part of the scrim that the DS projector must fill (x0, x1, z0, z1)."""
     return (-CURTAIN_FLAT_X, CURTAIN_FLAT_X, RISER_TOP, CURTAIN_TOP)
 
 

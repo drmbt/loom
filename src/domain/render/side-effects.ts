@@ -327,6 +327,8 @@ export const NODE_SIDE_EFFECTS: Readonly<Record<string, SideEffect>> = {
   analyze: "none",
   // Media files and model nodes: a decode and a worker round trip, both inside the page.
   movieFileIn: "none",
+  // VN101: a pool of decodes inside the page; nothing leaves the process.
+  clipTrack: "none",
   // Saved scalar numerical assets are decoded inside this process.
   floatMapIn: "none",
   audioFileIn: "none",
@@ -342,4 +344,8 @@ export const NODE_SIDE_EFFECTS: Readonly<Record<string, SideEffect>> = {
      node's consent surface, not a side-effect class — the mask path adds no new exit
      the user did not already open by activating the camera. */
   personMask: "none",
+  // VN85 — a frame crosses to Electron's main process, where a plugin the user chose
+  // processes it and hands it back. Nothing on the far side acts on the world: personMask's
+  // argument, with a plugin in place of the OS's Vision framework.
+  ffgl: "none",
 };

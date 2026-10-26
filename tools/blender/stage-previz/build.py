@@ -287,6 +287,65 @@ def drape(mb, mat, half, flat_half, y_pipe, z_top, tie, pleat, seed, step=0.05, 
     mb.grid(points, nu, rows, mat)
 
 
+def catmull(points, t):
+    """A point at t in [0, 1] along the uniform Catmull-Rom curve through `points` (Vectors)."""
+    n = len(points) - 1
+    k = min(int(t * n), n - 1)
+    u = t * n - k
+    p0, p1, p2, p3 = points[max(k - 1, 0)], points[k], points[k + 1], points[min(k + 2, n)]
+    return 0.5 * ((2 * p1) + (-p0 + p2) * u + (2 * p0 - 5 * p1 + 4 * p2 - p3) * u * u + (-p0 + 3 * p1 - 3 * p2 + p3) * u * u * u)
+
+
+def scrim(mb, mat, seed, step=0.05, rows=110):
+    """The upstage scrim (layout revision 2): a straight fall across its middle, flush behind the
+    riser to the house deck; beyond CURTAIN_FLAT_X each side gathered out along the scrim's line,
+    down the stair's offstage side and round its foot, where it pools: the front elevation and
+    the top plan.
+
+    Each column of cloth runs from the pipe either straight down (the middle) or along a curve
+    through its side's swag (the ends), blended across the swag by how far out along the pipe it
+    hangs; gathered cloth heaps off its own line by an amount that varies column to column.
+    """
+    amp, wavelength = L.CURTAIN_PLEAT
+    half, flat = L.CURTAIN_X, L.CURTAIN_FLAT_X
+    y_pipe, z_top, z_floor = L.CURTAIN_Y, L.CURTAIN_TOP, L.DECK_H
+    near, far = L.CURTAIN_POOL_NEAR, L.CURTAIN_POOL_FAR
+
+    def at(xyz, sgn):
+        x, y, z = xyz
+        return Vector((sgn * x, L.DECK_Y0 + y, L.DECK_H + z))
+
+    nu = int(round(2 * half / step)) + 1
+    points = []
+    for i in range(nu):
+        x = -half + 2 * half * i / (nu - 1)
+        ax, sgn = abs(x), (1.0 if x >= 0 else -1.0)
+        e = smoothstep(flat, half, ax)              # 0 on the straight fall, 1 at the pipe's end
+        w = smoothstep(0.0, 1.0, min(1.0, e * 1.6))  # how far into the swag this column is drawn
+        phase = 2 * math.pi * x / wavelength + 0.7 * math.sin(1.37 * x + seed) + 0.35 * math.sin(3.1 * x + 2 * seed)
+        pool = (near[0] + (far[0] - near[0]) * e, near[1] + (far[1] - near[1]) * e, 0.0)
+        on_grate = pool[0] <= L.STAGE_W / 2 / L.FT and pool[1] <= (L.DS_STRIP[1] - L.DECK_Y0) / L.FT
+        foot = at(pool, sgn)
+        foot.z = (L.GRATE_TOP if on_grate else L.DECK_H) + 0.04
+        route = [Vector((x, y_pipe, z_top)), at(L.CURTAIN_SWAG_OUT, sgn), at(L.CURTAIN_GATHER, sgn), foot]
+        heap = L.CURTAIN_BUNCH * (0.5 + 0.5 * math.sin(2.3 * phase + seed)) * w
+        for j in range(rows):
+            v = j / (rows - 1)
+            straight = Vector((x, y_pipe, z_top - v * (z_top - z_floor)))
+            swag = catmull(route, v)
+            # gathered cloth heaps off its line, most where it is gathered, and spreads where it pools
+            bulge = heap * math.sin(math.pi * min(1.0, v * 1.15))
+            swag += Vector((sgn * bulge * math.cos(phase), bulge * math.sin(1.7 * phase), 0.4 * bulge * math.sin(phase)))
+            # and crumples: folds that wander down the column, deepest in the gather and the pool
+            crush = 0.11 * w * (0.4 + 0.6 * math.sin(math.pi * v) + 0.6 * v * v)
+            swag += Vector((crush * math.sin(5.1 * v * math.pi + 1.9 * phase), crush * math.sin(3.7 * v * math.pi + 2.6 * phase + seed), 0.5 * crush * math.cos(6.3 * v * math.pi + phase)))
+            p = straight.lerp(swag, w)
+            a = amp * (0.55 + 0.45 * v)
+            p.y += a * math.sin(phase)
+            points.append((p.x, p.y, max(p.z, z_floor + 0.02)))
+    mb.grid(points, nu, rows, mat)
+
+
 def fixture(mb, lens, aim, body=(0.62, 0.75, 0.3)):
     """A projector in a rigging cage, lens at `lens`, throwing toward `aim`."""
     lens, aim = Vector(lens), Vector(aim)
@@ -328,8 +387,9 @@ def mannequin(mb, base):
 
 def build_stage(mats, coll):
     objs = []
-    d0, d1 = L.DECK_Y0, L.DECK_Y0 + L.DECK_D
+    d0, d1 = L.DECK_Y0, L.DECK_Y1
     hw = L.DECK_W / 2
+    sw = L.STAGE_W / 2
     H = L.DECK_H
 
     # house floor
@@ -387,8 +447,8 @@ def build_stage(mats, coll):
     grates = MB()
     frame = MB()
     sy0, sy1 = L.DS_STRIP
-    fascia(frame, -hw, hw, sy0, sy1, H, L.GRATE_TOP - 0.03)
-    grated_top(grates, -hw, hw, sy0, sy1, L.GRATE_TOP)
+    fascia(frame, -sw, sw, sy0, sy1, H, L.GRATE_TOP - 0.03)
+    grated_top(grates, -sw, sw, sy0, sy1, L.GRATE_TOP)
 
     # riser + a stair at each end, facing DOWNSTAGE: one deck wide, beside the riser's face,
     # climbing upstage from its front line, from the stage grate to a landing at the riser top;
@@ -441,30 +501,24 @@ def build_stage(mats, coll):
     objs.append(to_object("stage.strobes", bodies, mats, coll))
     objs.append(to_object("strobe.windows", windows, mats, coll))
 
-    # the flown frame: US and DS (kabuki) trusses, side trusses, corner blocks, motors, curtain pipes
+    # the flown frame (layout revision 2): the scrim's truss and the front truss, 50' each across
+    # the stage at one trim, a motor over each end and the third points between; the scrim's
+    # pipe on brackets off its truss's downstage face; the kabuki's pipe on its own chains
     mb = MB()
     tz, tw, tx = L.TRUSS_Z, L.TRUSS_W, L.TRUSS_X
     for y in (L.TRUSS_US_Y, L.TRUSS_DS_Y):
-        mb.box_truss((-tx + tw / 2, y, tz), (tx - tw / 2, y, tz), tw, "truss_black")
-    # the side projectors' outriggers: off the downstage truss at each end, out over the deck's
-    # sides to where the projectors hang level with the open deck
-    for sgn in (-1, 1):
-        ox = sgn * L.PROJ_SIDE_LENS[0]
-        oy0, oy1 = L.OUTRIGGER_Y
-        mb.box_truss((ox, oy0 - tw / 2, tz), (ox, oy1, tz), tw, "truss_black")
-        mb.box((ox, oy1, tz + tw / 2 + 0.25), (0.42, 0.32, 0.42), "fixture_black")
-        mb.cylinder((ox, oy1, tz + tw / 2 + 0.46), (ox, oy1, 17.0), 0.012, "truss_black", seg=5, caps=False)
-    for x in (-tx, tx):
-        mb.box_truss((x, L.TRUSS_DS_Y + tw / 2, tz), (x, L.TRUSS_US_Y - tw / 2, tz), tw, "truss_black")
-        for y in (L.TRUSS_US_Y, L.TRUSS_DS_Y):
-            mb.box((x, y, tz), (tw + 0.04, tw + 0.04, tw + 0.04), "truss_black")
+        mb.box_truss((-tx, y, tz), (tx, y, tz), tw, "truss_black")
+        for x in (-tx + 0.3, -tx / 3, tx / 3, tx - 0.3):
             mb.box((x, y, tz + tw / 2 + 0.25), (0.32, 0.42, 0.42), "fixture_black")
             mb.cylinder((x, y, tz + tw / 2 + 0.46), (x, y, 17.0), 0.012, "truss_black", seg=5, caps=False)
-    for y, z, half, top_of in ((L.CURTAIN_Y, L.CURTAIN_TOP, L.CURTAIN_X + 0.2, L.TRUSS_US_Y),
-                               (L.KABUKI_Y, L.KABUKI_TOP, L.KABUKI_X + 0.2, L.TRUSS_DS_Y)):
-        mb.cylinder((-half, y, z), (half, y, z), 0.024, "truss_black", seg=8)
-        for x in (-half + 0.6, -half / 3, half / 3, half - 0.6):
-            mb.cylinder((x, y, z), (x, top_of, tz - tw / 2), 0.012, "truss_black", seg=5, caps=False)
+    half = L.CURTAIN_X + 0.2
+    mb.cylinder((-half, L.CURTAIN_Y, L.CURTAIN_TOP), (half, L.CURTAIN_Y, L.CURTAIN_TOP), 0.024, "truss_black", seg=8)
+    for x in (-half + 0.6, -half / 3, half / 3, half - 0.6):
+        mb.cylinder((x, L.CURTAIN_Y, L.CURTAIN_TOP), (x, L.TRUSS_US_Y - tw / 2, L.CURTAIN_TOP), 0.012, "truss_black", seg=5, caps=False)
+    half = L.KABUKI_X + 0.2
+    mb.cylinder((-half, L.KABUKI_Y, L.KABUKI_TOP), (half, L.KABUKI_Y, L.KABUKI_TOP), 0.024, "truss_black", seg=8)
+    for x in (-half + 0.6, -half / 3, half / 3, half - 0.6):
+        mb.cylinder((x, L.KABUKI_Y, L.KABUKI_TOP), (x, L.KABUKI_Y, 17.0), 0.008, "truss_black", seg=5, caps=False)
     objs.append(to_object("stage.frame", mb, mats, coll))
 
     # projectors: each body is a Loom PART in the `rig` area, so the tilt controls turn it.
@@ -484,6 +538,8 @@ def build_stage(mats, coll):
     body = MB()
     lens0 = L.ds_lens(0.0)
     fixture(body, lens0, (lens0[0], lens0[1] + 1.0, lens0[2]))
+    # the drop: clamp to cage top, so it tilts with the body
+    body.cylinder(L.DS_CLAMP, (L.DS_CLAMP[0], L.DS_CLAMP[1], lens0[2] + 0.15 + 0.035), 0.024, "truss_black", seg=8, caps=False)
     objs.append(to_object("rig.proj_DS", body, mats, coll, {"loom_part": "proj_DS"}, pivot=L.DS_CLAMP))
     rig = MB()
     cx, cy, cz = L.DS_CLAMP
@@ -501,11 +557,12 @@ def build_stage(mats, coll):
     mb = MB()
     for x in L.PEDESTALS_X:
         y = L.PEDESTAL_Y
-        mb.span((x - 0.35, y - 0.35, 0.0), (x + 0.35, y + 0.35, 1.0), "deck_skirt", skip=("-z",))
-        mb.box((x, y, 1.06), (0.42, 0.32, 0.12), "fixture_black")
+        top = L.PEDESTAL_TOP
+        mb.span((x - 0.21, y - 0.21, 0.0), (x + 0.21, y + 0.21, top), "deck_skirt", skip=("-z",))
+        mb.box((x, y, top + 0.06), (0.42, 0.32, 0.12), "fixture_black")
         for sx in (-1, 1):
-            mb.box((x + sx * 0.19, y, 1.28), (0.04, 0.12, 0.34), "fixture_black")
-        mb.cylinder((x, y - 0.12, 1.36), (x, y + 0.2, 1.52), 0.13, "fixture_black", seg=14)
+            mb.box((x + sx * 0.19, y, top + 0.28), (0.04, 0.12, 0.34), "fixture_black")
+        mb.cylinder((x, y - 0.12, top + 0.36), (x, y + 0.2, top + 0.52), 0.13, "fixture_black", seg=14)
     tx_, ty_ = L.TRIPOD
     for k in range(3):
         a = 2 * math.pi * k / 3 + 0.4
@@ -549,7 +606,7 @@ def build_stage(mats, coll):
 
     # the drapes
     mb = MB()
-    drape(mb, "curtain_white", L.CURTAIN_X, L.CURTAIN_FLAT_X, L.CURTAIN_Y, L.CURTAIN_TOP, L.CURTAIN_TIE, L.CURTAIN_PLEAT, seed=1.3)
+    scrim(mb, "curtain_white", seed=1.3)
     objs.append(to_object("curtain.upstage", mb, mats, coll))
     mb = MB()
     drape(mb, "kabuki_white", L.KABUKI_X, L.KABUKI_FLAT_X, L.KABUKI_Y, L.KABUKI_TOP, L.KABUKI_TIE, L.KABUKI_PLEAT, seed=4.1)
@@ -752,9 +809,9 @@ def main():
     for name, lens, aim, throw, keystone in L.projectors():
         print(f"[proj] {name}: lens {tuple(round(c, 2) for c in lens)} aim {tuple(round(c, 2) for c in aim)} "
               f"throw {math.dist(lens, aim):.2f} m, ratio {throw:.3f}, keystone H {keystone:.2f}°")
-    reach = L.DECK_W / 2 + L.PROJ_SIDE_NEAR
+    reach = L.STAGE_W / 2 + L.PROJ_SIDE_NEAR
     print(f"[proj] sides: crossed, keystoned square, each {reach / L.FT:.1f}' x {(L.DS_STRIP[1] - L.DS_STRIP[0]) / L.FT:.0f}' on the deck, "
-          f"far edge on the far deck edge, near edge {(L.DECK_W / 2 - L.PROJ_SIDE_NEAR) / L.FT:.1f}' in from its own; "
+          f"far edge on the far deck edge, near edge {(L.STAGE_W / 2 - L.PROJ_SIDE_NEAR) / L.FT:.1f}' in from its own; "
           f"overlap in the middle {2 * L.PROJ_SIDE_NEAR / L.FT:.1f}'")
 
     out = os.path.abspath(a.out)
