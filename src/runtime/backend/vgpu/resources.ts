@@ -4,6 +4,7 @@ import type { RuntimeDiagnostic } from "../../../domain/types/diagnostics.ts";
 import { BackendDiagnosticCode, backendDiagnostic, describeError } from "../diagnostics.ts";
 import type { BuildStats } from "../backend-types.ts";
 import type { FrameGuard } from "../frame-guard.ts";
+import { preparedShader } from "./prepared-shader.ts";
 import type { WarmEffectSource } from "./warm-effects.ts";
 import type {
   BufferBindingDescriptor,
@@ -220,7 +221,7 @@ export interface LayeredTargets {
  *
  * A layer is handed to vgpu as a TARGET: `Frame.pass` and a draw's pipeline ask a target for
  * its render pass descriptor, its attachment formats, its sample count and its size, and
- * for nothing else (read off vgpu 0.5.0's `frame.js`, `draw.js` and `pipeline-store.js`), so
+ * for nothing else (read off vgpu 0.6.0's `frame.js`, `draw.js` and `pipeline-store.js`), so
  * an object that answers those is one. The descriptor is `OffscreenTarget`'s own, attachment
  * for attachment (`target-utils.js`): load on preserve, clear otherwise, always store.
  */
@@ -451,12 +452,10 @@ export const noExternalResources: ExternalResources = {
  * a buffer of its own. The bytes at that slice are the bytes the dedicated buffer held,
  * so nothing downstream can tell the difference.
  *
- * vgpu routes this through `normalizeBufferResource`'s `isGPUBufferBinding` branch. That
- * branch identified a binding by its BUFFER alone, which packing makes wrong twice over:
- * the bind-group cache could not tell two attributes of one buffer apart, and the aliasing
- * preflight reported two NON-OVERLAPPING writable regions as an alias (a proximity node
- * writes four attributes at once). `patches/vgpu.patch` lets a region name its own
- * identity, and the one below is per (buffer, offset, size).
+ * vgpu identifies such a binding per (buffer, offset, size) since 0.6.0, so its bind-group
+ * cache tells two attributes of one buffer apart. Its aliasing preflight still reports
+ * two NON-OVERLAPPING writable regions of one buffer as an alias (a proximity node writes
+ * four attributes at once), which `patches/vgpu.patch` corrects (T1705b).
  *
  * ⚠ Reaching `gpu` needs a cast: `StorageBuffer` is vgpu's public facade and does not
  * publish the underlying `GPUBuffer`, though every implementation (real and mock) has it.
@@ -477,30 +476,26 @@ export function regionOf(
 export function bufferRegion(
   buffer: StorageBuffer,
   region: { readonly offset: number; readonly bytes: number },
-): GPUBufferBinding & { readonly resourceIdentity: string } {
-  const handle = buffer as unknown as { readonly gpu: GPUBuffer; readonly resourceIdentity: unknown };
-  const owner = handle.resourceIdentity as { kind?: string; id?: unknown } | string | undefined;
-  const ownerKey =
-    typeof owner === "object" && owner !== null ? `${String(owner.kind)}:${String(owner.id)}` : String(owner);
-  return {
-    buffer: handle.gpu,
-    offset: region.offset,
-    size: region.bytes,
-    /* The identity the bind-group cache and vgpu's aliasing preflight key on, per REGION
-       rather than per buffer (patched into `normalizeBufferResource`). Two attributes of
-       one packed buffer are two resources: a changed offset invalidates the cached bind
-       group, and two non-overlapping writable regions are not reported as an alias. */
-    resourceIdentity: `${ownerKey}@${region.offset}+${region.bytes}`,
-  };
+): GPUBufferBinding {
+  const handle = buffer as unknown as { readonly gpu: GPUBuffer };
+  return { buffer: handle.gpu, offset: region.offset, size: region.bytes };
 }
 
 export class ResourceBuildError extends Error {
   readonly diagnostics: ReadonlyArray<RuntimeDiagnostic>;
+  /**
+   * §T1706b: the passes whose consumer the CPU refused to build, each with the index of its
+   * diagnostic. vgpu validates a prepared shader on the CPU and can refuse WGSL the device
+   * would also refuse, before the device is asked; the caller puts these to the device's
+   * compiler, whose messages carry the author's line.
+   */
+  readonly refused: ReadonlyMap<string, number>;
 
-  constructor(diagnostics: ReadonlyArray<RuntimeDiagnostic>) {
+  constructor(diagnostics: ReadonlyArray<RuntimeDiagnostic>, refused: ReadonlyMap<string, number> = new Map()) {
     super(diagnostics.map((diagnostic) => diagnostic.message).join("; ") || "Resource build failed.");
     this.name = "ResourceBuildError";
     this.diagnostics = diagnostics;
+    this.refused = refused;
   }
 }
 
@@ -569,6 +564,8 @@ export function buildResources(
   const dynamicBuffers = new Map<string, ReadonlyArray<BufferBindingDescriptor>>();
   const renderTargets = new Map<string, () => Target>();
   const diagnostics: RuntimeDiagnostic[] = [];
+  /** §T1706b: see `ResourceBuildError.refused`. */
+  const refused = new Map<string, number>();
 
   const shared = carry.shared ?? uniforms<SharedUniformValues>(gpu, initialSharedUniforms());
 
@@ -938,15 +935,24 @@ export function buildResources(
       const bag = buildComputeDrawBag(pass.id, pass.nodeId, pass.buffers ?? [], pass.textures ?? [], pass.uniforms, pass.uniformBinding);
       if (bag === undefined) continue;
       try {
-        // T1522b: vgpu builds a compute's module and pipeline with no error scope of its
-        // own, so this one is the only thing standing between a broken kernel and an
-        // uncaptured error that names no pass.
+        // T1522b: this scope reads what the device says about the kernel's module and
+        // layouts, so a broken kernel is told on its pass and never as an uncaptured error
+        // that names none.
+        //
+        // T1705b: since vgpu 0.6.0 a compute builds its pipeline on first use. Compiled
+        // here, the pipeline exists before the program is installed and its failure arrives
+        // in the compile's error window under this pass's id, as an effect's does. Left
+        // lazy, a kernel the device refuses would install and fail on its first frame.
         underScope(pass.id, () => {
-          computes.set(pass.id, compute(gpu, pass.shader, { set: bag, entry: pass.entryPoint, label: pass.id }));
+          computes.set(
+            pass.id,
+            compute(gpu, preparedShader(pass.shader, pass.id), { set: bag, entry: pass.entryPoint, label: pass.id }).compileSync(),
+          );
         });
         noteDynamicBindings(pass.id, pass.buffers ?? [], pass.textures ?? []);
         note("effectsBuilt");
       } catch (error) {
+        refused.set(pass.id, diagnostics.length);
         diagnostics.push(
           backendDiagnostic(
             "error",
@@ -993,7 +999,7 @@ export function buildResources(
       try {
         underScope(pass.id, () => {
           const created = draw(gpu, {
-            shader: pass.shader,
+            shader: preparedShader(pass.shader, pass.id),
             set: bag,
             label: pass.id,
             // Topology rides on a minimal geometry descriptor — vgpu has no top-level
@@ -1012,6 +1018,7 @@ export function buildResources(
         noteDynamicBindings(pass.id, pass.buffers ?? [], pass.textures ?? []);
         note("effectsBuilt");
       } catch (error) {
+        refused.set(pass.id, diagnostics.length);
         diagnostics.push(
           backendDiagnostic(
             "error",
@@ -1077,7 +1084,7 @@ export function buildResources(
         // the constructor's `opts.set` does.
         const held = warmed?.take(pass.id, pass.shader);
         adopted = held !== undefined;
-        const created = held !== undefined ? held.set(setBag) : effect(gpu, pass.shader, {
+        const created = held !== undefined ? held.set(setBag) : effect(gpu, preparedShader(pass.shader, pass.id), {
           set: setBag,
           // B229: the pass id, never `pass.label`. vgpu reports an async pipeline failure as
           // `<label>.compileSync`, and a human label is shared by every pass of a node type
@@ -1099,6 +1106,7 @@ export function buildResources(
       );
       if (dynamic.length > 0) dynamicTextures.set(pass.id, dynamic);
     } catch (error) {
+      refused.set(pass.id, diagnostics.length);
       diagnostics.push(
         backendDiagnostic(
           "error",
@@ -1111,7 +1119,7 @@ export function buildResources(
   }
 
   if (diagnostics.length > 0) {
-    if (tolerate === undefined) throw new ResourceBuildError(diagnostics);
+    if (tolerate === undefined) throw new ResourceBuildError(diagnostics, refused);
     tolerate.diagnostics.push(...diagnostics);
   }
 

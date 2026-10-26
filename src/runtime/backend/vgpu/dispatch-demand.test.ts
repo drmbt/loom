@@ -142,11 +142,10 @@ it.each([false, true])("reports sampled texture provenance, open frame=%s", asyn
     } else { render(); render(); }
     expect(gate).toHaveBeenCalledTimes(2);
     const timings = gate.mock.calls as unknown as Array<[unknown, { renderIndex: number; source: unknown }]>;
-    expect(timings[0]?.[1]).toEqual({ renderIndex: 1, source: open ? undefined :
-      { renderIndex: 1, frameIndex: 20, timeSeconds: 10 } });
-    expect(timings[1]?.[1]).toEqual({ renderIndex: 2, source: open ?
-      { renderIndex: 1, frameIndex: 20, timeSeconds: 10 } :
-      { renderIndex: 2, frameIndex: 1, timeSeconds: 10.1 } });
+    // §T1707b: the kernel runs after the effect inside its frame on both paths, so it reads
+    // the picture THIS render made. Through vgpu 0.5.0 the open frame read the previous one.
+    expect(timings[0]?.[1]).toEqual({ renderIndex: 1, source: { renderIndex: 1, frameIndex: 20, timeSeconds: 10 } });
+    expect(timings[1]?.[1]).toEqual({ renderIndex: 2, source: { renderIndex: 2, frameIndex: 1, timeSeconds: 10.1 } });
     for (const invalidate of [() => backend.resize("picture", [4, 4]),
       () => backend.resetTemporalHistory(undefined, { buffers: true })]) {
       invalidate();
@@ -156,7 +155,7 @@ it.each([false, true])("reports sampled texture provenance, open frame=%s", asyn
         loop.stop();
       } else render();
       const timing = timings.at(-1)?.[1];
-      expect(timing?.source).toEqual(open ? undefined : {
+      expect(timing?.source).toEqual({
         renderIndex: next, frameIndex: frames[next - 1]!.frame.frameIndex,
         timeSeconds: frames[next - 1]!.frame.absTimeSeconds,
       });
@@ -171,12 +170,10 @@ it.each([false, true])("reports sampled texture provenance, open frame=%s", asyn
 /*
  * B253: an INDIRECT draw is a pass of its frame, like every other draw. It used to go
  * through vgpu's standalone `Draw.draw()`, which submitted at once (and cleared its target,
- * which was the bug), so a demanded dispatch after it in an open frame read THIS render.
- * Now the draw is submitted with the frame, and the dispatch reads what it reads after any
- * render pass in an open frame: the previous render (the effect case above, `open = true`).
- * This test asserted the old provenance and was left red by that fix.
+ * which was the bug). §T1707b: the demanded dispatch after it is a pass of the same frame
+ * now, so on the loop path it reads the picture THIS render drew, as after any render pass.
  */
-it("stamps an indirect draw as a pass of its frame: a demanded dispatch after it reads the previous render", async () => {
+it("stamps an indirect draw as a pass of its frame: a demanded dispatch after it reads this render", async () => {
   const backend = createVgpuBackend({ host: mockGpuHost() });
   try {
     await backend.initialize({});
@@ -200,10 +197,8 @@ it("stamps an indirect draw as a pass of its frame: a demanded dispatch after it
     vi.advanceTimersByTime(34);
     loop.stop();
     expect(gate.mock.calls).toEqual([
-      // The first render: nothing has been drawn into the picture yet.
-      [input.frame, { renderIndex: 1, source: undefined }],
-      // The second: the picture the first render's indirect draw made.
-      [input.frame, { renderIndex: 2, source: { renderIndex: 1, frameIndex: 12, timeSeconds: 3 } }],
+      [input.frame, { renderIndex: 1, source: { renderIndex: 1, frameIndex: 12, timeSeconds: 3 } }],
+      [input.frame, { renderIndex: 2, source: { renderIndex: 2, frameIndex: 12, timeSeconds: 3 } }],
     ]);
   } finally { backend.dispose(); vi.useRealTimers(); }
 });

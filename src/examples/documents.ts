@@ -4,14 +4,16 @@ export { crucibleDocument } from "./documents/crucible.ts";
 export { azulejoDocument } from "./documents/azulejo.ts";
 export { phoneDeskDocument } from "./documents/phone-desk.ts";
 export { setListDocument } from "./documents/set-list.ts";
-export { photoMappingMoonlitStoneDocument, photoMappingContourEngravingDocument, photoMappingVideoDocument, photoMappingPointCloudDocument } from "./documents/photo-mapping-samples.ts";
+export { photoMappingMoonlitStoneDocument, photoMappingContourEngravingDocument, photoMappingVideoDocument, photoMappingPointCloudDocument, photoMappingFallingFacadeDocument, photoMappingRibbonPeelDocument } from "./documents/photo-mapping-samples.ts";
 import { resonanceDocument } from "./documents/resonance.ts";
 import { verdantLotusDocument, emberMonolithsDocument, aetherOrreryDocument } from "./documents/monument-halls.ts";
 import { crucibleDocument } from "./documents/crucible.ts";
 import { azulejoDocument } from "./documents/azulejo.ts";
 import { phoneDeskDocument } from "./documents/phone-desk.ts";
 import { setListDocument } from "./documents/set-list.ts";
-import { photoMappingMoonlitStoneDocument, photoMappingContourEngravingDocument, photoMappingVideoDocument, photoMappingPointCloudDocument } from "./documents/photo-mapping-samples.ts";
+import { photoMappingMoonlitStoneDocument, photoMappingContourEngravingDocument, photoMappingVideoDocument, photoMappingPointCloudDocument, photoMappingFallingFacadeDocument, photoMappingRibbonPeelDocument } from "./documents/photo-mapping-samples.ts";
+export { cymaticsDocument } from "./documents/cymatics.ts";
+import { cymaticsDocument } from "./documents/cymatics.ts";
 import type { ProjectDocument } from "../domain/types/graph.ts";
 export { EXAMPLE_TIMESTAMP } from "./documents/builders.ts";
 export { feedbackEchoDocument } from "./documents/feedback-echo.ts";
@@ -220,4 +222,7 @@ export const EXAMPLE_DOCUMENTS: readonly ProjectDocument[] = [
   photoMappingContourEngravingDocument,
   photoMappingVideoDocument,
   photoMappingPointCloudDocument,
+  photoMappingFallingFacadeDocument,
+  photoMappingRibbonPeelDocument,
+  cymaticsDocument,
 ];

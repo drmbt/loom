@@ -237,3 +237,15 @@ describe("texture2d colour space", () => {
     expect(describePortType(tex())).toContain("linear");
   });
 });
+
+it("data-aware arithmetic opts in without weakening ordinary colour or texture shape checks", () => {
+  const input = { kind: "texture2d", sample: "float", channels: 4, acceptsData: true } as const;
+  const data = { kind: "texture2d", sample: "float", channels: 4, space: "data" } as const;
+  expect(arePortsCompatible(data, input)).toBe(true);
+  expect(describePortType(input)).toContain("linear|data");
+  expect(arePortsCompatible({ ...data, space: "linear" }, input)).toBe(true);
+  expect(arePortsCompatible({ ...data, space: "encoded" }, input)).toBe(false);
+  expect(arePortsCompatible({ ...data, channels: 1 }, input)).toBe(false);
+  expect(arePortsCompatible({ ...data, sample: "unfilterable-float" }, input)).toBe(false);
+  expect(arePortsCompatible(data, { kind: "texture2d", sample: "float", channels: 4 })).toBe(false);
+});

@@ -293,7 +293,8 @@ describe("T49 Phase 1 exit — one output feeds multiple consumers without dupli
       const calls = host.instrumentation?.calls;
       const effectPasses = plan.passes.filter((pass) => pass.kind !== "swap" && pass.kind !== "loop").length;
       expect(calls?.createRenderPipeline).toBe(effectPasses);
-      expect(calls?.createShaderModule).toBe(effectPasses);
+      // T1705b: plus the one fullscreen vertex module vgpu 0.6.0 builds and every effect shares.
+      expect(calls?.createShaderModule).toBe(effectPasses + 1);
     } finally {
       backend.dispose();
     }
@@ -386,8 +387,12 @@ describe("T49 Phase 1 exit — a feedback graph runs long without accumulating G
       // so the steady state is reached at the second swap and not before. Anything that
       // is still growing after four frames is growing per frame, which is the leak this
       // test is for. The warm-up total is asserted below so it cannot hide a large one.
+      // T1705b: one frame per tick, as the loop runs. vgpu 0.6.0 returns a frame's pooled
+      // uniform page when the frame completes; frames encoded back to back in one turn each
+      // take a page.
+      const tick = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
       const warmUp = 4;
-      for (let index = 0; index < warmUp; index += 1) backend.render(compiled, frameInputs(index));
+      for (let index = 0; index < warmUp; index += 1) { backend.render(compiled, frameInputs(index)); await tick(); }
       const baseline = { ...host.instrumentation?.calls };
       const effectPasses = plan.passes.filter((pass) => pass.kind !== "swap" && pass.kind !== "loop").length;
       // One bind group per pass, plus one for the pair's other half — bounded, not per frame.
@@ -395,6 +400,7 @@ describe("T49 Phase 1 exit — a feedback graph runs long without accumulating G
 
       for (let index = warmUp; index < FRAMES_MOCK_RUN; index += 1) {
         backend.render(compiled, frameInputs(index));
+        await tick();
       }
       const after = { ...host.instrumentation?.calls };
 

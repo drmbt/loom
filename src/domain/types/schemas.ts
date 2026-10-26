@@ -19,6 +19,7 @@ export const portTypeSchema = z.discriminatedUnion("kind", [
     sample: z.enum(["float", "unfilterable-float", "depth"]),
     channels: z.union([z.literal(1), z.literal(2), z.literal(4)]).optional(),
     space: z.enum(["linear", "encoded", "data"]).optional(),
+    acceptsData: z.literal(true).optional(),
   }),
   z.object({
     kind: z.literal("buffer"),

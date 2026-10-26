@@ -14,7 +14,7 @@ import { reflectParamsStruct, extractParamsStruct } from "./params-reflection.ts
 import { compileContext } from "./test-support.ts";
 import { pointStorageId } from "./point-storage.ts";
 import type { ParameterValue } from "../../domain/types/parameters.ts";
-import type { PassDescriptor } from "../../runtime/backend/plan.ts";
+import { readExecutionPlan, type PassDescriptor } from "../../runtime/backend/plan.ts";
 
 /**
  * T900 — POINT KERNELS ON THE REFLECTION, NOT ON THE FIXED SLOTS.
@@ -523,20 +523,26 @@ const FRAME_ZERO_DIGESTS: Readonly<Record<string, string>> = {
   // T1349b — E79 Crucible (second cut): one halo torus, eight swarm grids of 24 hulls each
   // (one grid, many bodies), and two shard streams.
   "E79-Crucible.loom.json": "ac1ef142d3ab5092",
-  // E86: denser 768 × 512 relative-depth Carve and photo-colour Paint, with explicit
-  // photo-preparation defaults; existing exported kernels remain unchanged.
-  "E86-Photo-Mapping-Point-Cloud.loom.json": "13fa7484b36a3b02",
+  // E86–E88 now add time-driven deformation and a separate attribute-lighting stage
+  // after photo reconstruction. Their changed pictures are deliberate and held by
+  // the fixed-camera / Amount-zero GPU controls in examples.gpu.test.ts.
+  "E86-Photo-Mapping-Point-Cloud.loom.json": "9cc38b32abfe7d54",
+  "E87-Photo-Mapping-Falling-Facade.loom.json": "f0f3112888228973",
+  "E88-Photo-Mapping-Ribbon-Peel.loom.json": "a008916b8c0680c4",
+  // §T1714b — E89 Cymatics: four sand kernels (a kernel holds at most a million grains),
+  // each its own random stream, hopping on the plate's field.
+  "E89-Cymatics.loom.json": "4de0890542928729",
 };
 
 const POINT_KERNEL_TYPES = new Set(["pointKernel", "pointKernelAdvanced"]);
 
 /**
  * T1583b: shipped Point Kernels whose dispatch reads its own pair — the ones with a region.
- * Counted off the plans, including E86: 130 plain kernel dispatches ship, 68 of them
- * with state of their own and 62 pure processors; this file sees the 128 kernels that are
- * in a document's own graph, which leaves out E47's (inside a component) and two regions.
+ * Counted from the plans in the documents' own graphs. Component-internal kernels
+ * are held by the component tests. E86–E88 each add an attribute-motion region; their
+ * lighting stage reads that attribute from upstream and remains a pure processor.
  */
-const SHIPPED_STEP_REGIONS = 66;
+const SHIPPED_STEP_REGIONS = 75;
 
 describe("T900 — every shipped kernel resolves byte-equal at frame 0", () => {
   const digests = new Map<string, string>();
@@ -547,7 +553,10 @@ describe("T900 — every shipped kernel resolves byte-equal at frame 0", () => {
     const result = runExample(file);
     const graph = result.document?.graph;
     if (graph === undefined) continue;
-    const owned = (result.read?.passes ?? []).filter((pass) => {
+    /* §T1718b: a loom whose kernels sit behind a Layer it ships OFF (E89's sand) compiles them
+       only with that layer on, so the gate reads the plan the switch would install. */
+    const read = result.layersOn ? readExecutionPlan(result.layersOn) : result.read;
+    const owned = (read?.passes ?? []).filter((pass) => {
       const nodeId = (pass as { nodeId?: string }).nodeId;
       return nodeId !== undefined && POINT_KERNEL_TYPES.has(graph.nodes[nodeId]?.type ?? "");
     });
@@ -576,8 +585,8 @@ describe("T900 — every shipped kernel resolves byte-equal at frame 0", () => {
     expect([...digests.keys()].sort()).toEqual(Object.keys(FRAME_ZERO_DIGESTS).sort());
     // 63 existing kernels, 51 family kernels, two E75 core-occlusion kernels, and E79's
     // ten (T1349b): the halo, six swarm grids, the dust, the core and its heart;
-    // E86 adds relative-depth Carve and the pure photo-colour Paint processor.
-    expect(kernelCount).toBe(128);
+    // E86–E88 each carry Carve, Paint, deformation and attribute lighting; E89 its four sand kernels.
+    expect(kernelCount).toBe(142);
   });
 
   it.each(Object.keys(FRAME_ZERO_DIGESTS))("%s is unchanged at frame 0", (fileName) => {

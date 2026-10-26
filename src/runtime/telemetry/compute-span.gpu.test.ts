@@ -40,12 +40,14 @@ import { createTelemetryHub, telemetryPlan } from "./hub.ts";
  * Anyone reading its profile was reading a number with the particle system subtracted
  * out.
  *
- * WHAT THIS FIXTURE CANNOT REACH (T1295). E9 renders as exactly THREE timed frames per
- * render on the export path, and vgpu's timer had exactly three staging slots — so this gate
- * was green even while every frame past the third of a render was silently dropped, which
- * lost 21 of E47's passes outright. Its green says "self-submitted work carries a span", not
- * "every span arrives": that claim, on a fixture that did lose passes, is
- * `timing-drops.gpu.test.ts`.
+ * WHAT THIS FIXTURE CANNOT REACH (T1295). Through vgpu 0.5.0 E9 rendered as exactly THREE
+ * timed frames per render on the export path, and vgpu's timer had exactly three staging
+ * slots — so this gate was green even while every frame past the third of a render was
+ * silently dropped, which lost 21 of E47's passes outright. Its green says "compute carries
+ * a span", not "every span arrives": that claim is `timing-drops.gpu.test.ts`.
+ *
+ * §T1707b: a kernel is now a compute pass of the frame (`Frame.computePass`) with the timer
+ * a render pass takes, and a render is ONE frame on both paths.
  *
  * ## What is asserted, and why each holds exactly (§V147)
  *
@@ -55,14 +57,10 @@ import { createTelemetryHub, telemetryPlan } from "./hub.ts";
  *    null for all seventeen, forever.
  * 2. The span names the backend hands out COVER every one of them: the self-submitted
  *    pairs are in the timed set, which is the whole mechanism the row is about.
- * 3. At least one submitted frame is TIMED BY SELF-SUBMITTED WORK ALONE. The export path
- *    (`encodeSegmented`) starts a new frame at every dispatch that follows deferred
- *    work, so E9 renders as several frames and some hold nothing that waits for the
- *    frame's own submit — only kernels, GPU-driven draws and swaps.
- *    Before this row those frames reserved no query pair, so vgpu encoded no resolve for
- *    them (`usedQueries === 0`) and they reported NOTHING AT ALL — not a zero, an
- *    absence. That a result exists for such a frame is the fix, and a render-only timer
- *    cannot produce one.
+ * 3. Every submitted frame carries its kernels' spans BESIDE its render passes: one
+ *    frame per render (§T1707b), so the extent in (4) is taken over compute and render
+ *    pairs together. Through 0.5.0 the export path split E9 into several frames, some
+ *    holding only kernels, and before T1247 those reported nothing at all.
  * 4. Per submitted frame, `extent >= max(span)`. That is the extent's definition — the
  *    latest end minus the earliest begin cannot be shorter than any single pair inside
  *    it — so it is exact rather than a tolerance, and it is checked over a span set that
@@ -85,7 +83,7 @@ import { createTelemetryHub, telemetryPlan } from "./hub.ts";
  * fix from the absence it replaced.
  */
 describe("T1247 — compute dispatches carry a GPU span on Dawn, E9-Ember", () => {
-  it("times every dispatch, and the frame extent covers the compute-only submits", async () => {
+  it("times every dispatch, and the frame extent covers the kernels", async () => {
     const probe = await probeDawn();
     if (!probe.available) throw new Error(`Dawn unavailable: ${probe.error}`);
 
@@ -201,17 +199,14 @@ describe("T1247 — compute dispatches carry a GPU span on Dawn, E9-Ember", () =
         `self-submitted passes the timer never named: ${untimed.join(", ")}`,
       ).toEqual([]);
 
-      // (3) Submits whose entire timed content is self-submitted work — before T1247
-      // those frames reserved no query pair at all, so vgpu encoded no resolve for them
-      // and they produced no result: an absence, not a zero.
-      const selfSubmittedOnly = results.filter(({ spans }) => {
-        const names = Object.keys(spans);
-        return names.length > 0 && names.every((name) => selfSubmittedIds.has(spanBasePassId(name)));
-      });
-      expect(
-        selfSubmittedOnly.length,
-        "E9 submits frames whose only GPU work is kernels and GPU-driven draws; before T1247 they reserved no query pair, so vgpu encoded no resolve and they reported nothing whatsoever",
-      ).toBeGreaterThan(0);
+      // (3) One frame per render, holding its kernels and its render passes together.
+      expect(results.length, "a render is one submitted frame (§T1707b)").toBe(WARMUP + FRAMES);
+      for (const [index, { spans }] of results.entries()) {
+        const ids = new Set(Object.keys(spans).map(spanBasePassId));
+        const missing = [...dispatchIds].filter((id) => !ids.has(id));
+        expect(missing, `result ${index}: kernels missing from their frame`).toEqual([]);
+        expect([...ids].some((id) => !selfSubmittedIds.has(id)), `result ${index}: no render pass beside the kernels`).toBe(true);
+      }
 
       // (1) and (5): what the performance panel reads back.
       const snapshot = hub.snapshot();
@@ -227,7 +222,7 @@ describe("T1247 — compute dispatches carry a GPU span on Dawn, E9-Ember", () =
       const dispatchMs = dispatchRows.map((row) => row.gpuMs ?? 0);
       const longestDispatch = Math.max(...dispatchMs);
       const frameBucket = snapshot.frame;
-      const verdict = `${probe.adapter}: frame ${frameBucket.gpuMs?.toFixed(3)} ms, pass sum ${frameBucket.passSumMs?.toFixed(3)} ms over ${snapshot.passes.length} passes; ${selfSubmittedIds.size} self-submitted spans [${dispatchMs.map((ms) => ms.toFixed(3)).join(", ")}], ${selfSubmittedOnly.length} self-submitted-only submits of ${results.length}`;
+      const verdict = `${probe.adapter}: frame ${frameBucket.gpuMs?.toFixed(3)} ms, pass sum ${frameBucket.passSumMs?.toFixed(3)} ms over ${snapshot.passes.length} passes; ${selfSubmittedIds.size} compute and indirect spans [${dispatchMs.map((ms) => ms.toFixed(3)).join(", ")}] over ${results.length} frames`;
       expect(frameBucket.basis, verdict).toBe("frame");
       expect(frameBucket.availability, verdict).toBe("measured");
       expect(frameBucket.gpuMs, verdict).not.toBeNull();

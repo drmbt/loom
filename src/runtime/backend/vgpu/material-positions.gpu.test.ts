@@ -190,6 +190,8 @@ describe("a Material · WGSL device error lands on the material, on the author's
 
   it("an error inside the hoisted `struct Params`: the line the author wrote it on", async () => {
     // A helper above the struct, so the declaration is cut from the middle of the source.
+    // §T1706b: vgpu 0.6.0 refuses a non-power-of-two align on the CPU, before the device is
+    // asked; the backend then puts the pass to the device's compiler for the line.
     const source = `// Two knobs, one badly aligned.
 fn tint(c: vec4f) -> vec4f {
   return c;

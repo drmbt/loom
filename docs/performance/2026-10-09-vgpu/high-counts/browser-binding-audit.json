@@ -1,0 +1,17 @@
+{
+  "browser": "151.0.7922.34",
+  "results": {
+    "baseline": {
+      "drawCalls": 4,
+      "pipelineCalls": 4,
+      "pixelHash": "7947134003f15e321c07e55de57969175dc69afc611198a1b6502f646b5412a3",
+      "description": "Four different drawables, world transforms and material buffers form four exact color strips."
+    },
+    "pipeline": {
+      "drawCalls": 4,
+      "pipelineCalls": 1,
+      "pixelHash": "7947134003f15e321c07e55de57969175dc69afc611198a1b6502f646b5412a3",
+      "description": "Four different drawables, world transforms and material buffers form four exact color strips."
+    }
+  }
+}

@@ -21,9 +21,11 @@ import { createTelemetryHub, telemetryPlan } from "./hub.ts";
  *
  * vgpu's timer resolves each frame's timestamps into one of THREE staging buffers and reads
  * them back asynchronously; when all three are still waiting, it DROPS the frame rather than
- * block. The frame loop submits one frame per tick, so three is plenty there. The export
- * path (`encodeSegmented`) submits one frame per compute segment of a render, all inside one
- * synchronous call, so no staging slot can free in between.
+ * block. The frame loop submits one frame per tick, so three is plenty there. Through vgpu
+ * 0.5.0 the export path submitted one frame per compute segment of a render, all inside one
+ * synchronous call, so no staging slot could free in between. Since §T1707b a render is ONE
+ * frame on both paths (kernels are compute passes of it), which removed that cause; an export
+ * that renders back to back without yielding still outruns the ring.
  *
  * MEASURED before the fix (scratch probe, this backend, 3 warm-up + 20 renders, results
  * counted per render against the timed frames it encoded, re-run on a reserved machine with
@@ -45,9 +47,9 @@ import { createTelemetryHub, telemetryPlan } from "./hub.ts";
  * 1. ACCOUNTING: for every submitted render, results + reported drops = the timed frames it
  *    encoded. Not a bound — an equality, in both drive modes. This is the property the row
  *    is about: a missing figure can always say it is missing.
- * 2. RECOVERY (awaited mode): the ring grows at a frame boundary after a drop, so once warm
- *    every render reports ALL its frames with no drop, and every timed pass in the plan is
- *    named by some result. Before the fix: 3 of 8 per render, forever, and 21 passes never.
+ * 2. AWAITED, nothing drops: one frame per render, every render reports, and every timed
+ *    pass in the plan is named by some result. Before T1295: 3 of 8 per render, forever,
+ *    and 21 passes never; before §T1707b the first renders dropped until the ring grew.
  * 3. The count reaches the FRAME FIGURE: the telemetry hub's `frame.droppedFrames` equals the
  *    backend's reported drops, so the performance panel's number carries its own caveat.
  * 4. Back to back, drops still happen — no depth fixes a run that never lets a readback
@@ -57,29 +59,8 @@ import { createTelemetryHub, telemetryPlan } from "./hub.ts";
 const WARMUP = 3;
 const RENDERS = 12;
 
-/**
- * `encodeSegmented`'s split rule, over the EXPANDED order the backend encodes: a dispatch
- * that follows frame-deferred work starts a new frame. A frame is TIMED when it holds a pass
- * `encode` attaches a span to. Claim 2 checks this rule against the device — once warm, each
- * render's result count must equal it exactly — so a drifted copy fails loudly here.
- */
-function timedFramesPerRender(passes: ReturnType<typeof expandLoops>): number {
-  const timedKinds = new Set(["dispatch", "draw", "effect"]);
-  let frames = 0;
-  let timed = false;
-  let deferred = false;
-  for (const pass of passes) {
-    if (pass.kind === "loop") continue;
-    if (pass.kind === "dispatch" && deferred) {
-      if (timed) frames += 1;
-      timed = false;
-      deferred = false;
-    }
-    if (pass.kind !== "dispatch") deferred = true;
-    if (timedKinds.has(pass.kind)) timed = true;
-  }
-  return timed ? frames + 1 : frames;
-}
+/** §T1707b: a render is one frame on both paths, and every pass in it is timed. */
+const TIMED_FRAMES_PER_RENDER = 1;
 
 async function renderE47(mode: "awaited" | "back-to-back") {
   const probe = await probeDawn();
@@ -110,7 +91,7 @@ async function renderE47(mode: "awaited" | "back-to-back") {
     if (output === undefined) throw new Error("E47 compiled to no output");
 
     const expanded = expandLoops(plan.passes);
-    const timedFrames = timedFramesPerRender(expanded);
+    const timedFrames = TIMED_FRAMES_PER_RENDER;
     const timedPassIds = new Set(
       expanded
         .filter((pass) => pass.kind === "dispatch" || pass.kind === "draw" || pass.kind === "effect")
@@ -192,9 +173,8 @@ async function renderE47(mode: "awaited" | "back-to-back") {
 }
 
 describe("T1295 — every timed frame of the export path reports or says it never will, E47-Hologram", () => {
-  it("awaited: accounts for every frame, and reports all of them once the ring has grown", async () => {
+  it("awaited: accounts for every frame, and reports all of them", async () => {
     const run = await renderE47("awaited");
-    expect(run.timedFrames, "E47 is the example with the most timed segments; the row needs > 3").toBeGreaterThan(3);
 
     // (1) Accounting, exact, every render.
     for (const submit of run.submits) {
@@ -203,16 +183,12 @@ describe("T1295 — every timed frame of the export path reports or says it neve
         `render ${submit}: results + reported drops must equal its ${run.timedFrames} timed frames`,
       ).toBe(run.timedFrames);
     }
-    // The ring starts at vgpu's three slots and this render needs more, so the first render
-    // MUST drop — which is what makes the reporting half a measurement, not a formality.
+    // (2) One frame per awaited render fits the ring from the first: every render reports.
     const dropped = [...run.drops.values()].reduce((sum, count) => sum + count, 0);
-    expect(dropped, "the first render outruns three staging slots; its drops must be reported").toBeGreaterThan(0);
-
-    // (2) Recovery: once warm, every frame of every render reports and nothing drops.
-    for (const submit of run.submits.slice(WARMUP)) {
-      expect(run.results.get(submit), `render ${submit} after warm-up`).toBe(run.timedFrames);
-      expect(run.drops.get(submit) ?? 0, `render ${submit} after warm-up dropped`).toBe(0);
+    for (const submit of run.submits) {
+      expect(run.results.get(submit), `render ${submit}`).toBe(run.timedFrames);
     }
+    expect(dropped, "an awaited render is one frame; it never outruns the ring").toBe(0);
     expect(run.untimed, `timed passes no result ever named: ${run.untimed.join(", ")}`).toEqual([]);
     expect(run.miscounted, "a span that says it covers another number of passes than its run has").toEqual([]);
 

@@ -31,6 +31,7 @@ export function arePortsCompatible(source: PortType, target: PortType): boolean 
        * would display-decode a depth map (T722's retreat, correctly refused).
        */
       if (declaredColorSpace(b) === "data") return true;
+      if (b.acceptsData === true && colorSpaceOf(source) === "data") return true;
       // Absence normalises to "linear" (the project working space), so an unannotated
       // port and an explicitly-linear one are the SAME declaration. `channels` above is
       // deliberately not treated this way — see the note on PortType.
@@ -132,7 +133,7 @@ export function colorSpaceOf(type: Extract<PortType, { kind: "texture2d" }>): Co
 export function describePortType(type: PortType): string {
   switch (type.kind) {
     case "texture2d":
-      return `texture2d<${type.sample}${type.channels === undefined ? "" : `,${type.channels}`},${colorSpaceOf(type)}>`;
+      return `texture2d<${type.sample}${type.channels === undefined ? "" : `,${type.channels}`},${colorSpaceOf(type)}${type.acceptsData === true && colorSpaceOf(type) !== "data" ? "|data" : ""}>`;
     case "buffer":
       return `buffer<${type.element},${type.access}>`;
     case "scalar":

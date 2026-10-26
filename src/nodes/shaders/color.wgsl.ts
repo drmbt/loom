@@ -20,7 +20,15 @@ import { wgsl } from "../../runtime/backend/wgsl.ts";
  * then opacity on alpha. Alpha is otherwise untouched: brightening an image should not
  * change what it covers.
  */
-export const LEVEL_FRAGMENT_WGSL = wgsl`struct Params {
+// Numerical maps use exact texel reads (nearest when explicitly resized). The
+// physical r32float channel is a scalar, not a red colour with zero green and blue.
+const FLOAT_SOURCE = `let dimensions = vec2i(textureDimensions(inputTexture));
+  let pixel = clamp(vec2i(uv * vec2f(dimensions)), vec2i(0), dimensions - vec2i(1));
+  let scalarValue = textureLoad(inputTexture, pixel, 0).r;
+  let source = vec4f(vec3f(scalarValue), 1.0);`;
+const FILTERED_SOURCE = "let source = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);";
+
+const levelShader = (scalar = false) => wgsl`struct Params {
   blacklevel: f32,
   whitelevel: f32,
   brightness: f32,
@@ -30,8 +38,7 @@ export const LEVEL_FRAGMENT_WGSL = wgsl`struct Params {
   invert: f32,
 };
 @group(0) @binding(0) var<uniform> params: Params;
-@group(0) @binding(1) var inputSampler: sampler;
-@group(0) @binding(2) var inputTexture: texture_2d<f32>;
+${scalar ? "" : "@group(0) @binding(1) var inputSampler: sampler;\n"}@group(0) @binding(2) var inputTexture: texture_2d<f32>;
 
 /** pow() is undefined for negative bases; linear HDR values go negative, so mirror it. */
 fn signedPow(v: vec3f, e: f32) -> vec3f {
@@ -40,7 +47,7 @@ fn signedPow(v: vec3f, e: f32) -> vec3f {
 
 @fragment
 fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
-  let source = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);
+  ${scalar ? FLOAT_SOURCE : FILTERED_SOURCE}
   let span = params.whitelevel - params.blacklevel;
   var c = (source.rgb - vec3f(params.blacklevel)) / vec3f(select(span, 1e-6, abs(span) < 1e-6));
   c = mix(c, vec3f(1.0) - c, clamp(params.invert, 0.0, 1.0));
@@ -49,6 +56,9 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   c = c * params.brightness;
   return vec4f(c, source.a * params.opacity);
 }`;
+
+export const LEVEL_FRAGMENT_WGSL = levelShader();
+export const LEVEL_FLOAT_FRAGMENT_WGSL = levelShader(true);
 
 /**
  * HSV — TD's HSV Adjust TOP.
@@ -87,7 +97,7 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
  * composited as a matte without a channel-shuffling node in between. That makes the output
  * DATA in the §V56 sense even though it is shaped like a colour — noted on the port.
  */
-export const THRESHOLD_FRAGMENT_WGSL = wgsl`${WGSL_CHANNEL}
+const thresholdShader = (scalar = false) => wgsl`${WGSL_CHANNEL}
 
 struct Params {
   threshold: f32,
@@ -96,18 +106,20 @@ struct Params {
   compare: f32,
 };
 @group(0) @binding(0) var<uniform> params: Params;
-@group(0) @binding(1) var inputSampler: sampler;
-@group(0) @binding(2) var inputTexture: texture_2d<f32>;
+${scalar ? "" : "@group(0) @binding(1) var inputSampler: sampler;\n"}@group(0) @binding(2) var inputTexture: texture_2d<f32>;
 
 @fragment
 fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
-  let source = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);
-  let value = channelValue(source, params.channel);
+  ${scalar ? FLOAT_SOURCE : FILTERED_SOURCE}
+  let value = ${scalar ? "scalarValue" : "channelValue(source, params.channel)"};
   let edgeHalf = max(params.softness, 1e-5) * 0.5;
   let above = smoothstep(params.threshold - edgeHalf, params.threshold + edgeHalf, value);
   let mask = select(above, 1.0 - above, params.compare > 0.5);
   return vec4f(vec3f(mask), mask);
 }`;
+
+export const THRESHOLD_FRAGMENT_WGSL = thresholdShader();
+export const THRESHOLD_FLOAT_FRAGMENT_WGSL = thresholdShader(true);
 
 /**
  * Lookup — TD's Lookup TOP: remap one channel of the source through a lookup image.
@@ -157,15 +169,14 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
  * quantizing alpha turns a soft edge into a stair — which is never what someone posterising
  * an image was asking for.
  */
-export const LIMIT_FRAGMENT_WGSL = wgsl`struct Params {
+const limitShader = (scalar = false) => wgsl`struct Params {
   mode: f32,
   low: f32,
   high: f32,
   steps: f32,
 };
 @group(0) @binding(0) var<uniform> params: Params;
-@group(0) @binding(1) var inputSampler: sampler;
-@group(0) @binding(2) var inputTexture: texture_2d<f32>;
+${scalar ? "" : "@group(0) @binding(1) var inputSampler: sampler;\n"}@group(0) @binding(2) var inputTexture: texture_2d<f32>;
 
 fn limitChannel(value: f32, mode: u32, lo: f32, hi: f32, steps: f32) -> f32 {
   let span = max(hi - lo, 1e-6);
@@ -191,7 +202,7 @@ fn limitChannel(value: f32, mode: u32, lo: f32, hi: f32, steps: f32) -> f32 {
 
 @fragment
 fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
-  let source = textureSampleLevel(inputTexture, inputSampler, uv, 0.0);
+  ${scalar ? FLOAT_SOURCE : FILTERED_SOURCE}
   let mode = u32(params.mode + 0.5);
   let rgb = vec3f(
     limitChannel(source.r, mode, params.low, params.high, params.steps),
@@ -200,6 +211,9 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   );
   return vec4f(rgb, source.a);
 }`;
+
+export const LIMIT_FRAGMENT_WGSL = limitShader();
+export const LIMIT_FLOAT_FRAGMENT_WGSL = limitShader(true);
 
 /**
  * Reorder — a two-input channel shuffle (T280). TD's Reorder TOP.

@@ -1,0 +1,21 @@
+# Loom validation (pnpm 9.15.4)
+pnpm lint
+pnpm typecheck
+pnpm vitest run src/runtime/backend/vgpu/environment-preparation.test.ts src/runtime/backend/vgpu/pipeline-state.test.ts src/runtime/backend/vgpu/render-pass-runs.test.ts src/runtime/backend/vgpu/vgpu-backend.test.ts src/runtime/backend/vgpu/dispatch-demand.test.ts src/runtime/backend/wgsl-source-map.test.ts src/runtime/backend/layered-target.test.ts --maxWorkers=2 --minWorkers=1
+tools/heavy.sh pnpm test:headless src/runtime/backend/vgpu/environment-preparation.gpu.test.ts src/runtime/backend/vgpu/environment-prefilter.gpu.test.ts src/runtime/backend/vgpu/render-pass-runs.gpu.test.ts src/runtime/backend/vgpu/frame-throw.gpu.test.ts src/runtime/backend/vgpu/compile-install.gpu.test.ts src/runtime/backend/vgpu/present-parity.gpu.test.ts src/runtime/backend/vgpu/timer-retract.gpu.test.ts src/nodes/definitions/scene-antialias.gpu.test.ts --maxWorkers=2 --minWorkers=1
+tools/heavy.sh pnpm test:gates --maxWorkers=2 --minWorkers=1
+tools/heavy.sh pnpm test:first-import --maxWorkers=2 --minWorkers=1
+tools/heavy.sh pnpm build
+
+# Run after checks finish; avoid concurrent benchmarks/builds.
+tools/heavy.sh node --import ./src/tooling/alias-hooks.ts tools/bench-environment-preparation.ts
+
+# vGPU fork prototypes: use Node 22 and pnpm 9.15.4; tests are listed per PR.
+# In two independently built source snapshots, run the PR #8 harness with:
+node scripts/bench-render-pass-state.mjs --entry baseline=/path/to/pristine/packages/vgpu-api/dist/node.js --entry pipeline=/path/to/prototype/packages/vgpu-api/dist/node.js --runs 7 --count 2000
+# Repeat with mock.js.
+
+# Follow-up PR #8 measurements: 15 pairs at 50/250/2000 draws, then single-draw control.
+# Run the fork harness against both node.js and mock.js, serially with no concurrent build.
+node scripts/bench-render-pass-state.mjs --entry baseline=/path/to/pristine/packages/vgpu-api/dist/node.js --entry pipeline=/path/to/prototype/packages/vgpu-api/dist/node.js --runs 15 --count 50 --mode unique,repeated,alternating
+node tools/analyze-render-benchmarks.mjs docs/performance/2026-10-09-vgpu/calibrated/node-50.json docs/performance/2026-10-09-vgpu/calibrated/node-250.json docs/performance/2026-10-09-vgpu/calibrated/node-2000.json

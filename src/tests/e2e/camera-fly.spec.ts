@@ -498,9 +498,14 @@ async function flies(page: Page, options: { subject: string; button: string; eye
   const canvas = await view(page, options.subject, options.stock === true);
   const button = page.getByTestId("viewer-fly-camera");
   await expect(button).toHaveText(options.button);
-  const before = await canvas.screenshot();
+  const resting = await canvas.boundingBox();
   await button.click();
   await expect(button).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("viewer-camera-note")).toHaveText(new RegExp(`^Flying ${options.subject}:`));
+  // §T1710b: arming fills the note's line, which was held empty, so the picture does not move
+  // under the pointer. These three kinds say nothing before the flight; the jump was 7.7 px.
+  expect(await canvas.boundingBox(), `${options.subject}: arming the flight moved the picture`).toEqual(resting);
+  const before = await canvas.screenshot();
   await page.keyboard.down("w");
   await page.waitForTimeout(500);
   await page.keyboard.up("w");

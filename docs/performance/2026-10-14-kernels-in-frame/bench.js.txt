@@ -1,0 +1,39 @@
+import { init, compute, frame, storage, effect, target } from "vgpu";
+import { prepareShader } from "@vgpu/wgsl/prepare";
+
+async function main() {
+  const gpu = await init();
+  const src = prepareShader(`@group(0) @binding(0) var<storage, read_write> data: array<f32>;
+@compute @workgroup_size(64) fn main(@builtin(global_invocation_id) id: vec3u) { if (id.x < arrayLength(&data)) { data[id.x] = data[id.x] * 0.999 + 0.001; } }`, "k.wgsl");
+  const fxSrc = prepareShader(`@fragment fn fs_main() -> @location(0) vec4f { return vec4f(0.5); }`, "e.wgsl");
+  const tgt = target(gpu, { size: [256, 256], format: "rgba8unorm" });
+  const fx = effect(gpu, fxSrc, { label: "e" });
+  fx.compileSync(tgt);
+  const out = {};
+  for (const K of [5, 20, 80]) {
+    const bufs = Array.from({ length: K }, () => storage(gpu, 4096 * 4, "read_write"));
+    const kernels = bufs.map((b, i) => compute(gpu, src, { set: { data: b }, label: `k${i}` }).compileSync());
+    const variants = {
+      selfSubmit: (f) => { for (const k of kernels) k.dispatch(64); f.pass(tgt, fx); },
+      passPerKernel: (f) => { for (const k of kernels) f.computePass((p) => p.dispatch(k, 64)); f.pass(tgt, fx); },
+      reference: (f) => { f.pass(tgt, fx); },
+    };
+    const res = {};
+    for (const n of Object.keys(variants)) res[n] = { cpu: [], wall: [] };
+    for (let round = 0; round < 7; round++) {
+      for (const [n, body] of Object.entries(variants)) {
+        for (let i = 0; i < 30; i++) { const f = frame(gpu, body); await f.done; }
+        let cpu = 0; const t0 = performance.now();
+        for (let i = 0; i < 120; i++) {
+          const a = performance.now(); const f = frame(gpu, body); cpu += performance.now() - a; await f.done;
+        }
+        const wall = performance.now() - t0;
+        res[n].cpu.push(cpu / 120); res[n].wall.push(wall / 120);
+      }
+    }
+    const med = (xs) => [...xs].sort((x, y) => x - y)[Math.floor(xs.length / 2)];
+    out[K] = Object.fromEntries(Object.entries(res).map(([n, r]) => [n, { cpuUs: Math.round(med(r.cpu) * 1000), wallMs: +med(r.wall).toFixed(3), cpuTrials: r.cpu.map((x) => Math.round(x * 1000)) }]));
+  }
+  window.__result = { isolated: crossOriginIsolated, out };
+}
+main().catch((e) => { window.__result = { error: String(e && e.stack || e) }; });

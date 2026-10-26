@@ -40,6 +40,16 @@ async function harness(
   return { backend, host, diagnostics };
 }
 
+/**
+ * T1705b: one frame's turn ends before the next begins, as in any frame loop. vgpu 0.6.0
+ * captures a frame's managed uniforms into a pooled page and returns the page when the
+ * frame completes, so frames encoded back to back inside ONE turn each take a new page:
+ * a buffer per frame that no running loop allocates.
+ */
+function frameCompleted(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 function frameInputs(frameIndex: number): FrameInputs {
   return {
     frame: {
@@ -212,13 +222,16 @@ describe("vgpu backend — uniform updates (§V5)", () => {
 
     // Warm up: the first frames create the cached bind groups.
     backend.render(plan, frameInputs(0));
+    await frameCompleted();
     backend.render(plan, frameInputs(1));
+    await frameCompleted();
 
     const before = snapshot(host.instrumentation);
     const buildsBefore = backend.status.resourceBuilds;
 
     backend.updateUniforms({ passId: "generate", values: { amount: 0.25 } });
     backend.render(plan, frameInputs(2));
+    await frameCompleted();
     backend.updateUniforms({ passId: "generate", values: { amount: 0.5, tint: 0.9 } });
     backend.render(plan, frameInputs(3));
 
@@ -278,13 +291,17 @@ describe("vgpu backend — frame loop allocation (§V8)", () => {
     const plan = await backend.compile(fixturePlan());
 
     // Two warm-up frames: the ping-pong pair alternates between two cached bind groups.
-    backend.render(plan, frameInputs(0));
-    backend.render(plan, frameInputs(1));
-    backend.render(plan, frameInputs(2));
+    for (let index = 0; index < 3; index += 1) {
+      backend.render(plan, frameInputs(index));
+      await frameCompleted();
+    }
 
     const before = snapshot(host.instrumentation);
     const buildsBefore = backend.status.resourceBuilds;
-    for (let index = 3; index < 20; index += 1) backend.render(plan, frameInputs(index));
+    for (let index = 3; index < 20; index += 1) {
+      backend.render(plan, frameInputs(index));
+      await frameCompleted();
+    }
     const after = snapshot(host.instrumentation);
 
     // vgpu/mock does not instrument createTexture, so the backend's own build counter

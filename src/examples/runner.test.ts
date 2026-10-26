@@ -118,6 +118,9 @@ describe("examples: the gate", () => {
       "E84-Photo-Mapping-Contour-Engraving.loom.json",
       "E85-Photo-Mapping-Video.loom.json",
       "E86-Photo-Mapping-Point-Cloud.loom.json",
+      "E87-Photo-Mapping-Falling-Facade.loom.json",
+      "E88-Photo-Mapping-Ribbon-Peel.loom.json",
+      "E89-Cymatics.loom.json",
       "E9-Ember.loom.json",
     ]);
   });
@@ -187,7 +190,17 @@ describe.each(examples)("example $fileName", (file) => {
       })
       .map((node) => node.id)
       .sort();
-    expect([...plan.pruned].sort(), `${file.fileName}: node liveness`).toEqual(unwireable);
+    /* §V1030 (§T1718b, owner 2026-10-22): a Layer that ships OFF prunes its picture's chain, and that is the point of
+       it (an off look costs nothing). Those nodes are not dead: switched on, they render. So
+       the file is held to its plan WITH every off Layer on, where nothing but the unwireable
+       may be pruned, and the shipped plan may prune exactly that plus what the off Layers
+       hide. A layer shipped off over a chain that is dead anyway still fails, on the first. */
+    const shippedOff = Object.values(document.graph.nodes).some((node) => node.type === "layer" && node.ui?.bypassed === true);
+    const layersOn = result.layersOn ?? null;
+    if (shippedOff) expect(layersOn, `${file.fileName}: the plan with its off layers on`).not.toBeNull();
+    const behindOffLayers = layersOn === null ? [] : plan.pruned.filter((nodeId) => !layersOn.pruned.includes(nodeId));
+    if (layersOn !== null) expect([...layersOn.pruned].sort(), `${file.fileName}: node liveness, off layers on`).toEqual(unwireable);
+    expect([...plan.pruned].sort(), `${file.fileName}: node liveness`).toEqual([...unwireable, ...behindOffLayers].sort());
     // Not every live node is a PLAN node. A value source (LFO, Constant, Timer) has no
     // ports and never compiles to GPU work — it is alive through channel addressing, and
     // `plan.order` correctly omits it (§V173b). Asserting order === all node ids would
@@ -227,7 +240,13 @@ describe.each(examples)("example $fileName", (file) => {
         return definition?.passthrough === undefined;
       })
       .sort();
-    expect([...plan.order].sort(), `${file.fileName}: node liveness`).toEqual(expectedOrder);
+    // §T1718b: the off layers' chains compile only with the layers on, and an off layer is
+    // itself spliced out (bypass passes its stack through, with no pass of its own).
+    if (layersOn !== null) expect([...layersOn.order].sort(), `${file.fileName}: node liveness, off layers on`).toEqual(expectedOrder);
+    const bypassedLayer = (id: string) => logical.nodes[id]?.type === "layer" && logical.nodes[id]?.ui?.bypassed === true;
+    expect([...plan.order].sort(), `${file.fileName}: node liveness`).toEqual(
+      expectedOrder.filter((id) => !behindOffLayers.includes(id) && !bypassedLayer(id)),
+    );
     expect(plan.passes.length, `${file.fileName}: node liveness`).toBeGreaterThan(0);
 
     /**

@@ -1,468 +1,269 @@
-diff --git a/dist/api-types.d.ts b/dist/api-types.d.ts
---- a/dist/api-types.d.ts
-+++ b/dist/api-types.d.ts
-@@ -5,7 +5,9 @@
-  * can be imported — and tree-shaken — without pulling the object that owns every factory.
-  */
- import type { VGPUError } from "./errors.ts";
-+import type { Frame } from "./frame.ts";
- import type { Target } from "./target.ts";
-+import type { TimerSpan } from "./timer.ts";
- export interface ComputeOptions {
-     readonly label?: string;
-     readonly set?: Record<string, unknown>;
-@@ -21,10 +23,22 @@
-         readonly offset?: number;
-     };
- }
-+/**
-+ * shaderloom patch (T1247): where a dispatch's GPU timestamp pair is billed.
-+ *
-+ * A `Compute` submits its own command buffer, so it cannot take a `timer` the way
-+ * `FramePassOptions` does. The span is attached to the OPEN FRAME handed here, which is what
-+ * puts the dispatch inside that frame's resolve — and therefore inside the per-pass column and
-+ * the frame extent that vgpu reports for the submit (patch theme 4).
-+ */
-+export interface DispatchTiming {
-+    readonly timer: TimerSpan;
-+    readonly frame: Frame;
-+}
- export interface Compute {
-     set(values: Record<string, unknown>): this;
--    dispatch(x: number, y?: number, z?: number): void;
--    dispatch(opts: DispatchOptions): void;
-+    dispatch(x: number, y?: number, z?: number, timing?: DispatchTiming): void;
-+    dispatch(opts: DispatchOptions & Partial<DispatchTiming>): void;
- }
- export type StorageAccess = "read" | "read-write";
- export interface StorageOptions {
-diff --git a/dist/compute.d.ts b/dist/compute.d.ts
---- a/dist/compute.d.ts
-+++ b/dist/compute.d.ts
-@@ -3,7 +3,7 @@
- import { type Reflection } from "@vgpu/wgsl/reflect-source";
- import { type BindGroupCache } from "./bind-cache.ts";
- import { type SetBag, type SetCore } from "./set-core.ts";
--import type { Compute, ComputeOptions, DispatchOptions } from "./api-types.ts";
-+import type { Compute, ComputeOptions, DispatchOptions, DispatchTiming } from "./api-types.ts";
- import type { Gpu } from "./kernel.ts";
- /**
-  * Compute pipeline for this gpu, ready to `set()` bindings and `dispatch()`.
-@@ -35,7 +35,7 @@
-     readonly pipeline: GPUComputePipeline;
-     constructor(device: Device, source: string, opts?: ComputeOptions, cache?: BindGroupCache);
-     set(values: SetBag): this;
--    dispatch(x: number, y?: number, z?: number): void;
--    dispatch(opts: DispatchOptions): void;
-+    dispatch(x: number, y?: number, z?: number, timing?: DispatchTiming): void;
-+    dispatch(opts: DispatchOptions & Partial<DispatchTiming>): void;
- }
- //# sourceMappingURL=compute.d.ts.map
-\ No newline at end of file
 diff --git a/dist/compute.js b/dist/compute.js
+index 858c08e..6de765c 100644
 --- a/dist/compute.js
 +++ b/dist/compute.js
-@@ -71,27 +71,61 @@
-         if (opts.set)
-             this.set(opts.set);
+@@ -183,13 +183,25 @@ export class ComputePipeline {
+                 continue;
+             if (!buckets.has(buffer))
+                 buckets.set(buffer, []);
+-            buckets.get(buffer).push({ writable: binding.access !== "read" });
++            // shaderloom patch (T1076): the bound range rides with the entry; see below.
++            const offset = bindingState.resource.offset ?? 0;
++            buckets.get(buffer).push({ writable: binding.access !== "read", offset, end: offset + (bindingState.resource.size ?? buffer.size - offset) });
+         }
+         for (const bucket of buckets.values()) {
+             if (bucket.length < 2)
+                 continue;
+             if (!bucket.some((entry) => entry.writable))
+                 continue;
++            // shaderloom patch (T1076): several WRITABLE regions of one allocation are legal WebGPU
++            // when no two of them overlap; writable-binding aliasing is a per-range rule. Point
++            // storage is packed, several attributes per buffer, and a kernel writes more than one
++            // of them. A read-only binding beside a writable one stays rejected: that is a
++            // whole-buffer usage-scope conflict whatever the ranges are.
++            if (bucket.every((entry) => entry.writable)) {
++                const ranges = [...bucket].sort((left, right) => left.offset - right.offset);
++                if (ranges.every((entry, index) => index === 0 || ranges[index - 1].end <= entry.offset))
++                    continue;
++            }
+             throw writableStorageAliasingError(`${this.label}.dispatch`);
+         }
      }
-+    /**
-+     * shaderloom patch (T1180): drop this compute's cached bind groups; see
-+     * InternalDraw.evictBindGroups. The compute-prefixed key matches 0.5.0 createSetCore ownership; it cannot evict a draw
-+     * with the same numeric id. Pipeline and shader module stay per-instance.
-+     */
-+    evictBindGroups() {
-+        this.cache.clearDraw(`compute:${this.id}`);
-+    }
-     set(values) {
-         assertDeviceUsable(this.device, `${this.label}.set`);
-         this.setCore.set(values);
-         return this;
-     }
--    dispatch(x, y, z) {
-+    dispatch(x, y, z, timing) {
-         assertDeviceUsable(this.device, `${this.label}.dispatch`);
--        const indirect = typeof x === "object" && x !== null ? this.#resolveIndirectDispatch(x, y, z) : undefined;
-+        const opts = typeof x === "object" && x !== null ? x : undefined;
-+        const indirect = opts ? this.#resolveIndirectDispatch(x, y, z) : undefined;
-         this.#preflightAliasing();
-         const bindings = this.setCore.bindGroups();
--        const encoder = this.device.gpu.createCommandEncoder({ label: `${this.label}.encoder` });
--        const pass = encoder.beginComputePass({ label: `${this.label}.pass` });
--        pass.setPipeline(this.pipeline);
--        for (const binding of bindings)
--            pass.setBindGroup(binding.group, binding.bindGroup, binding.offsets);
--        if (indirect)
--            pass.dispatchWorkgroupsIndirect(indirect.buffer, indirect.offset);
--        else
--            pass.dispatchWorkgroups(x, y ?? 1, z ?? 1);
--        pass.end();
--        this.device.gpu.queue.submit([encoder.finish()]);
-+        /**
-+         * shaderloom patch (T1247): optional GPU timestamp pair around this dispatch. The span
-+         * belongs to the open frame that is handed with it, never to this command buffer — see
-+         * Frame.attachExternalSpan. Attached AFTER every throwing precondition above, so a
-+         * dispatch that never encodes cannot leave a reserved query pair the frame would resolve
-+         * out of an unwritten query set.
-+         */
-+        const timed = opts?.timer !== undefined ? opts : timing;
-+        const attachment = timed?.timer !== undefined && timed.frame !== undefined
-+            ? timed.frame.attachExternalSpan(timed.timer)
-+            : undefined;
-+        const timestampWrites = attachment?.timestampWrites;
-+        // shaderloom patch (T1295): the pair above is now reserved in the frame. If anything below
-+        // throws, no timestamp was written into it, so the span is retracted rather than resolved
-+        // out of an unwritten query set as a duration for a dispatch that never ran.
-+        let submitted = false;
-+        try {
-+            const encoder = this.device.gpu.createCommandEncoder({ label: `${this.label}.encoder` });
-+            const pass = encoder.beginComputePass(timestampWrites
-+                ? { label: `${this.label}.pass`, timestampWrites }
-+                : { label: `${this.label}.pass` });
-+            pass.setPipeline(this.pipeline);
-+            for (const binding of bindings)
-+                pass.setBindGroup(binding.group, binding.bindGroup, binding.offsets);
-+            if (indirect)
-+                pass.dispatchWorkgroupsIndirect(indirect.buffer, indirect.offset);
-+            else
-+                pass.dispatchWorkgroups(x, y ?? 1, z ?? 1);
-+            pass.end();
-+            this.device.gpu.queue.submit([encoder.finish()]);
-+            submitted = true;
-+        }
-+        finally {
-+            if (!submitted)
-+                attachment?.retract();
-+        }
-     }
-     /** The GPU reads the workgroup counts from the buffer, so explicit counts alongside indirect are dead options and throw. */
-     #resolveIndirectDispatch(opts, y, z) {
 diff --git a/dist/draw.d.ts b/dist/draw.d.ts
+index a008f07..17f5dcc 100644
 --- a/dist/draw.d.ts
 +++ b/dist/draw.d.ts
-@@ -4,6 +4,8 @@
- import { type BindGroupCache } from "./bind-cache.ts";
- import { type ClaimedGroupValidationResult, type ValidationErrorSink } from "./claim-validation.ts";
- import { type BindingIdentityChange, type BindingState, type SetBag } from "./set-core.ts";
-+import type { Frame } from "./frame.ts";
-+import type { TimerSpan } from "./timer.ts";
- import type { CompileTarget, Target, TargetSignature } from "./target.ts";
- import { type PipelineLayoutCache, type PipelineStore, type ShaderModuleCache } from "./pipeline-store.ts";
- import type { StorageBuffer } from "./api-types.ts";
-@@ -135,6 +137,13 @@
-         readonly buffer: StorageBuffer;
-         readonly offset?: number;
-     };
-+    /**
-+     * shaderloom patch (T1247): time this self-submitted draw against an OPEN FRAME, the way
-+     * `FramePassOptions.timer` times a pass of that frame. Both members or neither; see
-+     * `DispatchTiming` in api-types.ts for why the frame is part of the request.
-+     */
-+    readonly timer?: TimerSpan;
-+    readonly frame?: Frame;
- }
- export interface DrawLayoutOptions {
-     readonly dynamicOffsets?: boolean;
+@@ -231,7 +231,7 @@ export declare class InternalDraw implements Draw {
+      * `gpu.onError` as `VGPU-R4-GROUP-VALIDATION`.
+      */
+     draw(arg?: Target | DrawCallOptions): void;
+-    encode(pass: GPURenderPassEncoder, target: Target | TargetSignature, opts?: DrawCallOptions, claimValidation?: (result: ClaimedGroupValidationResult) => void, capture?: UniformCapture): void;
++    encode(pass: GPURenderPassEncoder, target: Target | TargetSignature, opts?: DrawCallOptions, claimValidation?: (result: ClaimedGroupValidationResult) => void, capture?: UniformCapture, encodingState?: import("./frame-protocols.ts").RenderPassDrawState): void;
+     compile(target?: CompileTarget): Promise<this>;
+     compileSync(target?: CompileTarget): this;
+     pipelineFor(target: Target | TargetSignature): GPURenderPipeline | undefined;
 diff --git a/dist/draw.js b/dist/draw.js
+index 00f836c..946bf55 100644
 --- a/dist/draw.js
 +++ b/dist/draw.js
-@@ -102,6 +102,35 @@
-     writesDepth() { return drawWritesDepth(this); }
-     /** @internal Frame drawable protocol; see {@link drawStencilWritingOps}. */
-     stencilWritingOps() { return drawStencilWritingOps(this); }
-+    /**
-+     * shaderloom patch (T1180): drop this draw's cached bind groups. It calls the cache's own
-+     * `clearDraw`, which upstream defines and never calls; nothing else can reach it, because
-+     * the cache is a private kernel service and `drawId` is a closure-local counter.
-+     *
-+     * Two ways entries become unreachable, and neither has a public exit today:
-+     *
-+     * 1. A DISCARDED drawable. The key is `drawId:group:identities` and every Draw/Effect
-+     *    mints a fresh `nextDrawId`, so a program rebuild's replaced Effects leave their
-+     *    entries behind for the life of the device — Draw/Effect/Compute expose no destroy at
-+     *    all. `subscribeEviction` reclaims an entry only when a resource it names is
-+     *    destroyed, so entries over surviving resources (a shader edit rebinding the same
-+     *    target) survive with it.
-+     *
-+     * 2. A LIVE drawable whose bindings ROTATE. The eviction subscription is per binding
-+     *    SLOT, not per cache entry: `set()`ing a slot to a new resource unsubscribes the
-+     *    previous one, so an entry naming the old resource outlives that resource's destroy
-+     *    with nothing listening. A blit that re-points one texture slot at each of N targets
-+     *    keeps N entries and is subscribed to one.
-+     *
-+     * Only this draw's own entries go — the drawId prefix is unique per instance — and any
-+     * entry still wanted is rebuilt on the next encode (`setCore.bindGroups()` calls
-+     * `getOrCreate` every time), so an over-eager evict costs a rebuild, never a wrong bind
-+     * group. Pipelines, shader modules and layouts are shared by key and are untouched.
-+     */
-+    evictBindGroups() {
-+        const state = drawState(this);
-+        state.cache.clearDraw(state.id);
-+    }
-     set(values) {
-         const state = drawState(this);
-         assertDeviceUsable(state.device, `${this.label}.set`);
-@@ -151,71 +180,94 @@
-             throw targetRequiredError(`${this.label}.draw`);
-         assertSurfaceTargetInFrame(target, `${this.label}.draw`);
-         const encoder = state.device.gpu.createCommandEncoder();
--        const pass = encoder.beginRenderPass(target.renderPassDescriptor());
--        const validations = [];
-+        /**
-+         * shaderloom patch (T1247): optional GPU timestamp pair around a self-submitted draw.
-+         * `Draw.draw()` is the only way to issue a GPU-driven (indirect) draw and, like
-+         * Compute.dispatch, it builds and submits its OWN command buffer — so it never reaches
-+         * Frame.pass and never received a pair. The span is billed to the open frame handed with
-+         * it (Frame.attachExternalSpan), whose resolve runs after this submit.
-+         */
-+        const attachment = opts.timer !== undefined && opts.frame !== undefined
-+            ? opts.frame.attachExternalSpan(opts.timer)
-+            : undefined;
-+        const timestampWrites = attachment?.timestampWrites;
-+        // shaderloom patch (T1295): every exit below that does not reach queue.submit — a throw, or the
-+        // finish/submit validation early returns — wrote no timestamps into the reserved pair, so the
-+        // span is retracted rather than resolved as a phantom duration.
-+        let submitted = false;
-         try {
--            this.encode(pass, target, opts, (result) => validations.push(result));
-+            const descriptor = target.renderPassDescriptor();
-+            const pass = encoder.beginRenderPass(timestampWrites ? { ...descriptor, timestampWrites } : descriptor);
-+            const validations = [];
-+            try {
-+                this.encode(pass, target, opts, (result) => validations.push(result));
-+            }
-+            catch (error) {
-+                discardClaimedGroupValidationResults(validations);
-+                discardClaimedGroupValidationScopes(state.device);
-+                try {
-+                    pass.end();
-+                }
-+                catch { /* ignore cleanup failure after encode failure */ }
-+                throw error;
-+            }
-+            endRenderPassWithClaimValidation(state.device, pass, validations, validations[0]?.context);
-+            let commandBuffer;
-+            const finishContext = validations[0]?.context;
-+            if (finishContext)
-+                pushClaimedGroupValidationScope(state.device, finishContext);
-+            try {
-+                commandBuffer = encoder.finish();
-+            }
-+            catch (error) {
-+                const result = finishContext ? popLastClaimedGroupValidationScope(state.device) : undefined;
-+                discardClaimedGroupValidationResults(validations);
-+                if (result)
-+                    discardClaimedGroupValidationResults([result]);
-+                const context = result?.context ?? finishContext;
-+                if (context) {
-+                    void reportDrawValidationError(state, context.label, context.group, error);
-+                    return;
-+                }
-+                throw error;
-+            }
-+            if (finishContext) {
-+                const result = popLastClaimedGroupValidationScope(state.device);
-+                if (result)
-+                    validations[0] = validations[0] ? preferClaimedGroupValidationResult(result, validations[0]) : result;
-+            }
-+            const submitContext = validations[0]?.context;
-+            if (submitContext)
-+                pushClaimedGroupValidationScope(state.device, submitContext);
-+            try {
-+                state.device.gpu.queue.submit([commandBuffer]);
-+                submitted = true;
-+            }
-+            catch (error) {
-+                const result = submitContext ? popLastClaimedGroupValidationScope(state.device) : undefined;
-+                discardClaimedGroupValidationResults(validations);
-+                if (result)
-+                    discardClaimedGroupValidationResults([result]);
-+                const context = result?.context ?? submitContext;
-+                if (context) {
-+                    void reportDrawValidationError(state, context.label, context.group, error);
-+                    return;
-+                }
-+                throw error;
-+            }
-+            if (submitContext) {
-+                const result = popLastClaimedGroupValidationScope(state.device);
-+                if (result)
-+                    validations[0] = validations[0] ? preferClaimedGroupValidationResult(result, validations[0]) : result;
-+            }
-+            if (validations.length) {
-+                const done = claimedGroupValidationDone(state.device, validations, { errorSink: state.errorSink });
-+                state.trackSettled?.(done);
-+            }
-         }
--        catch (error) {
--            discardClaimedGroupValidationResults(validations);
--            discardClaimedGroupValidationScopes(state.device);
--            try {
--                pass.end();
--            }
--            catch { /* ignore cleanup failure after encode failure */ }
--            throw error;
--        }
--        endRenderPassWithClaimValidation(state.device, pass, validations, validations[0]?.context);
--        let commandBuffer;
--        const finishContext = validations[0]?.context;
--        if (finishContext)
--            pushClaimedGroupValidationScope(state.device, finishContext);
--        try {
--            commandBuffer = encoder.finish();
--        }
--        catch (error) {
--            const result = finishContext ? popLastClaimedGroupValidationScope(state.device) : undefined;
--            discardClaimedGroupValidationResults(validations);
--            if (result)
--                discardClaimedGroupValidationResults([result]);
--            const context = result?.context ?? finishContext;
--            if (context) {
--                void reportDrawValidationError(state, context.label, context.group, error);
--                return;
--            }
--            throw error;
--        }
--        if (finishContext) {
--            const result = popLastClaimedGroupValidationScope(state.device);
--            if (result)
--                validations[0] = validations[0] ? preferClaimedGroupValidationResult(result, validations[0]) : result;
--        }
--        const submitContext = validations[0]?.context;
--        if (submitContext)
--            pushClaimedGroupValidationScope(state.device, submitContext);
--        try {
--            state.device.gpu.queue.submit([commandBuffer]);
--        }
--        catch (error) {
--            const result = submitContext ? popLastClaimedGroupValidationScope(state.device) : undefined;
--            discardClaimedGroupValidationResults(validations);
--            if (result)
--                discardClaimedGroupValidationResults([result]);
--            const context = result?.context ?? submitContext;
--            if (context) {
--                void reportDrawValidationError(state, context.label, context.group, error);
--                return;
--            }
--            throw error;
--        }
--        if (submitContext) {
--            const result = popLastClaimedGroupValidationScope(state.device);
--            if (result)
--                validations[0] = validations[0] ? preferClaimedGroupValidationResult(result, validations[0]) : result;
--        }
--        if (validations.length) {
--            const done = claimedGroupValidationDone(state.device, validations, { errorSink: state.errorSink });
--            state.trackSettled?.(done);
-+        finally {
-+            if (!submitted)
-+                attachment?.retract();
+@@ -250,14 +250,19 @@ export class InternalDraw {
+             state.trackSettled?.(done);
          }
      }
-     encode(pass, target, opts = {}, claimValidation) {
-diff --git a/dist/effect.js b/dist/effect.js
---- a/dist/effect.js
-+++ b/dist/effect.js
-@@ -31,6 +31,8 @@
-         effectImpls.set(this, impl);
+-    encode(pass, target, opts = {}, claimValidation, capture) {
++    encode(pass, target, opts = {}, claimValidation, capture, encodingState) {
+         const state = drawState(this, "encode");
+         assertDeviceUsable(state.device, `${this.label}.encode`);
+         state.setCore.preflight();
+         const pipeline = this.pipelineFor(target);
+         if (!pipeline)
+             return;
+-        pass.setPipeline(pipeline);
++        // shaderloom patch: one pipeline binding per internally owned render pass state.
++        if (!encodingState || encodingState[0] !== pipeline) {
++            pass.setPipeline(pipeline);
++            if (encodingState)
++                encodingState[0] = pipeline;
++        }
+         if (state.blendConstant)
+             pass.setBlendConstant(state.blendConstant);
+         // Explicit ref always emits — even 0, which restores the pass default after an earlier draw changed it.
+diff --git a/dist/frame-protocols.d.ts b/dist/frame-protocols.d.ts
+index e96011c..4b8b576 100644
+--- a/dist/frame-protocols.d.ts
++++ b/dist/frame-protocols.d.ts
+@@ -28,10 +28,12 @@ import type { Target } from "./target.ts";
+  */
+ export type FrameHandle = object;
+ export declare const FRAME_DRAWABLE: unique symbol;
++/** shaderloom patch: the pipeline last bound in an internally owned render pass. */
++export type RenderPassDrawState = [pipeline?: GPURenderPipeline];
+ export interface FrameDrawableProtocol {
+     /** Used by pass-level error messages (read-only depth rejections name the offending draw). */
+     readonly label: string;
+-    encode(pass: GPURenderPassEncoder, target: Target, opts: DrawCallOptions, claimValidation?: (result: ClaimedGroupValidationResult) => void, capture?: UniformCapture): void;
++    encode(pass: GPURenderPassEncoder, target: Target, opts: DrawCallOptions, claimValidation?: (result: ClaimedGroupValidationResult) => void, capture?: UniformCapture, encodingState?: RenderPassDrawState): void;
+     /** True when the drawable's depth state writes depth — rejected by a `depthReadOnly` pass. */
+     writesDepth(): boolean;
+     /** Names of the stencil ops that can write, empty when none — rejected by a `depthReadOnly` pass on a stencil format. */
+diff --git a/dist/frame-uniforms.js b/dist/frame-uniforms.js
+index 772a2b9..5792fe3 100644
+--- a/dist/frame-uniforms.js
++++ b/dist/frame-uniforms.js
+@@ -43,9 +43,12 @@ export class FrameUniforms {
+         const pool = disposed.has(this.device) ? undefined : pools.get(this.device);
+         for (const page of this.#pages) {
+             if (pool && pool.pages.length < MAX_RETAINED_UNIFORM_PAGES && pool.bytes + page.bytes.byteLength <= MAX_RETAINED_UNIFORM_BYTES) {
+-                // Bind groups this frame did not use belong to draws that moved or stopped drawing.
++                // shaderloom patch (T1705b, fork PR #9): bind groups neither this frame nor the page's
++                // previous frame used belong to draws that moved or stopped drawing. One frame is not
++                // enough: a consumer bound to a ping-pong alternates between two bind groups, so each
++                // frame would evict the one the next needs.
+                 for (const cache of page.caches)
+-                    cache.evictIdentity(pageIdentity(page), page.taken);
++                    cache.evictIdentity(pageIdentity(page), page.previouslyTaken);
+                 pool.pages.push(page);
+                 pool.bytes += page.bytes.byteLength;
+             }
+@@ -83,13 +86,14 @@ export class FrameUniforms {
+         if (index >= 0)
+             pool.bytes -= page.bytes.byteLength;
+         page.used = 0;
++        page.previouslyTaken = page.taken;
+         page.taken = bindGroupClock();
+         return page;
      }
-     set(values) { effectImpl(this).set(values); return this; }
-+    /** shaderloom patch (T1180): forwards to the underlying draw; see InternalDraw.evictBindGroups. */
-+    evictBindGroups() { effectImpl(this).evictBindGroups(); }
-     draw(target = {}) { effectImpl(this).draw(isTarget(target) ? { target } : target); }
-     compile(target) { return effectImpl(this).compile(target).then(() => this); }
-     compileSync(target) { effectImpl(this).compileSync(target); return this; }
+     #createPage(minimum) {
+         const size = Math.min(this.device.limits.maxBufferSize, Math.max(65536, Math.ceil(minimum / 4) * 4));
+         const buffer = this.device.gpu.createBuffer({ label: "vgpu.frame.uniforms", size, usage: 0x40 | 0x08 });
+-        return { id: nextPage++, buffer, bytes: new Uint8Array(size), used: 0, taken: 0, caches: new Set(), ranges: new Map() };
++        return { id: nextPage++, buffer, bytes: new Uint8Array(size), used: 0, taken: 0, previouslyTaken: 0, caches: new Set(), ranges: new Map() };
+     }
+ }
+ function pageIdentity(page) {
 diff --git a/dist/frame.d.ts b/dist/frame.d.ts
+index ab91962..507cf93 100644
 --- a/dist/frame.d.ts
 +++ b/dist/frame.d.ts
-@@ -87,6 +87,16 @@
-     constructor(device: Device, defaultTarget?: Target | undefined, errorSink?: ValidationErrorSink | undefined, trackSettled?: ((promise: Promise<unknown>) => void) | undefined, releaseLifecycle?: (() => void) | undefined);
-     pass(target: Target, body: Effect | Draw | ((pass: FramePass) => void)): void;
-     pass(options: FramePassOptions, body: Effect | Draw | ((pass: FramePass) => void)): void;
-+    /**
-+     * shaderloom patch (T1247): times GPU work submitted outside this frame's encoder (a vgpu
-+     * `Compute` submits its own command buffer) into THIS frame's span set, so the per-pass column
-+     * and the frame extent cover compute dispatches. See the implementation note in frame.js.
-+     */
-+    attachExternalSpan(span: TimerSpan): {
-+        readonly timestampWrites?: GPUComputePassTimestampWrites;
-+        /** shaderloom patch (T1295): undo, for work that attached and then never reached the queue. */
-+        readonly retract: () => void;
-+    };
-     submit(): void;
+@@ -40,6 +40,8 @@ export declare function frame<R>(gpu: Gpu, cb: SyncFrameCallback<R> | undefined)
+ export declare function frameLoop<R>(gpu: Gpu, cb: SyncFrameCallback<R>, opts?: FrameLoopOptions): FrameLoopHandle;
+ export interface FrameComputePassOptions {
+     readonly label?: string;
++    /** shaderloom patch (T1707b): times this compute pass on the GPU, as `FramePassOptions.timer` times a render pass. One span name per frame. */
++    readonly timer?: TimerSpan;
+ }
+ export interface FrameComputePass {
+     dispatch(pipeline: Compute, x: number, y?: number, z?: number): void;
+@@ -128,7 +130,7 @@ export declare class FramePass {
+     private readonly frame?;
+     private readonly assertFrameOpen?;
+     private readonly capture?;
+-    constructor(encoder: GPURenderPassEncoder, target: Target, validations: ClaimedGroupValidationResult[], depthReadOnly?: boolean, occlusionSource?: FrameOcclusionSource | undefined, frame?: Frame | undefined, assertFrameOpen?: ((where: string) => void) | undefined, capture?: UniformCapture | undefined);
++    constructor(encoder: GPURenderPassEncoder, target: Target, validations: ClaimedGroupValidationResult[], depthReadOnly?: boolean, occlusionSource?: FrameOcclusionSource | undefined, frame?: Frame | undefined, assertFrameOpen?: ((where: string) => void) | undefined, capture?: UniformCapture | undefined, encodingState?: import("./frame-protocols.ts").RenderPassDrawState);
+     draw(drawable: Draw | Effect, opts?: DrawCallOptions): void;
      /**
-      * Discards the frame without submitting it: the command encoder is dropped (nothing this frame
+      * Wraps one or more draws in begin/endOcclusionQuery. The body ALWAYS executes; condition your
 diff --git a/dist/frame.js b/dist/frame.js
+index b8c2ec5..6d913fe 100644
 --- a/dist/frame.js
 +++ b/dist/frame.js
-@@ -119,8 +119,8 @@
+@@ -108,7 +108,20 @@ export class Frame {
+         if (typeof callback !== "function")
+             throw new VGPUError({ code: "VGPU-COMPUTE-PASS-INVALID", message: "computePass requires a synchronous callback.", where: "Frame.computePass" });
+         const label = typeof options === "function" ? "vgpu.computePass" : options.label ?? "vgpu.computePass";
+-        const encoder = validateOperation(this.device, this.#computeValidations, `${label}.begin`, () => this.#encoder.beginComputePass({ label }));
++        // shaderloom patch (T1707b): `timer` times this compute pass exactly as `FramePassOptions.timer`
++        // times a render pass, through the same attachment, so a kernel encoded into the frame keeps its
++        // own GPU span and its place in the frame extent. Owners attached here are rolled back if the
++        // pass fails, as in pass().
++        const attached = [];
++        const timer = typeof options === "function" || options.timer === undefined ? undefined : this.#attach(options.timer, undefined, attached, computeTimerAttachmentInvalidError);
++        let encoder;
++        try {
++            encoder = validateOperation(this.device, this.#computeValidations, `${label}.begin`, () => this.#encoder.beginComputePass(timer?.timestampWrites ? { label, timestampWrites: timer.timestampWrites } : { label }));
++        }
++        catch (error) {
++            this.#discardOwners(attached);
++            throw error;
++        }
+         this.#passActive = true;
+         let open = true;
+         const pass = {
+@@ -132,6 +145,7 @@ export class Frame {
+         }
+         catch (error) {
+             failed = true;
++            this.#discardOwners(attached);
+             throw error;
+         }
+         finally {
+@@ -176,8 +190,8 @@ export class Frame {
              throw surfaceNotInFrameError("Frame.pass");
          const clear = targetOnly ? undefined : target.clear;
          const preserve = clear === false;
 -        if (preserve && resolvedTarget.sampleCount === 4)
 -            throw passPreserveMsaaError();
-+        // shaderloom patch (T939): preserve into MSAA is supported now — the msaa
++        // shaderloom patch (T939): preserve into MSAA is supported now: the msaa
 +        // attachment stores every pass and loads on preserve (see colorAttachment).
          const clearDepth = targetOnly ? undefined : target.clearDepth;
          if (clearDepth !== undefined) {
              if (typeof clearDepth !== "number" || !(clearDepth >= 0 && clearDepth <= 1))
-@@ -220,6 +220,36 @@
-             throw error;
-         }
-         endRenderPassWithClaimValidation(this.device, encoder, this.#validations);
-+    }
-+    /**
-+     * shaderloom patch (T1247): time GPU work that is NOT encoded into this frame's encoder.
-+     *
-+     * A vgpu `Compute` builds and submits its own command buffer (compute.js `dispatch`), so its
-+     * `timestampWrites` cannot travel through `Frame.pass` — and without them a compute-heavy
-+     * document's per-pass column is render-only and the frame EXTENT (patch theme 4) stops at the
-+     * last render pass. Both under-report by exactly the compute work.
-+     *
-+     * Attaching here puts the span in THIS frame's span set through the same protocol a pass uses,
-+     * so the frame's single `resolveQuerySet` covers the compute's query indices too. That is
-+     * correct by queue order, not by luck: the compute's command buffer is submitted while this
-+     * frame is still open, so its timestamp writes execute before this frame's resolve does.
-+     *
-+     * Returns the attachment result; `timestampWrites` is undefined when the span was dropped for
-+     * this frame (query set full), exactly as in `Frame.pass`.
-+     */
-+    attachExternalSpan(span) {
-+        if (this.#canceled)
-+            throw frameCanceledError("Frame.attachExternalSpan");
-+        if (this.#submitted)
-+            throw frameAlreadySubmittedError("Frame.attachExternalSpan");
-+        assertDeviceUsable(this.device, "Frame.attachExternalSpan");
-+        const result = this.#attach(span, undefined, [], timerAttachmentInvalidError);
-+        // shaderloom patch (T1295): the caller's undo, for work that attached a span and then never
-+        // reached the queue. See InternalTimer.retractSpan.
-+        return {
-+            timestampWrites: result.timestampWrites,
-+            retract: () => { result.owner.retractSpan?.(span, this); },
-+        };
+@@ -259,7 +273,7 @@ export class Frame {
+                         throw frameCanceledError(where);
+                     if (!this.#passActive)
+                         throw framePassActiveError(where);
+-                }, this.#capture));
++                }, this.#capture, []));
+             }
+             finally {
+                 this.#passActive = false;
+@@ -490,8 +504,9 @@ export class FramePass {
+     frame;
+     assertFrameOpen;
+     capture;
++    encodingState;
+     #occlusionActive = false;
+-    constructor(encoder, target, validations, depthReadOnly = false, occlusionSource, frame, assertFrameOpen, capture) {
++    constructor(encoder, target, validations, depthReadOnly = false, occlusionSource, frame, assertFrameOpen, capture, encodingState) {
+         this.encoder = encoder;
+         this.target = target;
+         this.validations = validations;
+@@ -500,13 +515,14 @@ export class FramePass {
+         this.frame = frame;
+         this.assertFrameOpen = assertFrameOpen;
+         this.capture = capture;
++        this.encodingState = encodingState;
      }
-     submit() {
-         // Closed either way: a re-submit has nothing left to flush, and a canceled frame dropped its
+     draw(drawable, opts = {}) {
+         this.assertFrameOpen?.("FramePass.draw");
+         const encodable = frameDrawable(drawable);
+         if (this.depthReadOnly)
+             assertDrawableAllowedInReadOnlyPass(encodable, this.target);
+-        encodable.encode(this.encoder, this.target, opts, (result) => this.validations.push(result), this.capture);
++        encodable.encode(this.encoder, this.target, opts, (result) => this.validations.push(result), this.capture, this.encodingState);
+     }
+     /**
+      * Wraps one or more draws in begin/endOcclusionQuery. The body ALWAYS executes; condition your
+@@ -548,6 +564,9 @@ export class FramePass {
+         // whole list or none of it.
+         for (const entry of recorded)
+             entry.assertReplayable(this.target);
++        // shaderloom patch: executeBundles clears native render-pass state, including for an empty list.
++        if (this.encodingState)
++            this.encodingState[0] = undefined;
+         this.encoder.executeBundles(recorded.map((entry) => entry.gpu));
+     }
+ }
+@@ -583,6 +602,10 @@ function invalidBundle() {
+ function timerAttachmentInvalidError(value) {
+     return timerInvalidError(`FramePassOptions.timer received ${previewValue(value)}; expected a TimerSpan from timer.span(name).`, `Create const passTimer = timer(gpu) once, then pass passTimer.span("name") per pass.`, "Frame.pass");
+ }
++// shaderloom patch (T1707b, fork PR #6): a compute pass's timer is refused under its own name.
++function computeTimerAttachmentInvalidError(value) {
++    return timerInvalidError(`FrameComputePassOptions.timer received ${previewValue(value)}; expected a TimerSpan from timer.span(name).`, `Create const passTimer = timer(gpu) once, then pass passTimer.span("name") per pass.`, "Frame.computePass");
++}
+ function visibilityAttachmentInvalidError(value) {
+     return visibilityInvalidError(`FramePassOptions.visibility received ${previewValue(value)}; expected a Visibility from visibility(gpu).`, "Create const vis = visibility(gpu) once, then pass { target, visibility: vis } per pass.", "Frame.pass");
+ }
 diff --git a/dist/index.d.ts b/dist/index.d.ts
+index 1d4e321..b6978c8 100644
 --- a/dist/index.d.ts
 +++ b/dist/index.d.ts
 @@ -1,6 +1,6 @@
  import { createGpu, type InitOptions } from "./init.ts";
  export { initFromDevice } from "./init-from-device.ts";
 -export type { Bundle, BundleOptions, BundleRecorder, Compute, ComputeOptions, DispatchOptions, ClearColor, GpuErrorListener, InitOptions, PingPongStorage, PingPongTargets, SharedUniforms, StorageAccess, StorageBuffer, StorageOptions, Surface, SurfaceOptions, SurfaceResizeEvent, Timer, TimerSpan, Visibility, VisibilityOptions, VisibilityQuery } from "./init.ts";
-+export type { Bundle, BundleOptions, BundleRecorder, Compute, ComputeOptions, DispatchOptions, DispatchTiming, ClearColor, GpuErrorListener, InitOptions, PingPongStorage, PingPongTargets, SharedUniforms, StorageAccess, StorageBuffer, StorageOptions, Surface, SurfaceOptions, SurfaceResizeEvent, Timer, TimerFrameDrop, TimerFrameExtent, TimerSpan, Visibility, VisibilityOptions, VisibilityQuery } from "./init.ts";
++export type { Bundle, BundleOptions, BundleRecorder, Compute, ComputeOptions, DispatchOptions, ClearColor, GpuErrorListener, InitOptions, PingPongStorage, PingPongTargets, SharedUniforms, StorageAccess, StorageBuffer, StorageOptions, Surface, SurfaceOptions, SurfaceResizeEvent, Timer, TimerFrameDrop, TimerFrameExtent, TimerSpan, Visibility, VisibilityOptions, VisibilityQuery } from "./init.ts";
  export type { BlendComponentOptions, BlendOptions, BlendPreset, DepthOptions, Draw, DrawOptions, DrawCallOptions, DrawLayoutOptions, GeometryLike, StencilFaceOptions, StencilOptions } from "./draw.ts";
  export { Geometry } from "./scene/geometry-descriptor.ts";
  export type { GeometryAttributeOverride, GeometryAttributes, GeometryBuffer, GeometryBufferOptions, GeometryData, GeometryOptions, GeometrySlice, GeometrySliceOptions } from "./scene/geometry-descriptor.ts";
 diff --git a/dist/init.d.ts b/dist/init.d.ts
+index d4cb959..7298e1e 100644
 --- a/dist/init.d.ts
 +++ b/dist/init.d.ts
-@@ -1,9 +1,9 @@
- export { createCoreGpu as createGpu, type Gpu } from "./kernel.ts";
- export { initFromDevice } from "./init-from-device.ts";
+@@ -3,7 +3,7 @@ export { initFromDevice } from "./init-from-device.ts";
  export type { AdapterFactory, InitOptions } from "./kernel.ts";
--export type { Compute, ComputeOptions, DispatchOptions, GpuErrorListener, PingPongStorage, PingPongTargets, SharedUniforms, StorageAccess, StorageBuffer, StorageOptions } from "./api-types.ts";
-+export type { Compute, ComputeOptions, DispatchOptions, DispatchTiming, GpuErrorListener, PingPongStorage, PingPongTargets, SharedUniforms, StorageAccess, StorageBuffer, StorageOptions } from "./api-types.ts";
+ export type { Compute, ComputeOptions, DispatchOptions, GpuErrorListener, PingPongStorage, PingPongTargets, SharedUniforms, StorageAccess, StorageBuffer, StorageOptions } from "./api-types.ts";
  export type { ClearColor } from "./target-utils.ts";
 -export type { Timer, TimerSpan } from "./timer.ts";
 +export type { Timer, TimerFrameDrop, TimerFrameExtent, TimerSpan } from "./timer.ts";
@@ -470,69 +271,70 @@ diff --git a/dist/init.d.ts b/dist/init.d.ts
  export type { Bundle, BundleOptions, BundleRecorder } from "./bundle.ts";
  export type { Surface, SurfaceOptions, SurfaceResizeEvent } from "./surface.ts";
 diff --git a/dist/mock.d.ts b/dist/mock.d.ts
+index aca81bf..5739e59 100644
 --- a/dist/mock.d.ts
 +++ b/dist/mock.d.ts
-@@ -3,7 +3,7 @@
+@@ -3,7 +3,7 @@ export { initFromDevice } from "./init-from-device.ts";
  export { createMockAdapter } from "@vgpu/adapter-mock";
  export type { CreateMockAdapterOptions } from "@vgpu/adapter-mock";
  export { getMockGPUDeviceInstrumentation } from "@vgpu/core";
 -export type { Bundle, BundleOptions, BundleRecorder, Compute, ComputeOptions, DispatchOptions, ClearColor, GpuErrorListener, InitOptions, PingPongStorage, PingPongTargets, SharedUniforms, StorageAccess, StorageBuffer, StorageOptions, Surface, SurfaceOptions, SurfaceResizeEvent, Timer, TimerSpan, Visibility, VisibilityOptions, VisibilityQuery } from "./init.ts";
-+export type { Bundle, BundleOptions, BundleRecorder, Compute, ComputeOptions, DispatchOptions, DispatchTiming, ClearColor, GpuErrorListener, InitOptions, PingPongStorage, PingPongTargets, SharedUniforms, StorageAccess, StorageBuffer, StorageOptions, Surface, SurfaceOptions, SurfaceResizeEvent, Timer, TimerFrameExtent, TimerSpan, Visibility, VisibilityOptions, VisibilityQuery } from "./init.ts";
++export type { Bundle, BundleOptions, BundleRecorder, Compute, ComputeOptions, DispatchOptions, ClearColor, GpuErrorListener, InitOptions, PingPongStorage, PingPongTargets, SharedUniforms, StorageAccess, StorageBuffer, StorageOptions, Surface, SurfaceOptions, SurfaceResizeEvent, Timer, TimerFrameExtent, TimerSpan, Visibility, VisibilityOptions, VisibilityQuery } from "./init.ts";
  export type { BlendComponentOptions, BlendOptions, BlendPreset, DepthOptions, Draw, DrawOptions, DrawCallOptions, DrawLayoutOptions, GeometryLike, StencilFaceOptions, StencilOptions } from "./draw.ts";
  export { Geometry } from "./scene/geometry-descriptor.ts";
  export type { GeometryAttributeOverride, GeometryAttributes, GeometryBuffer, GeometryBufferOptions, GeometryData, GeometryOptions, GeometrySlice, GeometrySliceOptions } from "./scene/geometry-descriptor.ts";
+diff --git a/dist/native-validation.js b/dist/native-validation.js
+index 0703145..87dff38 100644
+--- a/dist/native-validation.js
++++ b/dist/native-validation.js
+@@ -27,17 +27,24 @@ export function nativeScope(device, operation) {
+     }
+ }
+ const validations = new WeakMap();
++/**
++ * shaderloom patch (T1705b): a shader module, bind group layout or pipeline layout is created with
++ * NO error scope of its own, as through 0.5.0, so what the device says about it lands on the scope
++ * its caller opened (or on the uncaptured path).
++ *
++ * Upstream scopes each object and keeps its error for the pipeline that later names the object as a
++ * dependency, and a pipeline reports only the FIRST of its causes: a pass with a WGSL error and a
++ * layout over a device limit is told one of the two, and an object no pipeline claims is reported
++ * under a label that names no consumer. Loom builds every pass inside its own scope and reports
++ * every device error on that pass's node, so the errors stay where that scope can read them.
++ */
+ export function nativeObject(device, create, dependencies = []) {
+-    let captured;
+     try {
+-        captured = nativeScope(device, create);
++        return create();
+     }
+     catch (cause) {
+         throw cause instanceof VGPUError ? cause : compileFailedError("pipeline.setup", cause);
+     }
+-    const { value, error } = captured;
+-    validations.set(value, { error: Promise.all([objectValidation(dependencies), error]).then(errors => errors.find(Boolean) ?? null), claimed: false });
+-    return value;
+ }
+ export function objectValidation(objects) {
+     return Promise.all(objects.map(object => {
 diff --git a/dist/node.d.ts b/dist/node.d.ts
+index 31612df..309b85e 100644
 --- a/dist/node.d.ts
 +++ b/dist/node.d.ts
-@@ -2,7 +2,7 @@
+@@ -2,7 +2,7 @@ import { type NodeAdapterInfo, type NodeAdapterMode } from "@vgpu/adapter-node";
  import type { VGPUAdapter } from "@vgpu/core";
  import { type Gpu, type InitOptions } from "./init.ts";
  export { createNodeAdapter } from "@vgpu/adapter-node";
 -export type { Bundle, BundleOptions, BundleRecorder, Compute, ComputeOptions, DispatchOptions, ClearColor, GpuErrorListener, PingPongStorage, PingPongTargets, SharedUniforms, StorageAccess, StorageBuffer, StorageOptions, Surface, SurfaceOptions, SurfaceResizeEvent, Timer, TimerSpan, Visibility, VisibilityOptions, VisibilityQuery } from "./init.ts";
-+export type { Bundle, BundleOptions, BundleRecorder, Compute, ComputeOptions, DispatchOptions, DispatchTiming, ClearColor, GpuErrorListener, PingPongStorage, PingPongTargets, SharedUniforms, StorageAccess, StorageBuffer, StorageOptions, Surface, SurfaceOptions, SurfaceResizeEvent, Timer, TimerFrameExtent, TimerSpan, Visibility, VisibilityOptions, VisibilityQuery } from "./init.ts";
++export type { Bundle, BundleOptions, BundleRecorder, Compute, ComputeOptions, DispatchOptions, ClearColor, GpuErrorListener, PingPongStorage, PingPongTargets, SharedUniforms, StorageAccess, StorageBuffer, StorageOptions, Surface, SurfaceOptions, SurfaceResizeEvent, Timer, TimerFrameExtent, TimerSpan, Visibility, VisibilityOptions, VisibilityQuery } from "./init.ts";
  export type { BlendComponentOptions, BlendOptions, BlendPreset, DepthOptions, Draw, DrawOptions, DrawCallOptions, DrawLayoutOptions, GeometryLike, StencilFaceOptions, StencilOptions } from "./draw.ts";
  export { Geometry } from "./scene/geometry-descriptor.ts";
  export type { GeometryAttributeOverride, GeometryAttributes, GeometryBuffer, GeometryBufferOptions, GeometryData, GeometryOptions, GeometrySlice, GeometrySliceOptions } from "./scene/geometry-descriptor.ts";
-diff --git a/dist/set-resources.js b/dist/set-resources.js
---- a/dist/set-resources.js
-+++ b/dist/set-resources.js
-@@ -59,8 +59,15 @@
-         assertBufferUsable(value.buffer, `${context.sourceHint}.set`);
-         return { resource: { buffer: value.gpu, offset: 0, size: value.size }, identity: value.buffer.resourceIdentity, unsubscribe: (cb) => value.buffer.onDestroy(cb) };
-     }
--    if (isGPUBufferBinding(value))
--        return { resource: value, identity: syntheticIdentity(value.buffer) };
-+    if (isGPUBufferBinding(value)) {
-+        // shaderloom patch (T1076): a REGION binding may name its own identity. Without
-+        // this, every region of one buffer shares that buffer's synthetic identity, so the
-+        // bind-group cache cannot tell two attributes apart and #preflightAliasing reports
-+        // two NON-OVERLAPPING writable regions as an alias. Point storage is packed —
-+        // several attributes per buffer — and both consequences are wrong.
-+        const region = { buffer: value.buffer, offset: value.offset, size: value.size };
-+        return { resource: region, identity: value.resourceIdentity ?? syntheticIdentity(value.buffer) };
-+    }
-     if (isRawGPUBuffer(value))
-         return { resource: { buffer: value }, identity: syntheticIdentity(value) };
-     throw incompatibleResourceError(binding, "buffer", `Pass a compatible Buffer/Uniform: ${binding.name}.set({ ${binding.name}: gpu.device.createBuffer(...) }).`);
-@@ -177,7 +184,13 @@
- }
- function hasAnyResourceShape(value) {
-     const record = value;
--    return "gpu" in record || "bindGroup" in record || "createView" in record || "resourceIdentity" in record;
-+    // shaderloom patch (T1076): a raw GPUBufferBinding ({ buffer, offset, size }) is a
-+    // resource, not a JS uniform value. Without this it falls to isPlainValue() and the
-+    // set() routes it at the uniform path, throwing VGPU-RING1-UNSUPPORTED — even though
-+    // normalizeBufferResource() below already handles the shape (isGPUBufferBinding).
-+    // Binding one region of a packed buffer is how point attributes reach shaders that
-+    // still declare array<vec3f>.
-+    return "gpu" in record || "bindGroup" in record || "createView" in record || "resourceIdentity" in record || isGPUBufferBinding(record);
- }
- function syntheticIdentity(value) {
-     if (typeof value !== "object" || value === null)
 diff --git a/dist/target-offscreen.js b/dist/target-offscreen.js
+index 6f4d4c6..e6d2546 100644
 --- a/dist/target-offscreen.js
 +++ b/dist/target-offscreen.js
-@@ -155,6 +155,8 @@
+@@ -155,6 +155,8 @@ export class OffscreenTarget {
              size,
              format: spec.format,
              usage: ["render_attachment", "texture_binding", "copy_src"],
@@ -542,9 +344,10 @@ diff --git a/dist/target-offscreen.js b/dist/target-offscreen.js
              label: this.options.label ? `${this.options.label}.color${index}.resolve` : undefined,
          }));
 diff --git a/dist/target-utils.js b/dist/target-utils.js
+index 08e3548..018734b 100644
 --- a/dist/target-utils.js
 +++ b/dist/target-utils.js
-@@ -53,11 +53,15 @@
+@@ -53,11 +53,15 @@ function validateMsaaFormat(format, caps) {
      throw unsupportedError("target", "Dawn compatibility mode does not support rgba16float+msaa.", "Use rgba8unorm for MSAA here, or disable msaa.");
  }
  export function colorAttachment(resolved, msaa, clear, preserve) {
@@ -561,7 +364,7 @@ diff --git a/dist/target-utils.js b/dist/target-utils.js
      };
      if (!preserve)
          attachment.clearValue = colorValue(clear);
-@@ -74,13 +78,15 @@
+@@ -74,13 +78,15 @@ export function depthAttachment(depth, preserve, clearDepth, clearStencil, readO
              attachment.stencilReadOnly = true;
          return attachment;
      }
@@ -580,9 +383,10 @@ diff --git a/dist/target-utils.js b/dist/target-utils.js
              attachment.stencilClearValue = clearStencil ?? 0;
      }
 diff --git a/dist/target.d.ts b/dist/target.d.ts
+index 0d21af7..4249729 100644
 --- a/dist/target.d.ts
 +++ b/dist/target.d.ts
-@@ -2,6 +2,8 @@
+@@ -2,6 +2,8 @@ import type { ClearColor } from "./target-utils.ts";
  import type { Texture, ResourceDestroyCallback, ResourceIdentity, UnsubscribeResourceDestroy } from "@vgpu/core";
  export interface TargetTextureOptions {
      readonly format?: GPUTextureFormat;
@@ -592,9 +396,10 @@ diff --git a/dist/target.d.ts b/dist/target.d.ts
       * Default clear color of this target, used by passes that clear without naming a color.
       * Defaults to `[0, 0, 0, 1]`; mutable at runtime through `target.clearColor`.
 diff --git a/dist/timer.d.ts b/dist/timer.d.ts
+index 4571da5..56c8bef 100644
 --- a/dist/timer.d.ts
 +++ b/dist/timer.d.ts
-@@ -10,12 +10,33 @@
+@@ -10,12 +10,33 @@ import { type QueryHostOptions } from "./query-ring.ts";
  export interface TimerSpan {
      readonly name: string;
  }
@@ -630,7 +435,7 @@ diff --git a/dist/timer.d.ts b/dist/timer.d.ts
      /** Releases the timer's query set and buffers. Further use of the timer or its spans throws. */
      dispose(): void;
  }
-@@ -54,8 +75,11 @@
+@@ -54,7 +75,8 @@ export declare class InternalTimer {
      #private;
      constructor(device: Device, host?: QueryHostOptions);
      span(name: string): TimerSpan;
@@ -638,30 +443,28 @@ diff --git a/dist/timer.d.ts b/dist/timer.d.ts
 +    onResults(cb: (spans: Readonly<Record<string, number>>, frame: TimerFrameExtent) => void): () => void;
 +    onDropped(cb: (drop: TimerFrameDrop) => void): () => void;
      dispose(): void;
-+    /** @internal shaderloom patch (T1295): Frame.attachExternalSpan's undo. */
-+    retractSpan(span: TimerSpan, frame: unknown): void;
      /**
       * @internal Frame.pass hook: registers the span for the current frame and returns the pass
-      * descriptor's timestampWrites, or undefined when the span is dropped for this frame because
 diff --git a/dist/timer.js b/dist/timer.js
+index 88f2111..98e5030 100644
 --- a/dist/timer.js
 +++ b/dist/timer.js
-@@ -8,6 +8,14 @@
+@@ -8,6 +8,14 @@ const INITIAL_SPAN_CAPACITY = 32;
  const MAX_QUERIES = 4096;
  const MAX_SPANS_PER_FRAME = MAX_QUERIES / 2;
  const MS_PER_NS = 1 / 1_000_000;
 +/**
 + * shaderloom patch (T1295): the query ring starts with vgpu's three staging slots and doubles on
 + * demand, at a frame boundary, whenever a frame is dropped for want of a free one. Three is right for
-+ * a frame loop (one frame per tick); a caller that submits several timed frames per tick — our export
-+ * path splits a render into one frame per compute segment — needs one slot per frame in flight.
++ * a frame loop (one frame per tick); a caller that submits several timed frames per tick — an export
++ * rendering ahead of the display — needs one slot per frame in flight.
 + */
 +const INITIAL_STAGING_DEPTH = 3;
 +const MAX_STAGING_DEPTH = 32;
  class InternalTimerSpan {
      name;
      owner;
-@@ -63,6 +71,12 @@
+@@ -63,6 +71,12 @@ export class InternalTimer {
      #encodedSpans;
      #resultSeq = 0;
      #appliedSeq = -1;
@@ -674,7 +477,7 @@ diff --git a/dist/timer.js b/dist/timer.js
      /**
       * One retain per open frame whose pass descriptors reference a ring's query set, keyed by frame
       * identity and remembering *which* ring it pinned (capacity growth swaps the ring mid-life).
-@@ -100,11 +114,25 @@
+@@ -100,11 +114,25 @@ export class InternalTimer {
          this.#listeners.add(cb);
          return () => { this.#listeners.delete(cb); };
      }
@@ -700,16 +503,11 @@ diff --git a/dist/timer.js b/dist/timer.js
          this.#spans.clear();
          this.#frameNames.clear();
          this.#frameSpans = [];
-@@ -153,10 +181,33 @@
-     /** @internal Frame.submit hook, before encoder.finish(): appends this frame's single resolve to the frame encoder. */
-     finalizeFrame(frame, encoder) {
+@@ -155,10 +183,17 @@ export class InternalTimer {
          this.#encodedSpans = undefined;
--        if (this.#disposed || frame !== this.#frame || this.#usedQueries === 0)
--            return;
+         if (this.#disposed || frame !== this.#frame || this.#usedQueries === 0)
+             return;
 -        if (this.#ring.encodeResolve(encoder, this.#usedQueries))
-+        // shaderloom patch (T1295): a frame whose every span was retracted has nothing to read back.
-+        if (this.#disposed || frame !== this.#frame || this.#usedQueries === 0 || this.#frameSpans.length === 0)
-+            return;
 +        if (this.#ring.encodeResolve(encoder, this.#usedQueries)) {
              this.#encodedSpans = [...this.#frameSpans];
 +            return;
@@ -720,24 +518,12 @@ diff --git a/dist/timer.js b/dist/timer.js
 +        if (this.#depth < MAX_STAGING_DEPTH)
 +            this.#depthDemand = Math.min(MAX_STAGING_DEPTH, this.#depth * 2);
 +        this.#reportDropped(frame, "staging-busy");
-+    }
-+    /**
-+     * @internal shaderloom patch (T1295): Frame.attachExternalSpan's undo. Work that attached a span
-+     * and then never reached the queue — it threw, or its command buffer failed to finish or submit —
-+     * wrote no timestamps, so the frame must not resolve its pair into a result: that would be a
-+     * duration for a pass that never ran. The pair stays reserved (indices are positional) and is
-+     * simply never reported.
-+     */
-+    retractSpan(span, frame) {
-+        if (frame !== this.#frame)
-+            return;
-+        const index = this.#frameSpans.findIndex((entry) => entry.name === span.name);
-+        if (index >= 0)
-+            this.#frameSpans.splice(index, 1);
      }
-     /** @internal Frame.submit hook, after queue.submit succeeds: starts the non-blocking readback. */
+-    /** @internal Frame.submit hook, after queue.submit succeeds: starts the non-blocking readback. */
      frameSubmitted(frame) {
-@@ -181,7 +232,7 @@
+         // Release *this* frame's retain first, whichever ring it pinned: the command buffer is submitted
+         // (or the frame was abandoned), so nothing it encoded references that query set anymore, and a
+@@ -181,7 +216,7 @@ export class InternalTimer {
              if (seq <= this.#appliedSeq)
                  return;
              this.#appliedSeq = seq;
@@ -746,7 +532,7 @@ diff --git a/dist/timer.js b/dist/timer.js
          });
      }
      /**
-@@ -191,16 +242,24 @@
+@@ -191,16 +226,24 @@ export class InternalTimer {
       * it attached a span — the counterpart of frameSubmitted() for frames that never submit.
       */
      frameAbandoned(frame) {
@@ -773,7 +559,7 @@ diff --git a/dist/timer.js b/dist/timer.js
              this.#ring = this.#createRing();
          }
          this.#demand = this.#capacity;
-@@ -209,19 +268,51 @@
+@@ -209,19 +252,51 @@ export class InternalTimer {
          this.#frameNames.clear();
          this.#usedQueries = 0;
      }
@@ -827,7 +613,7 @@ diff --git a/dist/timer.js b/dist/timer.js
              }
              catch (error) {
                  console.error(error);
-@@ -242,7 +333,7 @@
+@@ -242,7 +317,7 @@ export class InternalTimer {
          ring.release();
      }
      #createRing() {

@@ -1,0 +1,14 @@
+import { createRequire } from "node:module";
+import http from "node:http"; import fs from "node:fs"; import path from "node:path";
+const require = createRequire("/Users/flo/work/code/shaderloom/package.json");
+const { chromium } = require("@playwright/test");
+const dir = path.dirname(new URL(import.meta.url).pathname);
+const server = http.createServer((req, res) => { const f = path.join(dir, req.url === "/" ? "index.html" : req.url); if (!fs.existsSync(f)) { res.statusCode = 404; res.end(); return; } res.setHeader("Cross-Origin-Opener-Policy", "same-origin"); res.setHeader("Cross-Origin-Embedder-Policy", "require-corp"); res.setHeader("content-type", f.endsWith(".js") ? "text/javascript" : "text/html"); res.end(fs.readFileSync(f)); }).listen(0);
+const port = server.address().port;
+const browser = await chromium.launch({ channel: "chromium" });
+const page = await browser.newPage();
+page.on("console", (m) => console.log("console:", m.text()));
+await page.goto(`http://localhost:${port}/`);
+await page.waitForFunction(() => window.__result !== undefined, null, { timeout: 600000 });
+console.log(JSON.stringify(await page.evaluate(() => window.__result), null, 1));
+await browser.close(); server.close();

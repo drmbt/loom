@@ -1,16 +1,19 @@
 import type { NodeDefinition, CompiledNodeDescription } from "../../domain/types/node-definition.ts";
 import type { EffectPassDescriptor } from "../../runtime/backend/plan.ts";
-import { RGBA_TEXTURE } from "./common-ports.ts";
+import { ARITHMETIC_TEXTURE, RGBA_TEXTURE } from "./common-ports.ts";
 import { missingCompileResource, readCompileInputs } from "./compile-context.ts";
 import { CHANNEL_OPTIONS, readEnumIndex, readNumber } from "./parameter-readers.ts";
 import {
   LIMIT_FRAGMENT_WGSL,
+  LIMIT_FLOAT_FRAGMENT_WGSL,
   HSV_FRAGMENT_WGSL,
   LEVEL_FRAGMENT_WGSL,
+  LEVEL_FLOAT_FRAGMENT_WGSL,
   LOOKUP_FRAGMENT_WGSL,
   PREMULTIPLY_FRAGMENT_WGSL,
   REORDER_FRAGMENT_WGSL,
   THRESHOLD_FRAGMENT_WGSL,
+  THRESHOLD_FLOAT_FRAGMENT_WGSL,
 } from "../shaders/color.wgsl.ts";
 
 /**
@@ -68,9 +71,9 @@ export const levelNode: NodeDefinition = {
   title: "Level",
   category: "color",
   description:
-    "Black/white level, invert, gamma, contrast, brightness and opacity, applied to linear values.",
+    "Black/white level, invert, gamma, contrast, brightness and opacity for linear colour or numerical masks/depth. Inherits the input format without reducing float-map precision.",
   inputs: [
-    { id: "input", label: "Input", type: RGBA_TEXTURE, description: "Linear-space colour." },
+    { id: "input", label: "Input", type: ARITHMETIC_TEXTURE, description: "Linear colour or numerical data; data retains its format and meaning." },
   ],
   outputs: [{ id: "out", label: "Out", type: RGBA_TEXTURE, description: "Linear-space colour." }],
   parameters: {
@@ -95,7 +98,7 @@ export const levelNode: NodeDefinition = {
       min: 0,
       max: 1,
       range: "bounded",
-      description: "Multiplies alpha only — coverage, not brightness.",
+      description: "Multiplies alpha only. Single-channel numerical maps have no alpha; use Brightness to scale their values.",
     },
   },
   resolutionPolicy: { kind: "inherit", input: "input" },
@@ -108,13 +111,14 @@ export const levelNode: NodeDefinition = {
       const what = target === undefined ? 'output port "out"' : 'input port "input"';
       return { passes: [], diagnostics: [missingCompileResource(nodeId, what)] };
     }
+    const scalar = source.format === "r32float";
     const pass: EffectPassDescriptor = {
       kind: "effect",
-      id: `${nodeId}:level`,
-      shader: LEVEL_FRAGMENT_WGSL,
+      id: `${nodeId}:level${scalar ? ":float" : ""}`,
+      shader: scalar ? LEVEL_FLOAT_FRAGMENT_WGSL : LEVEL_FRAGMENT_WGSL,
       target,
-      textures: [{ binding: "inputTexture", resourceId: source.resource }],
-      samplers: [{ binding: "inputSampler", resourceId: source.sampler }],
+      textures: [{ binding: "inputTexture", resourceId: source.resource, ...(scalar ? { sampled: "unfiltered" as const } : {}) }],
+      samplers: scalar ? [] : [{ binding: "inputSampler", resourceId: source.sampler }],
       uniformBinding: "params",
       uniforms: {
         blacklevel: readNumber(parameters, "blacklevel", 0),
@@ -201,9 +205,9 @@ export const thresholdNode: NodeDefinition = {
   version: 1,
   title: "Threshold",
   category: "color",
-  description: "Turns a channel into a soft-edged mask.",
+  description: "Turns a colour channel or a numerical map into a soft-edged mask, preserving the input format. A single-channel float map uses its scalar value directly.",
   inputs: [
-    { id: "input", label: "Input", type: RGBA_TEXTURE, description: "Linear-space colour." },
+    { id: "input", label: "Input", type: ARITHMETIC_TEXTURE, description: "Linear colour or numerical data; data retains its format and meaning." },
   ],
   outputs: [
     {
@@ -224,7 +228,8 @@ export const thresholdNode: NodeDefinition = {
       range: "bounded",
       description: "Width of the transition. 0 gives a hard, aliased edge.",
     },
-    channel: { type: "enum", label: "Source", default: "luminance", options: [...CHANNEL_OPTIONS] },
+    channel: { type: "enum", label: "Source", default: "luminance", options: [...CHANNEL_OPTIONS],
+      description: "Selects a colour channel. Single-channel float maps use their scalar value directly." },
     compare: {
       type: "enum",
       label: "Compare",
@@ -242,13 +247,14 @@ export const thresholdNode: NodeDefinition = {
       const what = target === undefined ? 'output port "out"' : 'input port "input"';
       return { passes: [], diagnostics: [missingCompileResource(nodeId, what)] };
     }
+    const scalar = source.format === "r32float";
     const pass: EffectPassDescriptor = {
       kind: "effect",
-      id: `${nodeId}:threshold`,
-      shader: THRESHOLD_FRAGMENT_WGSL,
+      id: `${nodeId}:threshold${scalar ? ":float" : ""}`,
+      shader: scalar ? THRESHOLD_FLOAT_FRAGMENT_WGSL : THRESHOLD_FRAGMENT_WGSL,
       target,
-      textures: [{ binding: "inputTexture", resourceId: source.resource }],
-      samplers: [{ binding: "inputSampler", resourceId: source.sampler }],
+      textures: [{ binding: "inputTexture", resourceId: source.resource, ...(scalar ? { sampled: "unfiltered" as const } : {}) }],
+      samplers: scalar ? [] : [{ binding: "inputSampler", resourceId: source.sampler }],
       uniformBinding: "params",
       uniforms: {
         threshold: readNumber(parameters, "threshold", 0.5),
@@ -388,9 +394,9 @@ export const limitNode: NodeDefinition = {
   version: 1,
   title: "Limit",
   category: "color",
-  description: "Clamps, loops, zigzags or quantizes channel values.",
+  description: "Clamps, loops, zigzags or quantizes colour channels or numerical maps while preserving the input format.",
   inputs: [
-    { id: "input", label: "Input", type: RGBA_TEXTURE, description: "Linear-space colour." },
+    { id: "input", label: "Input", type: ARITHMETIC_TEXTURE, description: "Linear colour or numerical data; data retains its format and meaning." },
   ],
   outputs: [{ id: "out", label: "Out", type: RGBA_TEXTURE }],
   parameters: {
@@ -443,13 +449,14 @@ export const limitNode: NodeDefinition = {
       const what = target === undefined ? 'output port "out"' : 'input port "input"';
       return { passes: [], diagnostics: [missingCompileResource(nodeId, what)] };
     }
+    const scalar = source.format === "r32float";
     const pass: EffectPassDescriptor = {
       kind: "effect",
-      id: `${nodeId}:limit`,
-      shader: LIMIT_FRAGMENT_WGSL,
+      id: `${nodeId}:limit${scalar ? ":float" : ""}`,
+      shader: scalar ? LIMIT_FLOAT_FRAGMENT_WGSL : LIMIT_FRAGMENT_WGSL,
       target,
-      textures: [{ binding: "inputTexture", resourceId: source.resource }],
-      samplers: [{ binding: "inputSampler", resourceId: source.sampler }],
+      textures: [{ binding: "inputTexture", resourceId: source.resource, ...(scalar ? { sampled: "unfiltered" as const } : {}) }],
+      samplers: scalar ? [] : [{ binding: "inputSampler", resourceId: source.sampler }],
       uniformBinding: "params",
       uniforms: {
         mode: readEnumIndex(parameters, "mode", LIMIT_MODE_OPTIONS, "clamp"),

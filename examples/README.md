@@ -106,7 +106,10 @@ happened:
 | [E83 Photo Mapping Moonlit Stone](./E83-Photo-Mapping-Moonlit-Stone.md) | Modular grazing light: scalar depth, light direction, tint, motion and exposure are independent graph stages. |
 | [E84 Photo Mapping Contour Engraving](./E84-Photo-Mapping-Contour-Engraving.md) | Ivory contour engraving with separate depth range, band generation, colour, motion and grading. |
 | [E85 Photo Mapping Video](./E85-Photo-Mapping-Video.md) | Explicit procedural-demo/local-video content through ordinary grading, surface masking and projector warps. |
-| [E86 Photo Mapping Point Cloud](./E86-Photo-Mapping-Point-Cloud.md) | 98,304 photo-coloured 3D points, float32 depth unprojection, real camera parallax and editable geometry. |
+| [E86 Photo Mapping Point Cloud](./E86-Photo-Mapping-Point-Cloud.md) | Photo-coloured 3D points carried by depth-dependent curls; a custom motion attribute drives travelling cyan highlights. |
+| [E87 Photo Mapping Falling Facade](./E87-Photo-Mapping-Falling-Facade.md) | Photographic sections release in a staggered wave, tumble and fall, then reform; cohort attributes carry warm fracture highlights. |
+| [E88 Photo Mapping Ribbon Peel](./E88-Photo-Mapping-Ribbon-Peel.md) | Architectural relief peels into moving horizontal ribbons; a bend attribute drives colour independently of the camera. |
+| [E89 Cymatics](./E89-Cymatics.md) | A shaken dish of liquid filmed from above under a rig of coloured lamps: a shallow-water simulation with a Faraday drive and meniscus waves in a seven-lobed vessel, lit by a banded ring lamp that draws the waves as contour lines of slope. A lab signal generator, a tour of notes, a song mode on the shipped beat, and an oscilloscope with a hertz readout beside the dish, all on one Panel. |
 
 ## Running them
 

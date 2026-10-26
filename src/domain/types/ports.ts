@@ -55,6 +55,10 @@ export type PortType =
        * fact and not something inferred from the pixel format.
        */
       space?: ColorSpace;
+      /** Input-only opt-in for arithmetic operators that preserve numerical data.
+       * This accepts data alongside the declared colour space without relabelling
+       * ordinary colour inputs as data or inserting a conversion. */
+      acceptsData?: true;
     }
   | { kind: "buffer"; element: string; access: "read" | "write" | "read-write" }
   | { kind: "scalar"; scalar: "f32" | "i32" | "u32" | "bool" }

@@ -117,6 +117,41 @@ describe("what the device says while a pass is built is told on that pass's node
     );
   }, 60_000);
 
+  it("a later compile of the same pass is told the reason the device gave the first time (T1523b(c))", async () => {
+    const probe = await probeDawn();
+    if (!probe.available) throw new Error(`Dawn unavailable: ${probe.error}`);
+    const backend = createVgpuBackend({ host: nodeGpuHost() });
+    const diagnostics: RuntimeDiagnostic[] = [];
+    backend.onDiagnostic((diagnostic) => diagnostics.push(diagnostic));
+    try {
+      const capabilities = await backend.initialize({});
+      const granted = capabilities.limits["maxSampledTexturesPerShaderStage"] ?? 16;
+      const limit = `The number of sampled textures (${granted + 1}) in the Fragment stage exceeds the maximum per-stage limit (${granted})`;
+      await expect(backend.compile(greedyPlan(granted + 1, "vec4f"))).rejects.toBeDefined();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(diagnostics.map((d) => [d.code, d.nodeId])).toEqual([[BackendDiagnosticCode.compileFailed, "greedy"]]);
+      expect(diagnostics[0]!.message).toContain(limit);
+
+      // vgpu keeps the layout the device refused and hands it to the next build of the same
+      // entries, so the device is asked for no layout the second time and says only that the
+      // pipeline's is "invalid due to a previous error".
+      // The same bytes on another node, so the second report is not a repeat of the first.
+      const plan = greedyPlan(granted + 1, "vec4f");
+      const again = {
+        ...plan,
+        passes: (plan.passes as ReadonlyArray<Record<string, unknown>>).map((pass) => ({ ...pass, id: "again:pass", nodeId: "again" })),
+      };
+      const told = diagnostics.length;
+      await expect(backend.compile(again as unknown as LogicalExecutionPlan)).rejects.toBeDefined();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const later = diagnostics.slice(told);
+      expect(later.map((d) => [d.code, d.nodeId])).toEqual([[BackendDiagnosticCode.compileFailed, "again"]]);
+      expect(later[0]!.message).toContain(limit);
+    } finally {
+      backend.dispose();
+    }
+  }, 60_000);
+
   it("and is still told when another pass stops the build before any verdict is read", async () => {
     const { diagnostics, granted } = await compileRefused("vec4f", true);
     // The build threw on the pass it could not wire, and that is said…
@@ -153,7 +188,7 @@ const BROKEN_KERNEL = `fn process(p: Point, ctx: PointCtx) -> Point {
   return q;
 }`;
 
-function brokenKernelPlan() {
+function brokenKernelPlan(twin = false) {
   return compileGraph({
     graph: {
       revision: 1,
@@ -167,10 +202,30 @@ function brokenKernelPlan() {
         },
         draw: { id: "draw", type: "renderPoints", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: { count: 8, sizePixels: 6 } },
         out: { id: "out", type: "output", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: {} },
+        // The same kernel, byte for byte, on a second node with a sink of its own.
+        ...(twin
+          ? {
+              sim2: {
+                id: "sim2",
+                type: "pointKernel",
+                definitionVersion: 1,
+                position: { x: 0, y: 0 },
+                parameters: { capacity: 8, seed: 7, kernel: BROKEN_KERNEL },
+              },
+              draw2: { id: "draw2", type: "renderPoints", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: { count: 8, sizePixels: 6 } },
+              out2: { id: "out2", type: "output", definitionVersion: 1, position: { x: 0, y: 0 }, parameters: {} },
+            }
+          : {}),
       },
       edges: {
         e1: { id: "e1", source: { nodeId: "sim", portId: "out" }, target: { nodeId: "draw", portId: "points" } },
         e2: { id: "e2", source: { nodeId: "draw", portId: "out" }, target: { nodeId: "out", portId: "input" } },
+        ...(twin
+          ? {
+              e3: { id: "e3", source: { nodeId: "sim2", portId: "out" }, target: { nodeId: "draw2", portId: "points" } },
+              e4: { id: "e4", source: { nodeId: "draw2", portId: "out" }, target: { nodeId: "out2", portId: "input" } },
+            }
+          : {}),
       },
       groups: {},
     },
@@ -229,6 +284,41 @@ describe("a broken dispatch shader fails the compile on its own node (T1522b, §
       ]);
       // What the code pane marks: the kernel parameter, at the author's line and column.
       expect(diagnostics.find((d) => d.nodeId === "sim")?.source).toEqual({ file: "kernel", line: 3, column: 16 });
+    } finally {
+      backend.dispose();
+    }
+  }, 60_000);
+
+  it("two nodes with the same broken kernel are each told, on their own node (T1490b, T1705b)", async () => {
+    const probe = await probeDawn();
+    if (!probe.available) throw new Error(`Dawn unavailable: ${probe.error}`);
+    const plan = brokenKernelPlan(true);
+    expect(plan.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    const kernels = (plan.passes as ReadonlyArray<{ id: string; kind: string; nodeId?: string; shader?: string }>).filter(
+      (pass) => pass.kind === "dispatch" && pass.shader?.includes("notAFunction") === true,
+    );
+    // The precondition: one source, two passes. vgpu 0.6.0 keeps one module and one compute
+    // pipeline for it, so the device compiles it once and answers once.
+    expect(kernels.map((pass) => pass.nodeId).sort()).toEqual(["sim", "sim2"]);
+    expect(kernels[0]!.shader).toBe(kernels[1]!.shader);
+
+    const backend = createVgpuBackend({ host: nodeGpuHost() });
+    const diagnostics: RuntimeDiagnostic[] = [];
+    backend.onDiagnostic((diagnostic) => diagnostics.push(diagnostic));
+    try {
+      await backend.initialize({});
+      await expect(backend.compile(plan)).rejects.toBeDefined();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const said = diagnostics.filter((d) => d.severity !== "info").map((d) => [d.code, d.nodeId, d.message]);
+      expect(said.sort((a, b) => String(a[1]).localeCompare(String(b[1])))).toEqual(
+        kernels
+          .map((pass) => [
+            BackendDiagnosticCode.compileFailed,
+            pass.nodeId,
+            `Pass "${pass.id}" failed to compile on the device: kernel 3:16 unresolved call target 'notAFunction'`,
+          ])
+          .sort((a, b) => String(a[1]).localeCompare(String(b[1]))),
+      );
     } finally {
       backend.dispose();
     }

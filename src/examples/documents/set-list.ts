@@ -30,9 +30,10 @@ import { serializeCueList, type Cue } from "../../domain/presets/cue-list.ts";
  * IT SHIPS BEFORE THE FIRST GO: the rings layer ghosted at 0.25 over the input, the grid
  * and FX layers ON at opacity 0, every bank's Current and the list's Current empty. The
  * first GO fires `1 open`: the rings come up and the two idle layers are switched OFF,
- * which takes their chains out of the plan. They ship ON because an example is held to
- * §V25 (`runner.test.ts`, "no dead nodes"): a layer shipped off would ship its whole look
- * pruned, and a reader could not tell that from a wiring mistake.
+ * which takes their chains out of the plan. They ship ON because an example was held to
+ * §V25 (`runner.test.ts`, "no dead nodes"), which then refused any layer shipped off. §V1030
+ * (§T1718b) superseded that: a layer may now ship off, and the gate checks its look with the
+ * layer on.
  *
  * `noise_source` is a Noise so the file needs no hardware; a Webcam (or its device
  * "Phone · <name>") replaces it by taking over the one wire into `layer_rings`.

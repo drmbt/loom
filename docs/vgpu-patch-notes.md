@@ -1,495 +1,95 @@
-# vgpu patches — scope and rationale
-
-Loom is a browser WebGPU node compositor built entirely on `vgpu` (0.3.1 when this was written; pinned 0.5.0 after the October 2 audit, see the end). We carry a
-patch against the published `dist` (pnpm `patchedDependencies` → `patches/vgpu.patch`,
-the original four themes below, T1247's fifth, T1295's sixth, plus T1307's compatible texture views). We would rather not: a pinned
-dependency's diff is maintenance forever, and a silently dropped patch returns each bug
-with no error.
-
-So this is a question, not a diff. For each item: what we needed, what 0.3.1 does
-today, why our workaround sits where it does, and — the part we actually want answered
-— **whether there is a supported way we missed.** Every hunk carries the same reasoning
-inline as a `// shaderloom patch (Tnnn)` comment, so the code and this note cannot
-drift apart.
-
-Two of the first three read to us like oversights rather than positions, and we say so.
-The third we suspect is a deliberate performance default that we are simply an unusual
-consumer of, and we say that too. The fourth (T1243) is a missing figure: the timer
-resolves the raw timestamps and discards them after computing per-span durations, and
-the frame's extent cannot be recovered from the durations. The fifth (T1247) is a hole
-the fourth exposed: the two calls that submit their own command buffer — a compute
-dispatch and a GPU-driven draw — take no timer, so the one figure theme 4 built cannot
-see them. The sixth (T1295) is what the fifth exercised: the timer drops a frame when its
-three staging slots are busy, and a dropped frame is indistinguishable from a late one.
-
----
-
-## T1307 addition: compatible views for sRGB presentation
-
-`@vgpu/core` already supports `TextureOptions.viewFormats` and `Texture.createView`,
-but `TargetTextureOptions` and `OffscreenTarget` did not forward that allocation
-option. Two added hunks expose optional `viewFormats` for resolved color
-attachments. Depth and multisample storage are unchanged; callers that omit the
-option retain their existing behavior. The original four patch themes remain intact.
-
-Loom opts in only for `rgba8unorm-srgb` targets and feedback pairs, with
-`rgba8unorm` as the compatible view. Ordinary graph sampling keeps its sRGB
-decode. Presentation uses a cached non-decoding view of the same allocation,
-preserving stored display bytes without another texture, copy, encode, or
-readback. Both feedback halves are prepared outside frame encoding. Live resize
-refreshes views and evicts obsolete presentation bindings.
-
-The [WebGPU texture descriptor contract](https://www.w3.org/TR/2026/CRD-webgpu-20260812/#dom-gputexturedescriptor-viewformats)
-requires compatible alternate view formats to be declared at allocation. This
-does not guarantee identical performance across platforms; benchmark separately.
-
-Regression: `present-parity.gpu.test.ts` formerly measured viewer grey 54 versus
-preview/export 127. It now requires exact agreement, including dark values,
-resizing, and both feedback halves. `presentation-pixels.spec.ts` also requires
-the sRGB grey to reach the browser compositor as 127. No default format changes
-are part of this patch.
-
----
-
-## 1. Multi-pass MSAA: `storeOp: "discard"` kills samples at every pass boundary
-
-**What we needed.** Anti-aliased geometry in a chain that reads its own render target
-mid-chain: `render → cut → blur → glow → clip`. Aliased edges going into a bloom get
-amplified, so the AA has to happen before the post chain, not after.
-
-**What 0.3.1 does.** `colorAttachment()` sets `storeOp: msaa ? "discard" : "store"`,
-`depthAttachment()` sets `depthStoreOp` / `stencilStoreOp` to `"discard"` whenever
-`sampleCount > 1`, and `Frame.pass` refuses `clear: false` into a 4× target outright:
-
-```
-VGPU-PASS-PRESERVE-MSAA — clear:false cannot preserve MSAA; use a non-MSAA target.
-```
-
-**Why that is a problem for us and maybe not for you.** For a single-pass renderer,
-discarding the multisample attachment after the resolve is exactly right — it is free
-bandwidth on tilers and the samples are genuinely dead. Our chain is the case where
-they are not: a later pass preserves into the same target, and the target's
-multisampled texture persists across passes, so preserving is legal WebGPU. With
-`discard`, the second pass loads garbage, and a preserve pass depth-tests against a
-depth buffer that no longer exists.
-
-**Our patch.** `storeOp: "store"` for colour and depth/stencil, resolve on every pass so
-a mid-chain reader sees current resolved colour, and the refusal in `Frame.pass`
-removed. Non-MSAA passes are untouched.
-
-**Repro.** Any two-pass chain into one MSAA target where the second pass sets
-`clear: false`. Today it throws `VGPU-PASS-PRESERVE-MSAA` before it can render.
-
-**Is there a supported way we missed?** We could not find one — a second target plus an
-explicit copy loses the samples, which is the whole point. If `discard` is the intended
-default (we assume it is), the shape we would want is per-target or per-pass opt-in:
-`target({ msaa: 4, preserveSamples: true })`, or having `Frame.pass` accept
-`clear: false` on an MSAA target and switch that target's store op for the frame.
-We would delete this hunk the day either exists.
-
----
-
-## 2. A raw `GPUBufferBinding` is not recognised as a resource
-
-**What we needed.** Point attributes packed into one storage buffer with per-attribute
-regions, bound by byte offset, so a kernel spends 2 bindings regardless of attribute
-count instead of 2 per attribute (WebGPU's baseline 8 storage buffers per stage was
-capping us at four attributes). vgpu can bind a buffer at an offset, which is what made
-this worth doing: every consuming shader keeps its `array<vec3f>` declaration unchanged.
-
-**What 0.3.1 does.**
-
-```js
-function hasAnyResourceShape(value) {
-  const record = value;
-  return "gpu" in record || "bindGroup" in record || "createView" in record || "resourceIdentity" in record;
-}
-```
-
-A bare `{ buffer, offset, size }` matches none of those, so `set()` classifies it as a
-plain JS uniform value and throws:
-
-```
-VGPU-RING1-UNSUPPORTED — Binding '<name>' needs a compatible resource, not JS.
-```
-
-**This one looks like an oversight, not a position.** `normalizeBufferResource()`, in
-the same file, already handles that exact shape via `isGPUBufferBinding` — it just never
-gets the chance, because the classifier runs first and routes the value away. The
-classifier and the normaliser disagree about what counts as a resource. Our patch adds
-`|| isGPUBufferBinding(record)` to the classifier — one line, using the predicate the
-file already defines.
-
-**The second half, which we did not expect.** Fixing the classifier was necessary and
-not sufficient. `normalizeBufferResource` identifies a `GPUBufferBinding` by
-`syntheticIdentity(value.buffer)` — the buffer alone — so every region of one buffer
-shares one identity. Two consequences, both wrong for us:
-
-- the bind-group cache cannot tell two attributes apart, so an offset change does not
-  invalidate the entry;
-- `#preflightAliasing` reports two **non-overlapping writable** regions of one buffer as
-  an alias and refuses the dispatch (`VGPU-R1-STORAGE-ALIASING`). Three of our kernels
-  bind 3–4 regions of one buffer and all three broke on it.
-
-Our patch lets a region carry its own `resourceIdentity`, falling back to the synthetic
-one when absent.
-
-**Repro.** `pipeline.set({ positions: { buffer, offset: 0, size: 4096 }, velocities: { buffer, offset: 4096, size: 4096 } })`
-where both are `read_write` — `VGPU-RING1-UNSUPPORTED` before the classifier fix,
-`VGPU-R1-STORAGE-ALIASING` after it.
-
-**Is there a supported way we missed?** Passing `gpu: buffer` alongside the region does
-get past the classifier, which is what we did first — but it is an undocumented shape
-and it does not help with identity or aliasing. What we would want upstream is a first
-class region binding, e.g. `buffer.region(offset, size)` returning something with its
-own `resourceIdentity`, with `#preflightAliasing` comparing `[offset, offset+size)`
-intervals rather than buffer identity. That is strictly more correct than what we
-patched in, and we would delete both hunks for it.
-
-Measured, in case it is useful: packing costs nothing at runtime. 1M points, 64
-dispatches/frame, Dawn/Metal — separate `array<T>` with 8 bindings 0.759 ms
-(144 GB/s), packed `array<u32>` with 2 bindings 0.755 ms (144 GB/s); the packed form
-was never slower across two runs, and at eight attributes it still saturates 139 GB/s.
-
----
-
-## 3. `clearDraw` exists with no callers, and nothing can reach it
-
-**What we needed.** A way to stop `GPUBindGroup` objects accumulating for the life of
-the device in an editing session that rebuilds programs continuously.
-
-**What 0.3.1 does.** The gpu's one bind-group cache keys entries on
-`` `${drawId}:${group}:${identities}` ``, and `bind-cache.js` defines exactly the
-method we want:
-
-```js
-clearDraw(drawId) {
-  const prefix = `${drawId}:`;
-  for (const key of entries.keys()) if (key.startsWith(prefix)) entries.delete(key);
-}
-```
-
-It has no callers anywhere in the package, and no consumer can reach it: the cache is a
-private kernel service, `kernelOf` is exported from no entrypoint, `package.json`
-`exports` publishes only `.`, `./node`, `./mock`, `./scene`, `./client` and `./core`,
-`drawId` is a closure-local counter, and `Draw` / `Effect` / `Compute` expose no
-lifecycle method at all — no `destroy`, no `dispose`. That combination is what reads to
-us like an unfinished API rather than a refusal.
-
-**The two ways entries become unreachable.** Both are live in our app and neither has an
-exit today.
-
-1. **A discarded drawable.** Every `Draw`/`Effect` mints `nextDrawId++`, so a rebuilt
-   program's replaced Effects leave their entries behind permanently.
-   `subscribeEviction` reclaims an entry only when a resource the entry *names* is
-   destroyed, so entries over surviving resources — a shader edit that rebinds the same
-   target — survive with it.
-
-2. **A live drawable whose binding slot rotates.** This is the one that actually cost
-   us, and we think it is the more interesting bug. The eviction subscription is per
-   binding **slot**, not per cache entry: `set()`ing a slot to a new resource
-   unsubscribes the previous one, so the entry naming the old resource outlives that
-   resource's `destroy()` with nothing listening. Our tile compositor is one long-lived
-   `Effect` whose single texture slot is re-pointed at each of N tiles every frame; it
-   ends up holding one entry per tile it has *ever* been shown, subscribed to one of
-   them.
-
-**Measured.** Headless, our real backend over `vgpu/mock`, with a closed-loop camera so
-cycle N does byte-identical work to cycle 1 (40 nodes, 16 tiles, 5-second cycles),
-counting *retained* bind groups by `WeakRef` after a forced GC rather than
-`createBindGroup` calls:
-
-| | control | patched |
-|---|---|---|
-| panning, per identical 5 s cycle | +12 unreachable, never decaying | 0 (flat at 35) |
-| shader edit on a pass with no uniform block | +2 per edit | 0 (flat at 5) |
-
-Notably it is **not** a CPU slowdown: per-identical-cycle wall time stayed flat out to
-5606 entries. It is unbounded object growth over a long session.
-
-**Our patch.** `evictBindGroups()` on `InternalDraw`, `InternalEffect` and
-`ComputePipeline`, each calling the cache's own `clearDraw` with its own id. We call it
-when a program's drawables are discarded and when the compositor's tiles are replaced.
-It is safe by construction — the id prefix is unique per drawable and
-`setCore.bindGroups()` calls `getOrCreate` on every encode, so an over-eager evict costs
-a `createBindGroup`, never a wrong bind group.
-
-We did look at cutting our own call rate instead, since 13–14 program rebuilds per five
-seconds of panning is what feeds this. We could not: measured, the rebuilds are driven by
-previews arriving at the viewport edge and by tile sizes changing on the zoom ladder, and
-holding either back means holding back a picture the user is looking at. The cost of the
-eviction itself is the other direction — the compositor re-mints one entry per live tile
-after each evict, about 180 extra `createBindGroup` calls per five seconds of panning
-(49 → 229). We took that trade against unbounded growth, but it is the trade that a
-per-entry subscription (option 2 below) would remove entirely.
-
-**Is there a supported way we missed?** We could not find one; `gpu.dispose()` is the
-only exit and it takes the device with it. Three shapes would each work for us, in
-increasing order of how much we would prefer them:
-
-1. export `clearDraw` — or a `destroy()`/`dispose()` on `Draw`/`Effect`/`Compute` that
-   calls it. Smallest possible change; it is already written.
-2. make the eviction subscription **per cache entry** rather than per binding slot, so
-   an entry dies with any resource it names, whoever is bound now. That fixes case 2
-   without any consumer having to know the cache exists, and it is what we would
-   actually recommend.
-3. bound the cache (LRU per drawId, or a `maxBindGroups` on the gpu).
-
-**One more thing we noticed and did not patch.** `nextDrawId` (draw.js) and
-`nextComputeId` (compute.js) are separate counters that both key into the *same* cache,
-so a draw and a compute can share an id. The identity tuple has to match too, so we have
-not seen it bite, and the consequence of a collision would be a bind group built with
-one layout handed to a pipeline expecting another. It may be worth a single shared
-counter regardless.
-
----
-
-## 4. The timer discards the raw timestamps, and per-pass spans cannot be summed into a frame
-
-**What we needed.** One GPU figure for the frame: how long the GPU spent on the submit,
-first pass begin to last pass end. It sits beside the per-pass column in the performance
-panel and is what "is this document GPU-bound?" is answered from.
-
-**What 0.3.1 does.** `Timer` attaches one `timestampWrites` pair per span, resolves the
-query set once the frame's readback buffer maps, and `#dispatch` converts each pair to a
-duration in ms and hands listeners `Readonly<Record<string, number>>`. The raw
-timestamps are only ever seen inside `#dispatch`, and are dropped there.
-
-**Why the durations are not enough.** We measured on Dawn/Metal (Apple silicon), 24 render
-passes in one command buffer, each sampling the previous one's output: every pass's BEGIN
-timestamp lands within 0.1 ms of the command buffer's start (0.000, 0.014, 0.026, 0.080 …)
-while the ENDs are sequential (1.45, 2.89, 4.32 … 8.5 ms). Stage-boundary sampling on a
-tiler: the vertex stages of every pass run up front, the "begin" is where the encoder
-started, not where the fragment work did. The spans NEST, and their sum is ~(N+1)/2 × the
-frame — 11.7× for N = 24, which is the ~10× disagreement the row was opened on. An empty
-marker pass appended to the frame does not help either: it ENDS early (1.5 ms into a 9 ms
-frame), because the GPU overlaps independent passes. Only `max(end) − min(begin)` over the
-raw pairs is the frame, and only `#dispatch` has the raw pairs.
-
-**Our patch** (`dist/timer.js`, `dist/timer.d.ts`, plus the `TimerFrameExtent` re-export
-in the four entry `.d.ts` files): `#dispatch` computes the extent over the valid pairs of
-the frame and hands listeners a second argument, `{ extentMs, frame }`, where `frame` is
-the vgpu `Frame` the spans were attached to — that is how the caller ties a result back to
-the submit it encoded, since results arrive a frame or two behind. No behaviour changes
-for a listener that ignores the second argument.
-
-**What we would prefer.** Either the same second argument upstream, or an `onRawResults`
-that hands the resolved `BigUint64Array` with the span layout so the consumer computes
-whatever figure it needs. Exposing the timestamps is the smaller ask; the extent is one
-`min`/`max` away from them.
-
----
-
----
-
-## 5. Work that submits its own command buffer can never be timed
-
-**What we needed.** A GPU span for a compute dispatch and for a GPU-driven (indirect) draw,
-the same one `FramePassOptions.timer` gives a render pass. Without it the per-pass column
-of a points/particles document is render-only, and — worse — the FRAME EXTENT from theme 4
-is computed over the frame's timestamp pairs, so a submit whose work is all kernels has no
-pairs and reports nothing at all. Not zero: absent. On our point-lifecycle example
-(E9-Ember, 14 dispatches and 3 indirect draws against 9 effects) that silently removed
-13–16 % of the frame's GPU time from every profile.
-
-**What 0.4.1 does.** `Compute.dispatch()` and `Draw.draw()` each build their OWN
-`GPUCommandEncoder`, open a single pass, and `queue.submit()` before returning.
-`Frame.pass` — the only place a `TimerSpan` can be attached — is never involved, and
-neither call takes a timer. `Draw.draw()` is also the only way to issue an indirect draw,
-so "GPU-driven" and "untimed" are the same set.
-
-**Our patch.** `dispatch()` takes an optional `{ timer, frame }` (a 4th positional argument
-beside explicit workgroup counts, or on the existing `DispatchOptions` object);
-`DrawCallOptions` grows the same two members. Both ask the frame for the pair through one
-new method, `Frame.attachExternalSpan(span)`, which registers the timer as an owner of that
-frame exactly as a pass attachment does and returns the descriptor's `timestampWrites`.
-Everything else follows from vgpu's existing bookkeeping: the frame's single
-`resolveQuerySet` covers the extra indices, and the frame's extent widens to include them.
-
-**Why billing the pair to the FRAME is the correct shape, not a convenience.** The
-alternative — resolving the compute's own queries in the compute's own command buffer —
-gives a second, separate extent per frame, and two extents for one frame is exactly the
-"a number that is not a duration of anything" failure theme 4 exists to end. Billing to the
-open frame is also correct by queue order rather than by luck: the self-submitted command
-buffer reaches the queue while the frame is still open, so its timestamps are written
-before the frame's resolve executes. We verified on Dawn/Metal that a timestamp pair
-written in one command buffer resolves correctly from a later one (5.98 ms for a heavy
-kernel, against 13.90 ms for the same pass resolved in its own encoder).
-
-**Repro.** Any `compute(gpu, wgsl).dispatch(x, y, z)` between `frame()` calls: there is no
-argument that would time it, and the frame's `timer.onResults` never names it.
-
-**Is there a supported way we missed?** We could not find one. What we would prefer, in
-order: a compute pass encodable INTO a frame (`frame.pass({ compute })`), which would fix
-ordering as well as timing — a dispatch inside an open frame currently runs before that
-frame's render passes whatever the caller intended, which is a documented hazard we work
-around by splitting the frame; failing that, `dispatch({ timer })` / `draw({ timer })` with
-vgpu resolving the frame itself, since the timer already knows which frame is current.
-
-## 6. A dropped frame is indistinguishable from a late one
-
-**What we needed.** To know, for every frame we attached timer spans to, whether its
-results will ever arrive — and, on our export path, for them to arrive at all.
-
-**What 0.4.1 does.** The timer's query ring has three staging buffers (`depth ?? 3`, and the
-timer never passes one). When all three are still mapping, `encodeResolve` returns false
-and the frame's resolve is skipped — "drop, never block" — and nothing else happens: no
-`onResults`, no error, no counter. Right for a frame loop, which submits one frame per tick.
-Our export path splits a render into one frame per compute segment so a dispatch runs where
-the plan put it (theme 5's neighbour), and submits them all inside one synchronous call, so
-no slot can free in between. MEASURED on Dawn/Metal (reserved machine, two runs, identical
-counts): a render of 8 timed frames delivered exactly 3 results, every render — 62.5 % of
-frames lost and 21 of that document's passes never timed at all; 8 of our 60 shipped
-examples render more than three. Stepped back to back without yielding to the event loop,
-every frame after the first render was lost. None of it was visible: the figures that did
-arrive read as a whole measurement.
-
-The same silence has two smaller siblings. A failed `Frame.pass` discards the timer for the
-WHOLE frame (correctly — nothing may resolve half-written bookkeeping), so the passes that
-did run lose their spans too, and nothing says so. And theme 5 reserves a self-submitted
-pass's timestamp pair before encoding it; a throw between that reservation and
-`queue.submit()` left the pair reserved, and the frame resolved it out of an unwritten query
-set as a duration for a pass that never ran.
-
-**Our patch.** Three parts, all in `timer.js` except where named:
-
-- `Timer.onDropped(cb)`: called once per frame whose spans will never reach `onResults`,
-  with `reason` — `"staging-busy"` (the skipped resolve above) or `"abandoned"` (the frame's
-  timer was discarded by a failed pass, or the frame never reached the queue) — and how many
-  spans it carried. Results plus drops now account for every timed frame.
-- The staging depth grows on demand, on the same frame-boundary edge capacity already grows
-  on: a staging-busy drop doubles it for the next ring, up to 32. A render of 8 frames loses
-  one frame once, then reports all 8 every render. No depth rescues a caller that never
-  yields; that case is reported, not fixed.
-- `Frame.attachExternalSpan` returns a `retract()` beside `timestampWrites` (`frame.js`), and
-  `Compute.dispatch` / `Draw.draw` call it on every exit that does not reach `queue.submit()`
-  (`compute.js`, `draw.js`). The pair stays reserved — indices are positional — and is never
-  reported.
-
-**Repro.** One `timer(gpu)`, one manual `frame(gpu)` per compute segment, four or more
-segments submitted back to back: the fourth frame's `onResults` never fires and nothing
-else does either.
-
-**Is there a supported way we missed?** Not that we found. What we would prefer: a drop
-signal on the timer (the sixth theme's first bullet, as is), and either a `depth` option on
-`timer(gpu)` or demand-driven depth like capacity's. A blocking resolve would also serve an
-offline caller, but only the caller knows it has no frame budget to protect.
-
-## What we would delete
-
-Every hunk, immediately, for: an MSAA preserve opt-in (1), a first-class region binding
-with interval-based aliasing (2), either an exported eviction call or a per-entry
-eviction subscription (3), a frame extent or raw-timestamp callback on the timer (4), and
-a timer on `Compute.dispatch` / `Draw.draw` — or compute passes inside a frame (5), and a
-drop signal plus a staging depth option on the timer (6). We are happy to send patches upstream against any of these if
-the shapes above are close to what you would want.
-
----
-
-## Upstream status 2026-09-10
-
-Audit for T1255 against `vercel-labs/vgpu` (`main` = v0.4.1 + docs commits at `96ced572`;
-`canary` = the PR target, 102 commits past v0.4.1, unreleased).
-
-**0.3.1 → 0.4.1 changes nothing this patch touches.** `compute.ts`, `draw.ts`, `effect.ts`,
-`set-resources.ts`, `target-utils.ts`, `timer.ts`, `init.ts` and `bind-cache.ts` are
-byte-identical between the two tags; `frame.ts` changed (0.4.0 made `frame(gpu, cb)` and
-`frameLoop` cancel the frame on throw instead of submitting on finally — `2d137a4`) but not
-in the `passPreserveMsaaError` region our hunk edits. The entry files only add
-`ShaderFunctionExport`; `package.json` adds a `./three` export and an optional `three` peer.
-The four themes are all **still needed, unchanged**: nothing upstream fixes any of them.
-
-| Theme | 0.4.1 | canary (next release) |
-|---|---|---|
-| 1 MSAA `storeOp` | needed, applies clean | needed; `target-utils.ts` `validateTargetOptions` and `target-offscreen.ts` (`#currentColors`) moved adjacent lines — context conflict only |
-| 2 raw `GPUBufferBinding` + region identity | needed, applies clean | needed; `set-resources.ts` grew (+70 lines: destroyed-binding wrapper, storage textures, `resourceLabel`) but `hasAnyResourceShape` and the `isGPUBufferBinding` line are unchanged — context conflict only |
-| 3 `evictBindGroups` | needed, applies clean | **semantic conflict**: canary keys a compute's cache slot `compute:${id}` (fixing the draw/compute id collision noted above), so our `this.cache.clearDraw(this.id)` in `compute.js` must become `clearDraw(\`compute:${this.id}\`)` or evict nothing |
-| 4 `TimerFrameExtent` | needed, applies clean | needed; `timer.ts` byte-identical to main — cherry-picks clean |
-
-**Trial upgrade to 0.4.1** (scratch copy, own install): `pnpm install` applied the patch with
-zero warnings (`frame.js` hunk with offset); `pnpm typecheck` clean; Dawn gates
-`bind-group-eviction`, `point-packed-attributes`, `scene-antialias`, `dawn-render`,
-`matte-coverage`, `frame-extent`, `headless-parity` all green; `pnpm test:gates` green;
-`src/runtime/backend/vgpu` 283/283. One failure, `cook-oracle.test.ts` E66-Meter
-"auto is byte-identical to always", fails identically on 0.3.1 at HEAD — pre-existing, not the
-upgrade. The one thing the numbers do not cover: 0.4.0's cancel-on-throw at
-`vgpu-backend.ts` `frameLoop` / `frame(gpu, …)` call sites is a semantic change (a throwing
-encode used to submit whatever was encoded; now it submits nothing). Review those three sites
-before bumping the pin.
-
-**Patches by case** were prepared as one branch per theme on upstream `main`, each with a
-`PR.md`, changeset, tests (upstream had none for themes 3 and 4's contracts) and green
-typecheck/build/bundle-check: `loom/msaa-discard-store` (opt-in `preserveSamples`, not a
-default flip), `loom/buffer-binding-resource` (classifier + range identity + interval-based
-aliasing preflight), `loom/clear-draw` (`evictBindGroups()` on Draw/Effect/Compute with the
-`compute:` key), `loom/timer-frame-extent`. Not pushed; see the T1255 report for paths.
-
-## Previous pin: 0.4.1 (T1261, 2026-09-10)
-
-`package.json` pins `vgpu` 0.4.1; `patches/vgpu.patch` is byte-identical and its lockfile
-hash unchanged (`fp5cunzchnnbwyhn5a36cnah3q`) — pnpm applied it with the `frame.js` hunk
-offset only. The one semantic change 0.4.0 brought, `frame(gpu, cb)` / `frameLoop`
-cancel-on-throw, was decided per encode site in `src/runtime/backend/vgpu/vgpu-backend.ts`
-and pinned on Dawn by `frame-throw.gpu.test.ts`:
-
-- **loop path** (`runFrame`): partial submit, unchanged — the T98 catch inside the callback
-  is what keeps it so; a throw that escaped would now also stop the `frameLoop`.
-- **direct path** (`encodeSegmented`): partial submit, opted in with `f.submit()` in the
-  callback's own catch — the same state as the loop path (§V47), consistent with the CPU-side
-  swaps and self-submitting dispatches that are never rolled back. `render()` still rethrows.
-- **temporal-history clear**: dropped whole, vgpu's new default accepted — a reset that throws
-  leaves every pair as it was rather than one half cleared.
-
-The four patch themes are still needed, unchanged (see the audit above).
-
-
-## Pinned 0.5.0 (2026-10-02)
-
-The latest published stable release is 0.5.0. Loom still uses the published package
-with a pnpm patch; no fork or unreleased canary dependency was introduced. The source
-audit found no redundant retained theme. Seventeen of eighteen patched files port directly.
-The compute eviction method now clears `compute:${this.id}`, matching upstream's
-cache owner. Binding validation runs before timing-query attachment, preserving
-upstream's destroyed-resource error without reserving an unwritten query.
-
-API consumers now declare external texture `kind: "2d"` and read output from
-`target.color.read({ mipLevel: 0, region: "all" })`. Strict uniform validation also
-required declared-field dispatch updates, complete initial laser clock values,
-point-preview updates without a shaded-only eye field, and explicit unsigned point
-seed conversion preserving prior u32 packing. Rejected updates enter retained state
-only after validation succeeds. No saved-project schema or rendering precision changes.
-
-The migration-specific mock regressions verify compute cache eviction and binding
-validation before timing reservation. Real GPU, browser presentation and project-wide
-validation results are recorded in [the realtime investigation](./realtime-performance-2026-10-02.md).
-
-Upstream references: [release](https://github.com/vercel-labs/vgpu/releases/tag/v0.5.0),
-[migration guide](https://github.com/vercel-labs/vgpu/blob/v0.5.0/docs/migrations/0.5.0.docs.md).
-
-### Bounded pristine-versus-patched probes
-
-Three representative probes compare pristine published 0.5.0 and the installed patched
-package against the same mock dependencies. All assertions pass:
-
-- Pristine rejects raw buffer bindings, and still rejects two non-overlapping writable
-  regions when distinct identities are supplied. Patched dispatches the identified
-  regions. The patch does not calculate interval overlap; callers must supply correct
-  identities. Plain regions without identities still alias in the patched package.
-- Pristine refuses a preserved second pass into a 4× MSAA target. Patched accepts it
-  and emits stored color/depth attachments with preserved color loading.
-- Pristine drops compatible `viewFormats` on both initial and resized Target allocation.
-  Patched forwards them, supporting the current sRGB presentation path.
-
-These are capability and descriptor proofs, not FPS or physical GPU pixel comparisons.
-No surprising difference justified expanding the audit. Other themes retain source
-and existing regression evidence; they were not individually ablated here. The carried
-patch already has no destruction/storage hunks; upstream supplies those lifecycles.
-
-Potential costs remain unmeasured: unconditional MSAA stores, timestamp writes, and
-timer staging growth from three to 32 slots. Evicting bindings too eagerly can also
-cause rebuilds. This audit makes no claim that each patch improves performance or that
-32 slots are optimal. Several capabilities could move into the backend, but replacing
-their ownership does not make the current hunks redundant.
-
-Reproduction and captured results: `scratchpad/perf-realtime-2026-10-02/vgpu-patch-audit/`.
-The follow-up fixes and validation are in [the realtime investigation](./realtime-performance-2026-10-02.md).
+# vGPU patch status
+
+Loom pins published `vgpu` **0.6.0** and carries `patches/vgpu.patch` through pnpm.
+The version-qualified `vgpu@0.6.0` patch entry is intentional: pnpm 9 did not apply the
+old unqualified entry when regenerating the patch. `@vgpu/wgsl` **0.6.0** is a direct
+dependency since this version, for `prepareShader` (see [Moving to 0.6.0](#moving-to-060-t1705b)).
+
+The fork’s `main` and `canary` were fast-forwarded to their corresponding upstream
+branches on October 14, 2026 (canary `8a616014`, `vgpu` 0.6.0). Every open proposal
+branch has that canary merged in, without conflicts and with its history kept; each
+pre-merge head is on the fork as `backup/loom/<branch>-2026-10-14`, and every branch's
+own tests were re-run after the merge.
+
+## Patch themes and source proposals
+
+| Theme | Why Loom needs it | State on 0.6.0, and fork review |
+| --- | --- | --- |
+| T939: retain MSAA samples | Geometry runs and later overlays preserve color and depth across passes. Loom’s historical patch stores the samples. | Carried unchanged. [PR #1](https://github.com/laubsauger/vgpu/pull/1) makes storage opt-in with `preserveSamples`; the default still discards. Two native pixel tests prove color and depth survive. |
+| T1076: packed buffer regions | Bind point attributes as actual buffer/offset/size regions. | Bare bindings, range identities and range validation are upstream in 0.6.0, so those hunks are gone and Loom’s regions no longer name an identity of their own. One hunk remains: the compute aliasing preflight accepts **disjoint writable** ranges of one allocation, which 0.6.0 rejects with `VGPU-R1-STORAGE-ALIASING`. [PR #2](https://github.com/laubsauger/vgpu/pull/2) demonstrates that case. Mixed read-only/writable access to one allocation remains invalid even for disjoint ranges. |
+| T1180: live binding eviction | Release obsolete bind groups while reusing a drawable after resource replacement. | **Retired with 0.6.0.** Upstream [#487](https://github.com/vercel-labs/vgpu/pull/487) keeps bind groups per consumer in a weak, bounded cache and drops an entry when a resource it names is destroyed. The `evictBindGroups` hunks and every backend call to them are removed. `bind-group-eviction.test.ts` measures retained bind groups on unpatched behaviour and is flat for both leak shapes. [PR #3](https://github.com/laubsauger/vgpu/pull/3) is closed: nothing in it is needed on 0.6.0. |
+| T1243: frame extent | Per-pass durations cannot recover earliest-start to latest-end elapsed GPU time. | Carried unchanged. [PR #4](https://github.com/laubsauger/vgpu/pull/4) reports extent and the captured opaque frame handle beside existing results. |
+| T1247: compute timing | A kernel is GPU work of its frame and belongs in the per-pass column and the frame extent. | **Reduced with §T1707b.** Loom encodes every kernel into the frame through 0.6.0's `Frame.computePass` ([#449](https://github.com/vercel-labs/vgpu/pull/449)), so `Compute.dispatch(…, { timer, frame })`, `Frame.attachExternalSpan` and the `DispatchTiming` type are gone. One hunk remains: `FrameComputePassOptions.timer`, the same attachment a render pass's `timer` uses, rolled back with the pass on a throw. [PR #6](https://github.com/laubsauger/vgpu/pull/6) now implements exactly that in source (the attach context's `target` made optional for a compute pass), with mock and native tests. |
+| T1295: dropped results / staging depth | Missing telemetry must be distinguishable from telemetry still in flight; Loom uses bounded nonblocking staging growth. | Carried: `onDropped` and the staging depth that doubles on demand. The span retraction (`retractSpan`) is gone with the external span (§T1707b). A render is one frame now, so an awaited export no longer drops; an export that renders back to back without yielding still does. [PR #7](https://github.com/laubsauger/vgpu/pull/7) proves silent busy drops and a free-slot selection gap. |
+| T1307: compatible color views | Present stored sRGB bytes through a declared linear view without another texture/copy. | Carried unchanged. [PR #5](https://github.com/laubsauger/vgpu/pull/5) forwards `viewFormats` for resolved color allocations and resize; depth/MSAA allocations are untouched. |
+| Owned-pass pipeline state | Repeated `setPipeline` calls remain after upstream draw bookkeeping has been cached. | Ported onto 0.6.0’s `encode`, which gained a uniform-capture argument; the pass state rides after it. [PR #8](https://github.com/laubsauger/vgpu/pull/8) contains the source prototype, harness and raw samples. |
+| T1705b: captured bind groups kept across frames | A feedback pass alternates between the two halves of its ping-pong, one bind group each. | **New with 0.6.0.** When a frame completes, `frame-uniforms.js` `release()` evicts every bind group of the returned page that the frame did not use. The half the next frame binds is always the one this frame did not, so every feedback pass built a bind group per frame (measured on the mock: 10 to 606 over 600 frames, `phase1-exit.test.ts`). The hunk keeps an entry while either of the page's last two frames used it, so a ping-pong reader keeps both bind groups and a draw that moved or stopped drawing is still dropped, one frame later; the caps (16 captured variants per owner and group, 64 per owner) still bound the cache. [PR #9](https://github.com/laubsauger/vgpu/pull/9) is the same change in source, with a test that fails under the one-frame rule while upstream's bounded-cache test still passes. |
+| T1705b: object errors on the caller’s scope | Loom builds every pass inside its own device error scope and reports each device error on that pass’s node. | **New with 0.6.0.** Upstream now creates a shader module, bind group layout and pipeline layout inside a scope of its own and hands the error to the pipeline that later names the object. Measured on Dawn: a caller's own scope around the build sees nothing, and of two consumers built from one invalid source only the first is told. The hunk makes `nativeObject` create without a scope, as through 0.5.0. [PR #10](https://github.com/laubsauger/vgpu/pull/10) reproduces both; it proposes no implementation yet. |
+
+Every theme Loom patches is represented on the fork. #1, #4, #5, #6, #8 and #9 implement
+the change in source; #2, #7 and #10 reproduce a gap and propose a direction without an
+implementation.
+
+## Moving to 0.6.0 (T1705b)
+
+What changed in Loom, beside the patch:
+
+- **Prepared shaders.** `draw`, `effect` and `compute` refuse a WGSL string. Loom emits
+  every pass’s WGSL at compile time, so `prepared-shader.ts` calls `prepareShader` when a
+  consumer is built: at a compile, for each pass not carried over, never per frame.
+  Measured on this machine at about 1.9 ms for an 11 KB shader, against about 1.6 ms for
+  the reflection 0.5.0 ran in the same constructors. It keeps the last 128 artifacts by
+  source text, because passes of one node type emit the same WGSL and vgpu validates a
+  reused frozen artifact once. Over the 80 shipped examples, 1,800 passes carry 1,113
+  distinct sources per file; preparing all 1,800 took 1,007 ms in plain Node and the
+  distinct ones 563 ms (E77: 145 ms to 28 ms). Reopening a project prepares nothing kept. The production
+  bundle grew by 61 kB (19 kB gzip) against 0.5.0; that is the whole upgrade, not
+  attributed per module.
+- **Dispatch pipelines are compiled at the build.** A 0.6.0 compute builds its pipeline
+  on first use; `buildResources` calls `compileSync()` inside the pass’s error scope, so
+  a kernel the device refuses still fails the compile on its node.
+- **A kernel on two nodes.** A compute now shares vgpu’s module and pipeline caches, so
+  the device answers once for two byte-identical kernels. `askPassesSharingAFailedShader`
+  asks again for a dispatch as it does for an effect.
+- **Frame uniforms.** A frame captures its managed uniforms into a pooled page that
+  returns to the pool when the frame completes. A loop allocates nothing once warm;
+  frames encoded back to back inside one turn each take a page. The page is one more
+  buffer per device (64 KiB), and the fullscreen vertex stage one more shader module,
+  shared by every effect.
+- **Kernels inside the frame (§T1707b).** Every dispatch is a `Frame.computePass` of its
+  own, in plan order, on both render paths; `encodeSegmented` is gone and a render is one
+  frame. See [the design](kernels-in-frame-design-2026-10-14.md).
+- **`frame.done`** resolves a few microtasks later than before. Environment preparation
+  reuse reads it; nothing else in Loom orders itself against it.
+- **Errors that moved.** A storage binding smaller than the shader declares is refused
+  when it is set, at the build. A name colliding with the fullscreen vertex stage is no
+  longer an error: 0.6.0 builds that stage as a module of its own. A non-power-of-two
+  `@align` is refused on the CPU before the device is asked; the backend then puts the
+  pass to the device's compiler, so the row still names the author's line (SPEC §T1706b).
+
+## Pipeline suppression
+
+An internally owned `Frame.pass` keeps the last native pipeline identity. Consecutive
+draws using that same pipeline avoid its redundant setter. A different pipeline is
+always bound; a new pass begins empty; `executeBundles`, including an empty list,
+invalidates the remembered state. Caller-owned encoders remain uncached.
+
+Bind groups, dynamic offsets, geometry, blend/stencil state, validation and draw order
+keep their existing paths. This is distinct from upstream [PR #493](https://github.com/vercel-labs/vgpu/pull/493),
+which caches verification, keys and binding plans. A broader native binding-cache
+prototype was rejected after its mock CPU overhead and bundle growth were measured.
+
+See [correctness and performance evidence](performance/2026-10-09-vgpu/README.md).
+Measurements cover the tested machine and workloads; they do not establish that every
+browser, driver or graph improves.
+
+## Review and contribution policy
+
+All published proposals are drafts on `laubsauger/vgpu`, based on canary and with old
+branch history retained. No proposal has been submitted to `vercel-labs/vgpu`.
+The owner reviews the fork drafts and evidence before any parent-repo publication.
+
+Upstream’s current external workflow asks for `## PR type` = `contribution`. Its
+release-impact validator has not yet rolled that type out; the draft descriptions
+call out that policy mismatch. They do not mislabel proposals as maintainer integration
+or change package versions/changesets merely to pass the validator.

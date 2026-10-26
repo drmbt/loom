@@ -1,0 +1,183 @@
+{
+  "environment": {
+    "node": "v22.23.3",
+    "platform": "darwin/arm64",
+    "cpu": "Apple M3 Max",
+    "count": 2000,
+    "runs": 7
+  },
+  "artifacts": [
+    {
+      "label": "baseline",
+      "entry": "/tmp/loom-vgpu-canary-base/packages/vgpu-api/dist/mock.js",
+      "entryHash": "2348537830f5f8f02b0d8600c1a4bb09673912fbb1330c3d5fecb19491fbcb60",
+      "drawHash": "1f35f9e2bb2a33cb2696817cb95c005c997030874720b889b71c0ddf8f1e8d85",
+      "frameHash": "6666b036b299459b4ade7c92aa2cfc0401ce30cd5d9be05213f2bfd814a96bdb"
+    },
+    {
+      "label": "pipeline",
+      "entry": "/tmp/loom-vgpu-pipeline-candidate/packages/vgpu-api/dist/mock.js",
+      "entryHash": "2348537830f5f8f02b0d8600c1a4bb09673912fbb1330c3d5fecb19491fbcb60",
+      "drawHash": "560ee80c2eb1db128a11800c50042fe884c0f3b780fe80f3806f4dee3d94f0f1",
+      "frameHash": "cb4c9fff3b029c880f44551ec5bab2feac89a5fae8476d91fd652a8ce0c4f19c"
+    }
+  ],
+  "results": [
+    {
+      "mode": "unique",
+      "entries": [
+        {
+          "label": "baseline",
+          "path": "/tmp/loom-vgpu-canary-base/packages/vgpu-api/dist/mock.js",
+          "samples": [
+            0.7537696750000002,
+            0.7625488472222222,
+            0.7532376083333338,
+            0.7213392277777776,
+            0.7137471055555563,
+            0.7151157388888878,
+            0.7543062527777767
+          ],
+          "pixels": [],
+          "median": 0.7532376083333338,
+          "min": 0.7137471055555563,
+          "max": 0.7625488472222222
+        },
+        {
+          "label": "pipeline",
+          "path": "/tmp/loom-vgpu-pipeline-candidate/packages/vgpu-api/dist/mock.js",
+          "samples": [
+            0.7357836916666667,
+            0.6975499972222231,
+            0.76232708888889,
+            0.6943003638888882,
+            0.711358108333334,
+            0.8202790416666669,
+            0.747017819444445
+          ],
+          "pixels": [],
+          "median": 0.7357836916666667,
+          "min": 0.6943003638888882,
+          "max": 0.8202790416666669
+        }
+      ]
+    },
+    {
+      "mode": "repeated",
+      "entries": [
+        {
+          "label": "baseline",
+          "path": "/tmp/loom-vgpu-canary-base/packages/vgpu-api/dist/mock.js",
+          "samples": [
+            0.3223366833333335,
+            0.3209161916666669,
+            0.32465334722222233,
+            0.3267280111111111,
+            0.3233902916666671,
+            0.32550058055555586,
+            0.31806261944444447
+          ],
+          "pixels": [],
+          "median": 0.3233902916666671,
+          "min": 0.31806261944444447,
+          "max": 0.3267280111111111
+        },
+        {
+          "label": "pipeline",
+          "path": "/tmp/loom-vgpu-pipeline-candidate/packages/vgpu-api/dist/mock.js",
+          "samples": [
+            0.3255747777777773,
+            0.327017483333333,
+            0.326807288888889,
+            0.3319064750000001,
+            0.33296514722222215,
+            0.32824792777777784,
+            0.3287726805555554
+          ],
+          "pixels": [],
+          "median": 0.32824792777777784,
+          "min": 0.3255747777777773,
+          "max": 0.33296514722222215
+        }
+      ]
+    },
+    {
+      "mode": "alternating",
+      "entries": [
+        {
+          "label": "baseline",
+          "path": "/tmp/loom-vgpu-canary-base/packages/vgpu-api/dist/mock.js",
+          "samples": [
+            0.35220312499999973,
+            0.35281574166666657,
+            0.34680416111111095,
+            0.36342638888888834,
+            0.36108009444444444,
+            0.3617415416666665,
+            0.366809838888889
+          ],
+          "pixels": [],
+          "median": 0.36108009444444444,
+          "min": 0.34680416111111095,
+          "max": 0.366809838888889
+        },
+        {
+          "label": "pipeline",
+          "path": "/tmp/loom-vgpu-pipeline-candidate/packages/vgpu-api/dist/mock.js",
+          "samples": [
+            0.3523415472222221,
+            0.3672261527777775,
+            0.3634183916666668,
+            0.355187961111111,
+            0.3750670138888888,
+            0.34586215833333345,
+            0.3545916583333332
+          ],
+          "pixels": [],
+          "median": 0.355187961111111,
+          "min": 0.34586215833333345,
+          "max": 0.3750670138888888
+        }
+      ]
+    },
+    {
+      "mode": "single",
+      "entries": [
+        {
+          "label": "baseline",
+          "path": "/tmp/loom-vgpu-canary-base/packages/vgpu-api/dist/mock.js",
+          "samples": [
+            6.5762059999999005,
+            6.728079000000036,
+            6.237419000000116,
+            6.495548999999961,
+            6.719617000000078,
+            6.855091000000229,
+            6.755543000000117
+          ],
+          "pixels": [],
+          "median": 6.719617000000078,
+          "min": 6.237419000000116,
+          "max": 6.855091000000229
+        },
+        {
+          "label": "pipeline",
+          "path": "/tmp/loom-vgpu-pipeline-candidate/packages/vgpu-api/dist/mock.js",
+          "samples": [
+            6.723876999999888,
+            6.491227999999971,
+            6.388795000000094,
+            7.168337999999956,
+            6.477228000000046,
+            6.730967000000085,
+            6.338723999999857
+          ],
+          "pixels": [],
+          "median": 6.491227999999971,
+          "min": 6.338723999999857,
+          "max": 7.168337999999956
+        }
+      ]
+    }
+  ]
+}

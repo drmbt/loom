@@ -14,13 +14,14 @@ import type { RuntimeDiagnostic } from "../../../domain/types/diagnostics.ts";
  * under those bytes, INVALID ones included, and the device states a module's error only
  * when it is created. If the warm-up swallowed that, the compile that later switches the
  * layer on would build from vgpu's cached module, its own scope would catch nothing, and
- * the node would be told "invalid due to a previous error" instead of why (T1521b,
- * T1523b(c)).
+ * the node would be told "invalid due to a previous error" instead of why (T1521b).
  *
  * So the contract is: what the switch reports is what a backend that never warmed reports
- * for the same compile, entry for entry — for an ordinary WGSL error, and for the one only
- * vgpu's combined module has (a name colliding with its fullscreen vertex stage), whose
- * reason the device states exactly once. And nothing is reported by the warm-up itself.
+ * for the same compile, entry for entry. And nothing is reported by the warm-up itself.
+ *
+ * T1705b: through vgpu 0.5.0 a second case stood here, an error only vgpu's COMBINED module
+ * had (a name colliding with the fullscreen vertex stage it put in front of an effect).
+ * vgpu 0.6.0 builds that stage as a module of its own, so such a source is valid.
  */
 
 let dawnError: string | undefined;
@@ -35,12 +36,6 @@ const COLOR_WGSL = `struct Params { color: vec4f };
 
 /** An undefined identifier: the pass's own text does not compile. */
 const BROKEN_WGSL = `@fragment fn fs(@location(0) uv: vec2f) -> @location(0) vec4f { return colour; }`;
-
-/** Valid on its own; collides with the fullscreen vertex stage vgpu puts in front (T1523b(c)). */
-const COLLIDING_WGSL = `struct VgpuFullscreenVertexOut {
-  x: f32,
-};
-@fragment fn fs(@location(0) uv: vec2f) -> @location(0) vec4f { return vec4f(uv, 0.0, 1.0); }`;
 
 function plan(passes: Readonly<Record<string, string>>): LogicalExecutionPlan {
   const ids = Object.keys(passes);
@@ -75,7 +70,6 @@ const said = (entries: readonly RuntimeDiagnostic[]) =>
 describe("§T1507b — the warm-up never takes a shader error away from the compile that meets it", () => {
   for (const [name, shader, reason] of [
     ["an ordinary WGSL error", BROKEN_WGSL, "colour"],
-    ["an error only vgpu's combined module has", COLLIDING_WGSL, "VgpuFullscreenVertexOut"],
   ] as const) {
     it(`${name}: the switch reports what a backend that never warmed reports`, async () => {
       const off = plan({ a: COLOR_WGSL });

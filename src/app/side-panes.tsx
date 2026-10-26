@@ -1648,9 +1648,13 @@ export function ViewerPane({
             </>
           )}
         </dl>
-        {cameraNote === null ? null : (
+        {cameraNote !== null ? (
           <p className={styles.readoutNote} data-testid="viewer-camera-note">{cameraNote}</p>
-        )}
+        ) : lock.target !== null ? (
+          // §T1710b: a picture that can be flown keeps the line the flight's note takes, so
+          // arming the flight fills it rather than shrinking the picture under the pointer.
+          <p className={styles.readoutNote} aria-hidden="true">{"\u00a0"}</p>
+        ) : null}
       </div>
     </div>
   );

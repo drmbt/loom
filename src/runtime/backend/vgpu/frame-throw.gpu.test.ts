@@ -14,8 +14,8 @@ import type { RuntimeDiagnostic } from "../../../domain/types/diagnostics.ts";
  * vgpu 0.4.0 made `frame(gpu, cb)` / `frameLoop` atomic: a callback that throws has its
  * frame CANCELED (nothing it encoded reaches the queue) where 0.3.1 submitted whatever was
  * encoded before the throw. Only the command buffer is covered — CPU-side state the
- * callback mutated before throwing (ping-pong swaps, ring rotations, self-submitting
- * dispatches) is not rolled back by anyone. The backend is the only vgpu importer (§V3),
+ * callback mutated before throwing (ping-pong swaps, ring rotations) is not rolled back by
+ * anyone. Since §T1707b a kernel is a compute pass of the frame, so it rides with the frame. The backend is the only vgpu importer (§V3),
  * so its three encode sites are the only places the choice can be wrong, and each one's
  * decision is pinned here on Dawn by the pixels the next reader sees (§V147):
  *
@@ -27,7 +27,7 @@ import type { RuntimeDiagnostic } from "../../../domain/types/diagnostics.ts";
  *    that write on the queue, or the next frame reads a half nobody wrote. It is also what
  *    keeps the loop alive: under 0.4's cancel-on-throw, a throw that ESCAPED the callback
  *    would stop the `frameLoop` for good.
- * 2. The DIRECT path (`encodeSegmented`, the export/headless/paused-app entry): PARTIAL
+ * 2. The DIRECT path (`encodeDirect`, the export/headless/paused-app entry): PARTIAL
  *    SUBMIT, opted into explicitly (`f.submit()` in the callback's own catch, the shape
  *    upstream documents). Same reasoning as the loop, plus §V47: the same failing plan must
  *    leave the same state on both paths, or a project renders two different pictures after
