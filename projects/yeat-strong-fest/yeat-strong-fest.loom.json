@@ -4662,6 +4662,28 @@
   "createdAt": "2026-08-29T00:00:00.000Z",
   "graph": {
     "edges": {
+      "ed_41f414f5e52d1": {
+        "id": "ed_41f414f5e52d1",
+        "source": {
+          "nodeId": "nd_e61c894da247w",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "nd_e61c894da24715",
+          "portId": "albedo"
+        }
+      },
+      "ed_41f414f5e52d2": {
+        "id": "ed_41f414f5e52d2",
+        "source": {
+          "nodeId": "nd_e61c894da247w",
+          "portId": "out"
+        },
+        "target": {
+          "nodeId": "nd_e61c894da24716",
+          "portId": "albedo"
+        }
+      },
       "ed_e61c894da24710": {
         "id": "ed_e61c894da24710",
         "order": 2,
@@ -4672,50 +4694,6 @@
         "target": {
           "nodeId": "nd_e61c894da247w",
           "portId": "inputs"
-        }
-      },
-      "ed_e61c894da24713": {
-        "id": "ed_e61c894da24713",
-        "source": {
-          "nodeId": "nd_e61c894da247w",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "nd_e61c894da24711",
-          "portId": "input"
-        }
-      },
-      "ed_e61c894da24714": {
-        "id": "ed_e61c894da24714",
-        "source": {
-          "nodeId": "nd_e61c894da247w",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "nd_e61c894da24712",
-          "portId": "input"
-        }
-      },
-      "ed_e61c894da24717": {
-        "id": "ed_e61c894da24717",
-        "source": {
-          "nodeId": "nd_e61c894da24711",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "nd_e61c894da24715",
-          "portId": "albedo"
-        }
-      },
-      "ed_e61c894da24718": {
-        "id": "ed_e61c894da24718",
-        "source": {
-          "nodeId": "nd_e61c894da24712",
-          "portId": "out"
-        },
-        "target": {
-          "nodeId": "nd_e61c894da24716",
-          "portId": "albedo"
         }
       },
       "ed_e61c894da2471s": {
@@ -4954,72 +4932,6 @@
     },
     "groups": {},
     "nodes": {
-      "nd_e61c894da24711": {
-        "definitionVersion": 1,
-        "id": "nd_e61c894da24711",
-        "label": "wgsl_cropMain",
-        "parameters": {
-          "canvasH": 2160,
-          "canvasW": 3840,
-          "h": 1512,
-          "level": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "op('slider_mainTrim').chan.mainTrim"
-              }
-            },
-            "mode": "expression"
-          },
-          "source": "struct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\n// YEAT STRONG FEST: cut the MAIN WALL region out of the 3840 x 2160 pixel map.\n// The region is in pixel-map pixels, so a feed sent at any size (3840 x 2160, or 1920 x 1080\n// from a half-size output) lands the same: it is read as a fraction of Canvas W x H.\nstruct Params {\n  x: f32, // @default 0  Region left, pixel-map px.\n  y: f32, // @default 0  Region top, pixel-map px.\n  w: f32, // @default 2520  Region width, pixel-map px.\n  h: f32, // @default 1512  Region height, pixel-map px.\n  canvasW: f32, // @default 3840  Pixel map width.\n  canvasH: f32, // @default 2160  Pixel map height.\n  level: f32, // @default 1  Brightness trim.\n};\n\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(2) var<uniform> frameU: SharedFrame;\n@group(0) @binding(3) var<uniform> params: Params;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let keep = frameU.time * 0.0;\n  let canvas = vec2f(max(params.canvasW, 1.0), max(params.canvasH, 1.0));\n  let src = (vec2f(params.x, params.y) + uv * vec2f(params.w, params.h)) / canvas;\n  let c = textureSampleLevel(inputTexture, inputSampler, src, 0.0).rgb;\n  return vec4f(c * params.level + keep, 1.0);\n}\n",
-          "w": 2520,
-          "x": 0,
-          "y": 0
-        },
-        "position": {
-          "x": 774,
-          "y": -168
-        },
-        "resolution": {
-          "height": 1512,
-          "mode": "fixed",
-          "width": 2520
-        },
-        "type": "customWgsl"
-      },
-      "nd_e61c894da24712": {
-        "definitionVersion": 1,
-        "id": "nd_e61c894da24712",
-        "label": "wgsl_cropImag",
-        "parameters": {
-          "canvasH": 2160,
-          "canvasW": 3840,
-          "h": 1008,
-          "level": {
-            "bindings": {
-              "expression": {
-                "kind": "expression",
-                "source": "op('slider_imagTrim').chan.imagTrim"
-              }
-            },
-            "mode": "expression"
-          },
-          "source": "struct SharedFrame {\n  time: f32,\n  deltaTime: f32,\n  frameIndex: f32,\n  randomSeed: f32,\n  wallTime: f32,\n  wallDelta: f32,\n  absTime: f32,\n  absFrame: f32,\n  resolution: vec2f,\n  pointer: vec4f,\n};\n// YEAT STRONG FEST: cut the IMAG region out of the 3840 x 2160 pixel map.\n// The region is in pixel-map pixels, so a feed sent at any size (3840 x 2160, or 1920 x 1080\n// from a half-size output) lands the same: it is read as a fraction of Canvas W x H.\nstruct Params {\n  x: f32, // @default 2524  Region left, pixel-map px.\n  y: f32, // @default 0  Region top, pixel-map px.\n  w: f32, // @default 672  Region width, pixel-map px.\n  h: f32, // @default 1008  Region height, pixel-map px.\n  canvasW: f32, // @default 3840  Pixel map width.\n  canvasH: f32, // @default 2160  Pixel map height.\n  level: f32, // @default 1  Brightness trim.\n};\n\n@group(0) @binding(0) var inputSampler: sampler;\n@group(0) @binding(1) var inputTexture: texture_2d<f32>;\n@group(0) @binding(2) var<uniform> frameU: SharedFrame;\n@group(0) @binding(3) var<uniform> params: Params;\n\n@fragment\nfn fs(@location(0) uv: vec2f) -> @location(0) vec4f {\n  let keep = frameU.time * 0.0;\n  let canvas = vec2f(max(params.canvasW, 1.0), max(params.canvasH, 1.0));\n  let src = (vec2f(params.x, params.y) + uv * vec2f(params.w, params.h)) / canvas;\n  let c = textureSampleLevel(inputTexture, inputSampler, src, 0.0).rgb;\n  return vec4f(c * params.level + keep, 1.0);\n}\n",
-          "w": 672,
-          "x": 2524,
-          "y": 0
-        },
-        "position": {
-          "x": 774,
-          "y": 20
-        },
-        "resolution": {
-          "height": 1008,
-          "mode": "fixed",
-          "width": 672
-        },
-        "type": "customWgsl"
-      },
       "nd_e61c894da24715": {
         "definitionVersion": 1,
         "id": "nd_e61c894da24715",
@@ -5029,7 +4941,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('slider_walls').chan.walls"
+                "source": "op('slider_walls').chan.walls * op('slider_mainTrim').chan.mainTrim"
               }
             },
             "mode": "expression"
@@ -5052,7 +4964,7 @@
             "bindings": {
               "expression": {
                 "kind": "expression",
-                "source": "op('slider_walls').chan.walls"
+                "source": "op('slider_walls').chan.walls * op('slider_imagTrim').chan.imagTrim"
               }
             },
             "mode": "expression"
@@ -5977,7 +5889,7 @@
         "id": "nd_e61c894da247r",
         "label": "note_readme",
         "parameters": {
-          "body": "YEAT STRONG FEST previz. ONE Syphon In carries the whole 3840 x 2160 pixel map from Resolume (Advanced Output preset yeat-strong-fest: screen PIXEL MAP, Syphon server \"YEAT PIXEL MAP\"; pick it in syphonin_pixelMap's inspector if it does not bind by name). wgsl_cropMain cuts MAIN WALL (2520 x 1512 at 0,0) onto the upstage wall; wgsl_cropImag cuts IMAG (672 x 1008 at 2524,0) onto BOTH IMAG screens. The DJ booth strips are not modelled. Source: 0 live Syphon, 1 Vincent's pixel map image, 2 a test map at pixel-map coordinates (top left red, top right green, bottom left blue, bottom right yellow). Model: tools/blender/yeat-strong-fest/build.py (tile read as 1000 x 500 mm: an assumption).",
+          "body": "YEAT STRONG FEST previz. ONE Syphon In carries the whole 3840 x 2160 pixel map from Resolume (Advanced Output preset yeat-strong-fest: screen and Syphon server \"YEAT PIXEL MAP\", slices pixel-true, input rect = output rect; pick the server in syphonin_pixelMap's inspector if it does not bind by name). The model's uvs ARE the pixel map: led.main samples MAIN WALL (2520 x 1512 at 0,0) and both led.imag_* sample IMAG (672 x 1008 at 2524,0), so the full map goes straight onto the walls with no crop. material_main and material_imag tint it by LED brightness times their trim. The DJ booth strips are not modelled. Source: 0 live Syphon, 1 Vincent's pixel map image, 2 a test map at pixel-map coordinates (top left red, top right green, bottom left blue, bottom right yellow). Model: tools/blender/yeat-strong-fest/build.py (tile read as 1000 x 500 mm: an assumption).",
           "color": "input",
           "title": "YEAT STRONG FEST previz"
         },
@@ -6094,7 +6006,7 @@
         "type": "switch"
       }
     },
-    "revision": 38
+    "revision": 44
   },
   "name": "YEAT STRONG FEST previz",
   "projectId": "project-adf58514-47be-4922-b415-b9441d7ef31e",
@@ -6115,5 +6027,5 @@
     "randomSeed": 7,
     "workingFormat": "rgba8unorm-srgb"
   },
-  "updatedAt": "2026-10-27T02:47:09.911Z"
+  "updatedAt": "2026-10-28T00:39:21.721Z"
 }

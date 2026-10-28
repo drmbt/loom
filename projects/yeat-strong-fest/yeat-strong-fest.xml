@@ -5,9 +5,9 @@
 		<Params name="ScreenSetupParams" />
 		<CurrentCompositionTextureSize width="3840" height="2160" />
 		<screens>
-			<Screen name="PIXEL MAP" uniqueId="1793068867358">
+			<Screen name="YEAT PIXEL MAP" uniqueId="1793147638496">
 				<Params name="Params">
-					<Param name="Name" T="STRING" default="" value="PIXEL MAP" />
+					<Param name="Name" T="STRING" default="" value="YEAT PIXEL MAP" />
 					<Param name="Enabled" T="BOOL" default="1" value="1" />
 					<Param name="Hidden" T="BOOL" default="0" value="0" />
 				</Params>
@@ -82,7 +82,7 @@
 					</ScreenGuide>
 				</guides>
 				<layers>
-					<Slice uniqueId="1793068867359">
+					<Slice uniqueId="1793147638497">
 						<Params name="Common">
 							<Param name="Name" T="STRING" default="Layer" value="MAIN WALL" />
 							<Param name="Enabled" T="BOOL" default="1" value="1" />
@@ -155,10 +155,10 @@
 							</ParamRange>
 						</Params>
 						<InputRect orientation="0">
-							<v x="120" y="0" />
-							<v x="3720" y="0" />
-							<v x="3720" y="2160" />
-							<v x="120" y="2160" />
+							<v x="0" y="0" />
+							<v x="2520" y="0" />
+							<v x="2520" y="1512" />
+							<v x="0" y="1512" />
 						</InputRect>
 						<OutputRect orientation="0">
 							<v x="0" y="0" />
@@ -173,22 +173,22 @@
 							</Params>
 							<BezierWarper controlWidth="4" controlHeight="4">
 								<vertices>
-									<v x="0.0" y="0.0" />
-									<v x="840.0" y="0.0" />
-									<v x="1680.0" y="0.0" />
-									<v x="2520.0" y="0.0" />
-									<v x="0.0" y="504.0" />
-									<v x="840.0" y="504.0" />
-									<v x="1680.0" y="504.0" />
-									<v x="2520.0" y="504.0" />
-									<v x="0.0" y="1008.0" />
-									<v x="840.0" y="1008.0" />
-									<v x="1680.0" y="1008.0" />
-									<v x="2520.0" y="1008.0" />
-									<v x="0.0" y="1512.0" />
-									<v x="840.0" y="1512.0" />
-									<v x="1680.0" y="1512.0" />
-									<v x="2520.0" y="1512.0" />
+									<v x="0" y="0" />
+									<v x="840" y="0" />
+									<v x="1680" y="0" />
+									<v x="2520" y="0" />
+									<v x="0" y="504" />
+									<v x="840" y="504" />
+									<v x="1680" y="504" />
+									<v x="2520" y="504" />
+									<v x="0" y="1008" />
+									<v x="840" y="1008" />
+									<v x="1680" y="1008" />
+									<v x="2520" y="1008" />
+									<v x="0" y="1512" />
+									<v x="840" y="1512" />
+									<v x="1680" y="1512" />
+									<v x="2520" y="1512" />
 								</vertices>
 							</BezierWarper>
 							<Homography>
@@ -207,7 +207,7 @@
 							</Homography>
 						</Warper>
 					</Slice>
-					<Slice uniqueId="1793068867360">
+					<Slice uniqueId="1793147638498">
 						<Params name="Common">
 							<Param name="Name" T="STRING" default="Layer" value="IMAG" />
 							<Param name="Enabled" T="BOOL" default="1" value="1" />
@@ -280,10 +280,10 @@
 							</ParamRange>
 						</Params>
 						<InputRect orientation="0">
-							<v x="1200" y="0" />
-							<v x="2640" y="0" />
-							<v x="2640" y="2160" />
-							<v x="1200" y="2160" />
+							<v x="2524" y="0" />
+							<v x="3196" y="0" />
+							<v x="3196" y="1008" />
+							<v x="2524" y="1008" />
 						</InputRect>
 						<OutputRect orientation="0">
 							<v x="2524" y="0" />
@@ -298,22 +298,22 @@
 							</Params>
 							<BezierWarper controlWidth="4" controlHeight="4">
 								<vertices>
-									<v x="2524.0" y="0.0" />
-									<v x="2748.0" y="0.0" />
-									<v x="2972.0" y="0.0" />
-									<v x="3196.0" y="0.0" />
-									<v x="2524.0" y="336.0" />
-									<v x="2748.0" y="336.0" />
-									<v x="2972.0" y="336.0" />
-									<v x="3196.0" y="336.0" />
-									<v x="2524.0" y="672.0" />
-									<v x="2748.0" y="672.0" />
-									<v x="2972.0" y="672.0" />
-									<v x="3196.0" y="672.0" />
-									<v x="2524.0" y="1008.0" />
-									<v x="2748.0" y="1008.0" />
-									<v x="2972.0" y="1008.0" />
-									<v x="3196.0" y="1008.0" />
+									<v x="2524" y="0" />
+									<v x="2748" y="0" />
+									<v x="2972" y="0" />
+									<v x="3196" y="0" />
+									<v x="2524" y="336" />
+									<v x="2748" y="336" />
+									<v x="2972" y="336" />
+									<v x="3196" y="336" />
+									<v x="2524" y="672" />
+									<v x="2748" y="672" />
+									<v x="2972" y="672" />
+									<v x="3196" y="672" />
+									<v x="2524" y="1008" />
+									<v x="2748" y="1008" />
+									<v x="2972" y="1008" />
+									<v x="3196" y="1008" />
 								</vertices>
 							</BezierWarper>
 							<Homography>

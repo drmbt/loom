@@ -16,9 +16,11 @@ What it builds (names are what Loom's Mesh File In `select` matches):
 - `set.frames`: a black box behind each screen, so a screen reads as solid from the side.
 - `stage.deck`, `stage.floor`: the stage deck and the house floor, for context only.
 
-Each screen is one quad with uvs 0..1 over its face (u left to right as the audience sees it, v
-top to bottom in glTF), so the network decides which region of the feed lands on it: the crop
-lives in the Loom network, not in the model.
+Each screen's uvs ARE its place in the 3840 x 2160 pixel map, so the whole map is one texture and
+every screen samples its own region of it: in glTF uv space (0,0 at the map's top left, v down),
+u = x / 3840 and v = y / 2160 at the region's corners. `led.main` spans 0..2520/3840 by
+0..1512/2160; both `led.imag_*` span 2524..3196/3840 by 0..1008/2160. No crop lives in the
+network; it maps the feed straight onto the walls.
 """
 import argparse
 import os
@@ -27,9 +29,12 @@ import sys
 import bpy
 
 # ---- the pixel map (3840 x 2160 canvas) ------------------------------------------------------
+CANVAS_PX = (3840, 2160)
 TILE_PX = (168, 84)
 MAIN_TILES = (15, 18)    # columns, rows: 2520 x 1512 at TL 0,0
+MAIN_AT = (0, 0)
 IMAG_TILES = (4, 12)     # 672 x 1008 at TL 2524,0
+IMAG_AT = (2524, 0)
 
 # ---- physical size: ASSUMED -------------------------------------------------------------------
 # The pixel map gives pixels, not metres. A 168 x 84 px tile read as a 1000 x 500 mm cabinet
@@ -92,12 +97,19 @@ def merge(parts):
     return verts, faces
 
 
-def screen(name, cx, y, bottom, w, h, mat):
-    """A quad facing the audience (-Y); uvs (0,0) at its bottom left as the audience sees it."""
+def map_uvs(at, tiles):
+    """The region's corners in the pixel map, as Blender uvs: bottom left, bottom right, top right, top left."""
+    u0, u1 = at[0] / CANVAS_PX[0], (at[0] + tiles[0] * TILE_PX[0]) / CANVAS_PX[0]
+    top, bottom = at[1] / CANVAS_PX[1], (at[1] + tiles[1] * TILE_PX[1]) / CANVAS_PX[1]
+    # Blender's uv v runs up and the glTF exporter writes 1 - v, so a pixel row y (from the top)
+    # is Blender v = 1 - y / height, and glTF v = y / height.
+    return [(u0, 1 - bottom), (u1, 1 - bottom), (u1, 1 - top), (u0, 1 - top)]
+
+
+def screen(name, cx, y, bottom, w, h, mat, uvs):
+    """A quad facing the audience (-Y), its uvs its region of the pixel map."""
     x0, x1, z0, z1 = cx - w / 2, cx + w / 2, bottom, bottom + h
     verts = [(x0, y, z0), (x1, y, z0), (x1, y, z1), (x0, y, z1)]
-    # Blender's uv v runs up; the glTF exporter flips it, so v = 1 is the texture's top row.
-    uvs = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
     mesh_object(name, verts, [(0, 1, 2, 3)], mat, uvs)
     return box(x0 - 0.05, x1 + 0.05, y + 0.01, y + 0.01 + FRAME_DEPTH, z0 - 0.05, z1 + 0.05)
 
@@ -113,9 +125,9 @@ def build():
     iw, ih = size(IMAG_TILES)
     imag_bottom = MAIN_BOTTOM + mh - ih   # tops level with the main wall's
     frames = [
-        screen("led.main", 0.0, MAIN_Y, MAIN_BOTTOM, mw, mh, white),
-        screen("led.imag_SR", -IMAG_CENTRE_X, IMAG_Y, imag_bottom, iw, ih, white),
-        screen("led.imag_SL", IMAG_CENTRE_X, IMAG_Y, imag_bottom, iw, ih, white),
+        screen("led.main", 0.0, MAIN_Y, MAIN_BOTTOM, mw, mh, white, map_uvs(MAIN_AT, MAIN_TILES)),
+        screen("led.imag_SR", -IMAG_CENTRE_X, IMAG_Y, imag_bottom, iw, ih, white, map_uvs(IMAG_AT, IMAG_TILES)),
+        screen("led.imag_SL", IMAG_CENTRE_X, IMAG_Y, imag_bottom, iw, ih, white, map_uvs(IMAG_AT, IMAG_TILES)),
     ]
     # Legs under the flown IMAGs and the main wall's frame down to the deck, so nothing floats.
     for cx, y, bottom, top_floor in ((-IMAG_CENTRE_X, IMAG_Y, imag_bottom, 0.0),

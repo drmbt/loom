@@ -13,16 +13,18 @@ the LED spec arrives and rebuild.
 
 ## Files
 
-- `build.py` builds the model, writing `public/media/yeat-strong-fest/stage.glb`. Each screen is one quad with 0..1 uvs, and the crop
-  lives in the network.
+- `build.py` builds the model, writing `public/media/yeat-strong-fest/stage.glb`. Each screen is one quad whose uvs ARE its
+  region of the 3840 x 2160 map (glTF uv = x / 3840, y / 2160, from the top left): `led.main` 0..2520 x 0..1512, both
+  `led.imag_*` 2524..3196 x 0..1008. The whole map is one texture; no crop lives in the network.
 - `advanced_output.py` writes the Arena Advanced Output preset (`projects/yeat-strong-fest/yeat-strong-fest.xml`,
-  installed as `~/Documents/Resolume Arena/Presets/Advanced Output/yeat-strong-fest.xml`). It has one screen, `PIXEL MAP`,
-  published over Syphon as `YEAT PIXEL MAP`, with two slices: `MAIN WALL` (composition centre 3600 x 2160 → 0,0 2520 x 1512)
-  and `IMAG` (composition centre 1440 x 2160 → 2524,0 672 x 1008). Point IMAG's Input Source at the camera layer
-  if IMAG is live, and give the screen a display output at the venue.
+  installed as `~/Documents/Resolume Arena/Presets/Advanced Output/yeat-strong-fest.xml`). It has one screen, `YEAT PIXEL MAP`
+  (Arena names the Syphon server after the screen), and the composition IS the pixel map: both slices are pixel-true,
+  input rect = output rect. `MAIN WALL` 0,0 2520 x 1512 and `IMAG` 2524,0 672 x 1008. Point IMAG's Input Source at the
+  camera layer if IMAG is live (moving its input rect onto that picture), and give the screen a display output at the venue.
 - `projects/yeat-strong-fest/yeat-strong-fest.loom.json` is the network, authored over Loom MCP and saved from the app.
-  `syphonin_pixelMap` listens for Arena's `YEAT PIXEL MAP`. `wgsl_cropMain` and `wgsl_cropImag` cut the regions out, and
-  their x/y/w/h are in pixel-map pixels, so a half-size feed still lands. Source slider: 0 live, 1 the pixel map image,
+  `syphonin_pixelMap` listens for Arena's `YEAT PIXEL MAP`. `switch_source` (3840 x 2160) feeds both wall materials
+  whole, and the uvs pick each screen's region, so a half-size feed still lands. `material_main` and `material_imag` tint
+  by LED brightness times their trim. Source slider: 0 live, 1 the pixel map image,
   2 a test map at pixel-map coordinates (red top left, green top right, blue bottom left, yellow bottom right). It opens on 1.
   Panel `YEAT STRONG FEST`: LED brightness, main and IMAG trims, orbit, elevation, distance, lens, aim, deck tone,
   work light. Camera presets in `presets_shots`: `foh`, `wide`, `close`, `sr_angle`, `sl_angle`, `sl_profile`.
