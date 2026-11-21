@@ -210,6 +210,26 @@ const controlDefault =
   };
 
 /**
+ * VN152 (§T1648b) — a preset button: the bank and the preset's own name. Overwrite is Store
+ * under that name; on a look's instance it would write the COMPONENT with no undo, which is
+ * why the strip offers no Store there either (§T1505b), so the row is greyed and says where.
+ */
+const presetRef =
+  (verb: "overwrite" | "rename" | "delete"): InputBuilder =>
+  (_item, target, context) => {
+    if (target.nodeId === undefined || target.preset === undefined) return { ok: false, reason: "No preset under the cursor." };
+    const bank = context.graph.nodes[target.nodeId];
+    if (verb === "overwrite" && bank !== undefined && parseComponentNodeType(bank.type) !== null) {
+      return { ok: false, reason: "A look's presets are its component's: store them inside the component." };
+    }
+    // `preset.rename` refuses an instance (its component has no undo); the row says so first.
+    if (verb === "rename" && bank !== undefined && parseComponentNodeType(bank.type) !== null) {
+      return { ok: false, reason: "A look's presets are its component's: rename them inside the component." };
+    }
+    return { ok: true, input: { nodeId: target.nodeId, name: target.preset } };
+  };
+
+/**
  * Keyed by `surface:command` first, then by `command`. The surface key exists because
  * `graph.applyPatch` is a real, registered command that means something different on
  * each surface — which is how "delete edge" and "disconnect port" work TODAY instead of
@@ -286,6 +306,9 @@ const BUILDERS: Record<string, InputBuilder> = {
   "control:control.setDefault": controlDefault("setDefault", false),
   "control:control.resetAll": controlDefault("reset", true),
   "control:control.setAllDefaults": controlDefault("setDefault", true),
+  "preset:preset.store": presetRef("overwrite"),
+  "preset:ui.beginPresetRename": presetRef("rename"),
+  "preset:preset.delete": presetRef("delete"),
 };
 
 /**

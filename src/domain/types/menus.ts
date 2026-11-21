@@ -15,10 +15,12 @@ import type { CommandName } from "./commands.ts";
 
 /** A right-click means different things over a node, a port, an edge, or empty canvas. */
 export interface MenuTarget {
-  surface: "canvas" | "node" | "port" | "edge" | "parameter" | "channel" | "control";
+  surface: "canvas" | "node" | "port" | "edge" | "parameter" | "channel" | "control" | "preset";
   nodeId?: NodeId;
   /** §T1619b: the Panel whose board the control was right-clicked on (`surface: "control"`), when it was on one. */
   panelId?: NodeId;
+  /** VN152 (§T1648b): the preset button under the cursor on a bank's strip (`surface: "preset"`); `nodeId` is the bank. */
+  preset?: string;
   /** §T1393b: the channel under the cursor on a value node's card (`surface: "channel"`). */
   channel?: string;
   /** Its reading when the row showed one. */

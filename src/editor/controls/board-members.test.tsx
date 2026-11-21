@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { installDomStubs } from "@ui/testing/install-dom-stubs.ts";
@@ -10,12 +10,16 @@ import { createParameterEditor } from "@editor/inspector/parameter-editor.ts";
 import type { FrameClock } from "@domain/types/frame.ts";
 import type { NodeId } from "@domain/types/ids.ts";
 import type { GraphPatchOperation } from "@domain/types/patch.ts";
-import { parsePresetBank, serializeCueList, serializePresetBank } from "@domain/presets/index.ts";
+import { parseCueList, parsePresetBank, serializeCueList, serializePresetBank } from "@domain/presets/index.ts";
 import { parsePanelBoard, serializePanelBoard, type StoredBoardItem } from "@nodes/definitions/controls.ts";
 import { createAppRuntime, type AppRuntime } from "../../app/app-runtime.ts";
 import { useControlBodies } from "./control-bodies.tsx";
 import type { ControlWrite } from "./control-widget.tsx";
 import { ControlsPane } from "./controls-pane.tsx";
+import { DEFAULT_BINDINGS } from "@editor/keymap/defaults.ts";
+import { KeymapProvider } from "@editor/keymap/keymap-provider.tsx";
+import { createKeymapStore } from "@editor/keymap/store.ts";
+import { ContextMenuHost } from "@editor/menus/context-menu-host.tsx";
 
 /**
  * T1501b (§T1398b S6) — A BANK, A LAYER AND A CUE LIST ON A PANEL, as a performer meets them:
@@ -252,6 +256,130 @@ describe("T1527b — Store on a bank's strip", () => {
     expect(runtime.bus.store.getRevision()).toBe(revision);
     expect(bankOf(runtime, ids["$looks"]!).map((preset) => preset.name)).toEqual(["soft", "hard"]);
     expect(within(tabItem("member:looks")).getByRole("alert").textContent).toContain("declares no targets");
+  });
+});
+
+/**
+ * VN152 (§T1648b) — a right-click on a preset button opens that preset's menu, on the Controls
+ * tab as the app mounts it (the menu host around the pane). Asserted on the bank afterwards
+ * and on what one undo puts back.
+ */
+describe("VN152 — a preset button's right-click menu", () => {
+  function MenuDesk({ runtime }: { runtime: AppRuntime }) {
+    const graph = useSyncExternalStore(runtime.bus.store.subscribe, runtime.bus.store.getGraph);
+    const [keymap] = useState(() => createKeymapStore({ defaults: DEFAULT_BINDINGS, storage: null, platform: "other" }));
+    return (
+      <KeymapProvider bus={runtime.bus} store={keymap} invocationContext={runtime.invocation}>
+        <ContextMenuHost bus={runtime.bus}>
+          <ControlsPane graph={graph} registry={runtime.registry} bus={runtime.bus} invocation={runtime.invocation} />
+        </ContextMenuHost>
+      </KeymapProvider>
+    );
+  }
+  const presetsOf = (runtime: AppRuntime, id: NodeId) => {
+    const parsed = parsePresetBank(nodeOf(runtime, id).parameters["presets"]);
+    if (!parsed.ok) throw new Error(parsed.reason);
+    return parsed.bank.presets;
+  };
+  const button = (name: string): HTMLElement => tabItem("member:looks").querySelector(`[data-preset="${name}"]`) as HTMLElement;
+  const openOn = (element: HTMLElement): HTMLElement => {
+    fireEvent.contextMenu(element, { clientX: 40, clientY: 60 });
+    return screen.getByRole("menu");
+  };
+  const choose = async (menu: HTMLElement, label: string): Promise<void> => {
+    const found = within(menu).getByText(label, { selector: "span" }).closest("[data-menu-command]") as HTMLElement;
+    await act(async () => {
+      fireEvent.click(found);
+      await settle();
+    });
+  };
+
+  it("offers Overwrite, then Delete as the danger row, for the preset under the cursor", async () => {
+    const { runtime } = await desk();
+    render(<MenuDesk runtime={runtime} />);
+    const menu = openOn(button("hard").querySelector("span") as HTMLElement);
+    expect(menu.getAttribute("data-menu-surface")).toBe("preset");
+    expect([...menu.querySelectorAll("[data-menu-command]")].map((row) => [row.textContent, row.getAttribute("data-menu-command")])).toEqual([
+      ["Overwrite with current settings", "preset.store"],
+      ["Rename…", "ui.beginPresetRename"],
+      ["Delete", "preset.delete"],
+    ]);
+  });
+
+  const field = (): HTMLInputElement => tabItem("member:looks").querySelector("[data-preset-rename]") as HTMLInputElement;
+  const type = async (input: HTMLInputElement, text: string, key: string): Promise<void> => {
+    await act(async () => {
+      fireEvent.change(input, { target: { value: text } });
+      fireEvent.keyDown(input, { key });
+      await settle();
+    });
+  };
+  const cueNames = (runtime: AppRuntime, id: NodeId) => {
+    const parsed = parseCueList(nodeOf(runtime, id).parameters["cues"]);
+    if (!parsed.ok) throw new Error(parsed.reason);
+    return parsed.list.cues.map((cue) => [cue.name, cue.preset]);
+  };
+
+  it("Rename… opens a name field on THAT button, focused; Enter renames it in place and the cue that named it, as one undo step", async () => {
+    const { runtime, ids } = await desk();
+    render(<MenuDesk runtime={runtime} />);
+    const before = undoDepth(runtime);
+    await choose(openOn(button("hard")), "Rename…");
+    expect(field().getAttribute("data-preset-rename")).toBe("hard");
+    expect(document.activeElement).toBe(field());
+    expect(field().value).toBe("hard");
+
+    await type(field(), "night", "Enter");
+    expect(field()).toBeNull();
+    expect(presetsOf(runtime, ids["$looks"]!).map((preset) => preset.name)).toEqual(["soft", "night"]);
+    expect([...tabItem("member:looks").querySelectorAll("[data-preset]")].map((each) => each.getAttribute("data-preset"))).toEqual(["soft", "night"]);
+    expect(cueNames(runtime, ids["$set"]!)).toEqual([["1", "soft"], ["2", "night"]]);
+    expect(undoDepth(runtime)).toBe(before + 1);
+
+    await undo(runtime);
+    expect(presetsOf(runtime, ids["$looks"]!).map((preset) => preset.name)).toEqual(["soft", "hard"]);
+    expect(cueNames(runtime, ids["$set"]!)).toEqual([["1", "soft"], ["2", "hard"]]);
+  });
+
+  it("Escape closes the field having renamed nothing; a taken name is refused on the strip and the field stays open", async () => {
+    const { runtime, ids } = await desk();
+    render(<MenuDesk runtime={runtime} />);
+    const revision = runtime.bus.store.getRevision();
+    await choose(openOn(button("hard")), "Rename…");
+    await type(field(), "whatever", "Escape");
+    expect(field()).toBeNull();
+    expect(runtime.bus.store.getRevision()).toBe(revision);
+
+    await choose(openOn(button("hard")), "Rename…");
+    await type(field(), "soft", "Enter");
+    expect(field()).not.toBeNull();
+    expect(within(tabItem("member:looks")).getByRole("alert").textContent).toContain('already has a preset "soft"');
+    expect(runtime.bus.store.getRevision()).toBe(revision);
+    expect(presetsOf(runtime, ids["$looks"]!).map((preset) => preset.name)).toEqual(["soft", "hard"]);
+  });
+
+  it("Overwrite stores the current settings into THAT preset in place, as one undo step", async () => {
+    const { runtime, ids } = await desk();
+    render(<MenuDesk runtime={runtime} />);
+    const before = undoDepth(runtime);
+    const existing = presetsOf(runtime, ids["$looks"]!);
+    // blur1 sits at 9; "hard" held 20.
+    await choose(openOn(button("hard")), "Overwrite with current settings");
+    expect(presetsOf(runtime, ids["$looks"]!)).toEqual([existing[0], { name: "hard", values: { blur1: expect.objectContaining({ size: 9 }) } }]);
+    expect(undoDepth(runtime)).toBe(before + 1);
+    await undo(runtime);
+    expect(presetsOf(runtime, ids["$looks"]!)).toEqual(existing);
+  });
+
+  it("Delete takes THAT preset off the bank and the strip; one undo brings it back in place", async () => {
+    const { runtime, ids } = await desk();
+    render(<MenuDesk runtime={runtime} />);
+    const existing = presetsOf(runtime, ids["$looks"]!);
+    await choose(openOn(button("soft")), "Delete");
+    expect(presetsOf(runtime, ids["$looks"]!).map((preset) => preset.name)).toEqual(["hard"]);
+    expect([...tabItem("member:looks").querySelectorAll("[data-preset]")].map((each) => each.getAttribute("data-preset"))).toEqual(["hard"]);
+    await undo(runtime);
+    expect(presetsOf(runtime, ids["$looks"]!)).toEqual(existing);
   });
 });
 

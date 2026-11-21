@@ -81,6 +81,8 @@ const MODULES: readonly HolderEntry[] = [
   { label: "graph.diveIn", path: "src/app/component-navigation.ts", load: () => import("@/app/component-navigation.ts"), accessor: "navigationHolderFor" },
   { label: "ui.createComponent", path: "src/app/component-navigation.ts", load: () => import("@/app/component-navigation.ts"), accessor: "componentCreationHolderFor" },
   { label: "ui.beginRename", path: "src/editor/nodes/rename-session.ts", load: () => import("@editor/nodes/rename-session.ts"), accessor: "renameSessionStoreFor" },
+  // VN152: which preset button is a name field, the same shape for a bank's strip.
+  { label: "ui.beginPresetRename", path: "src/editor/controls/preset-rename-session.ts", load: () => import("@editor/controls/preset-rename-session.ts"), accessor: "presetRenameSessionStoreFor" },
   { label: "ui.setPreviewView#store", path: "src/editor/viewer/preview-view-store.ts", load: () => import("@editor/viewer/preview-view-store.ts"), accessor: "previewViewStoreFor" },
   { label: "graph.toggleReferenceLines", path: "src/editor/edges/reference-lines-command.ts", load: () => import("@editor/edges/reference-lines-command.ts"), accessor: "referenceLinesStoreFor" },
   // §T1696b (§B292): the two clipboards, kept at the root so a component session shares its project's.
@@ -255,6 +257,17 @@ const STORES: readonly StoreProbe[] = [
     // editing — the guard that made the first draft of this probe vacuous.
     mutate: (store, step) =>
       (store as { begin(id: string): void }).begin(`${PROBE_NODE}${step}`),
+    read: (store) => (store as { get(): unknown }).get(),
+  },
+  {
+    label: "preset-rename-session (which preset button is being renamed)",
+    load: () => import("@editor/controls/preset-rename-session.ts"),
+    accessor: "presetRenameSessionStoreFor",
+    subscribe: (store, listener) =>
+      (store as { subscribe(l: () => void): () => void }).subscribe(listener),
+    // A DIFFERENT preset each step: `begin` returns early on the one it is already editing.
+    mutate: (store, step) =>
+      (store as { begin(session: { nodeId: string; name: string }): void }).begin({ nodeId: PROBE_NODE, name: `p${step}` }),
     read: (store) => (store as { get(): unknown }).get(),
   },
   {

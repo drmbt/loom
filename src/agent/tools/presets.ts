@@ -12,6 +12,8 @@ import {
 import { bankSettings, presetMorph, type PresetRecallOutput, type PresetStoreOutput } from "@domain/presets/commands.ts";
 import type { CueFireOutput, CueListQueryOutput, CueSetStandbyOutput } from "@domain/presets/cue-commands.ts";
 import type { PresetDeleteOutput } from "@domain/presets/delete-command.ts";
+import { presetRenameInputSchema, type PresetRenameOutput } from "@domain/presets/rename-command.ts";
+import { z } from "zod";
 import { morphProgress, morphRunning, type MorphRecord } from "@domain/presets/morph.ts";
 import { PAGE_TARGET, bankViewOf, heldMorphRecords, presetCatalogueHolderFor, type BankView } from "@domain/presets/bank-view.ts";
 
@@ -39,8 +41,8 @@ import type { AgentTool, DispatchResult, ToolResult, ToolRuntime, ToolStatus } f
 /**
  * Preset banks and the cue list (T1502b, §T1398b S7 — the design doc §10).
  *
- * Nine adapters over commands that already exist: `preset.store` / `preset.recall` /
- * `preset.delete` (§T1496b, §T1497b, §T1499b) and `cue.go` / `cue.back` / `cue.fire` /
+ * Ten adapters over commands that already exist: `preset.store` / `preset.recall` /
+ * `preset.delete` / `preset.rename` (§T1496b, §T1497b, §T1499b, VN152) and `cue.go` / `cue.back` / `cue.fire` /
  * `cue.setStandby` with the `cue.list` query (§T1500b). Each tool forwards its input and
  * projects the command's own output; the planner, the one-patch rule, the undo step, the
  * audit entry and every refusal's sentence are the commands' (§V39). A refusal comes back
@@ -336,6 +338,26 @@ export const deletePreset: AgentTool<DeletePresetInput, PresetDeleteOutput> = {
   },
 };
 
+/** VN152: the command's own definition plus `dryRun`, as `deletePresetInput` is built in `schemas.ts`. */
+const renamePresetInput = presetRenameInputSchema.extend({ dryRun: z.boolean().optional() }).strict();
+type RenamePresetInput = z.infer<typeof renamePresetInput>;
+
+export const renamePreset: AgentTool<RenamePresetInput, PresetRenameOutput> = {
+  name: "rename_preset",
+  title: "Rename preset",
+  description:
+    "Rename one preset of a bank to a new identifier, keeping its place and values. Every cue, other preset (shot), the bank's Select and its lit button that name it by the old name are rewritten in the same step, listed in rewrote; one undo puts all of it back. A name another preset of the bank holds is refused. A look's instance is refused: rename inside the component.",
+  kind: "mutate",
+  inputSchema: renamePresetInput,
+  requires: { commands: ["preset.rename"] },
+  capabilities: [],
+  mutates: true,
+  async run(input, runtime) {
+    const dispatched = await runtime.execute<PresetRenameOutput>("preset.rename", { nodeId: input.nodeId, name: input.name, to: input.to });
+    return commandResult("rename_preset", dispatched, dispatched.output);
+  },
+};
+
 export const listCues: AgentTool<ListCuesInput, CueListQueryOutput> = {
   name: "list_cues",
   title: "List cues",
@@ -440,6 +462,7 @@ export const presetTools: readonly AgentTool[] = [
   storePreset,
   recallPreset,
   deletePreset,
+  renamePreset,
   listCues,
   cueGo,
   cueBack,

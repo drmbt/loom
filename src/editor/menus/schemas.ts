@@ -46,6 +46,10 @@ import {
 } from "@domain/commands/control-default-commands.ts";
 import { controlPanelOf } from "@editor/controls/control-defaults.ts";
 import { panelTitle } from "@nodes/definitions/controls.ts";
+// VN152: the preset menu's rows are the bank's own commands.
+import { PRESET_STORE_COMMAND } from "@domain/presets/commands.ts";
+import { PRESET_DELETE_COMMAND } from "@domain/presets/delete-command.ts";
+import { BEGIN_PRESET_RENAME_COMMAND } from "@editor/controls/preset-rename-session.ts";
 import type { MenuContext, MenuGuardName } from "./guards.ts";
 
 /**
@@ -479,6 +483,30 @@ export function controlMenu(context?: MenuContext, target?: MenuTarget): MenuSch
   };
 }
 
+/**
+ * VN152 (upstream §T1648b) — A PRESET BUTTON'S MENU: a right-click on a preset of a bank's
+ * strip on a Panel board. The desk only: the phone recalls and never stores or deletes.
+ *
+ *   Overwrite with current settings · Rename…
+ *   ─
+ *   Delete
+ *
+ * Overwrite is `preset.store` under the preset's own name, which writes it in place and keeps
+ * its button where it is. Rename… opens a name field on the button
+ * (`ui.beginPresetRename`), and Enter there runs `preset.rename`. Delete is `preset.delete`, which already says — after the fact and
+ * undoably — which cues and shots still name the preset (§T1527b), so the row asks nothing of
+ * its own. Each row's input comes from the button (`input.ts`).
+ */
+const PRESET_MENU: MenuSchema = {
+  surface: "preset",
+  entries: [
+    { command: PRESET_STORE_COMMAND, label: "Overwrite with current settings" },
+    { command: BEGIN_PRESET_RENAME_COMMAND, label: "Rename…" },
+    { separator: true },
+    { command: PRESET_DELETE_COMMAND, label: "Delete", danger: true },
+  ],
+};
+
 /** The one menu offered for a surface. Built on open, never precomputed per node. */
 export function menuSchemaFor(
   surface: MenuTarget["surface"],
@@ -505,5 +533,7 @@ export function menuSchemaFor(
       return CHANNEL_MENU;
     case "control":
       return controlMenu(context, target);
+    case "preset":
+      return PRESET_MENU;
   }
 }

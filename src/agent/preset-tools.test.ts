@@ -386,7 +386,27 @@ describe("a refusal comes back as a tool result carrying the command's sentence 
   });
 });
 
-describe("the nine tools on the surface (T1502b, §V38, §V39)", () => {
+describe("rename_preset (VN152)", () => {
+  it("renames a preset in place as the agent, refuses a taken name, and one undo takes it back", async () => {
+    const { surface, store } = session();
+    const before = store.view.getAudit().length;
+    const renamed = await surface.callTool("rename_preset", { nodeId: "looks", name: "a", to: "dawn" });
+    expect(renamed.status, said(renamed).join("; ")).toBe("ok");
+    expect(renamed.data).toEqual({ ok: true, preset: "dawn", presets: ["dawn", "b"], rewrote: ["set.cue 1"] });
+    // The cue that named it names the new one, so GO still lands.
+    expect((await listOf(surface)).cues[0]).toMatchObject({ name: "1", bank: "looks", preset: "dawn" });
+    expect((await banksOf(surface)).banks.find((bank) => bank.nodeId === "looks")?.presets.map((preset) => preset.name)).toEqual(["dawn", "b"]);
+    expect(auditSince(store, before)).toEqual(["preset.rename applied agent:claude"]);
+
+    const taken = await surface.callTool("rename_preset", { nodeId: "looks", name: "dawn", to: "b" });
+    expect([taken.status, taken.diagnostics[0]?.code]).toEqual(["rejected", "preset.rename.taken"]);
+
+    await surface.callTool("undo", {});
+    expect((await banksOf(surface)).banks.find((bank) => bank.nodeId === "looks")?.presets.map((preset) => preset.name)).toEqual(["a", "b"]);
+  });
+});
+
+describe("the ten tools on the surface (T1502b, §V38, §V39)", () => {
   it("are all available on a plain domain bus, ungated, and say which of them mutate", () => {
     const { surface } = session();
     const tools = surface
@@ -398,6 +418,7 @@ describe("the nine tools on the surface (T1502b, §V38, §V39)", () => {
       ["store_preset", "mutate", true, true, []],
       ["recall_preset", "mutate", true, true, []],
       ["delete_preset", "mutate", true, true, []],
+      ["rename_preset", "mutate", true, true, []],
       ["list_cues", "read", false, true, []],
       ["cue_go", "mutate", true, true, []],
       ["cue_back", "mutate", true, true, []],
