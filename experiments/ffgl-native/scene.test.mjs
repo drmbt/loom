@@ -21,14 +21,25 @@ test('the fixture exports its render graph, its still as a baked asset, and its 
  assert.deepEqual(p.resources.find(r=>r.id==='target:soft:out').size,[48,32]);
  assert.ok(p.resources.every(r=>r.kind!=='externalTexture'));
  // Defaults are the controls' declared defaults, not the values the file happened to be saved with.
- assert.deepEqual(p.controls.map(c=>[c.node,c.type,c.min,c.max,c.step,c.default]),[['slider_gain','slider',0,2,0,1.25],['slider_lift','slider',0,0.5,0,0.0625],['slider_hue','hue',0,1,0,0.25],['slider_tempo','integer',40,200,1,120],['toggle_kill','toggle',0,1,1,0]]);
- assert.deepEqual(p.hostBpm,{control:3,default:false});
- assert.deepEqual(p.parameters.map(x=>x.program),[['c0',1,'c4','-','*'],['c2'],['c1',2,'/',0.03125,'+'],['c3']]);
- assert.deepEqual(p.drives.map(d=>[d.parameter,d.field,d.component,d.scale,d.offset]),[[0,'gain',0,1,0],[1,'hue',0,1,0],[2,'lift',0,1,0],[3,'tempo',0,1,0]]);
+ assert.deepEqual(p.controls.map(c=>[c.node,c.min,c.max,c.step,c.default]),[['slider_gain',0,2,0,1.25],['slider_hue',0,1,0,0.25],['slider_sat',0,1,0,0.75],['slider_lift',0,0.5,0,0.0625],['slider_tempo',40,200,1,120],['toggle_kill',0,1,1,0]]);
+ // The FFGL list: a colour is four parameters under Resolume's naming, and its brightness dims the paired level.
+ assert.deepEqual(p.params.map(x=>[x.name,x.ffgl,x.group,x.control,x.scales,x.default]),[
+  ['Gain','standard',null,0,null,1.25],
+  ['Tint','hue','Colour',1,null,0.25],['Tint_saturation','saturation','Colour',2,null,0.75],['Tint_brightness','brightness','Colour',null,0,1],['Tint_alpha','alpha','Colour',null,null,1],
+  ['Lift','standard','Colour',3,null,0.0625],['Tempo','integer','Rhythm',4,null,120],['Kill','boolean',null,5,null,0]]);
+ assert.deepEqual(p.hostBpm,{control:4,default:false});
+ assert.deepEqual(p.parameters.map(x=>[x.parameter,x.program]),[['gain',['c0',1,'c5','-','*']],['hue',['c1']],['lift',['c3',2,'/',0.03125,'+']],['sat',['c2']],['tempo',['c4']]]);
+ assert.deepEqual(p.drives.map(d=>[d.parameter,d.field]),[[0,'gain'],[1,'hue'],[2,'lift'],[3,'sat'],[4,'tempo']]);
+ // Banks become one alphabetical menu; a partial bank writes only what it targets, a colour whole.
+ assert.deepEqual(p.presets.map(x=>[x.name,x.values]),[
+  ['Look Cold',[[0,0.75],[1,0.625],[2,1],[3,1],[4,1],[5,0.25],[6,150],[7,0]]],
+  ['Look Warm',[[0,1.5],[1,0.0625],[2,0.5],[3,1],[4,1],[5,0.125],[6,90],[7,0]]],
+  ['Palette Green',[[1,0.3125],[2,0.75],[3,1],[4,1]]]]);
+ assert.ok(report.warnings.some(w=>/"Palette Green" sets part of a colour; Tint_saturation/.test(w)));
  const block=p.passes[0].uniforms;
- assert.deepEqual(block.fields.map(x=>[x.name,x.offset,x.value]),[['gain',0,[1.25]],['lift',4,[0.0625]],['tint',8,[1,0.5]],['hue',16,[0.25]],['tempo',20,[120]]]);
+ assert.deepEqual(block.fields.map(x=>[x.name,x.offset,x.value]),[['gain',0,[1.25]],['lift',4,[0.0625]],['tint',8,[1,0.5]],['hue',16,[0.25]],['sat',20,[0.75]],['tempo',24,[120]]]);
  assert.equal(p.passes[0].sharedBinding,'frameU');
- assert.deepEqual(report.dropped.map(d=>d.node),['syphonout_send']);
+ assert.deepEqual(report.dropped.map(d=>d.node).sort(),['presets_looks','presets_palettes','syphonout_send']);
  assert.deepEqual(report.unusedControls,[]); // slider_spare is not in the plugin's list at all
 });
 test('a node outside the profile fails the export by name, wherever it sits in the graph',()=>{
@@ -59,19 +70,33 @@ test('stills are PNG only, and names must fit FFGL',()=>{
 });
 test('a control list fixes the order, the names and the types; a plugin list wins over the shared one',()=>{
  const own=(controls,more={})=>({...f.contract,plugins:[{...f.contract.plugins[0],controls,...more}]});
- const all=[{node:'toggle_kill'},{node:'slider_gain',name:'Level'},{node:'slider_lift'},{node:'slider_hue',type:'slider'},{node:'slider_tempo'}];
+ const all=[{node:'toggle_kill'},{node:'slider_gain',name:'Level'},{node:'slider_lift'},{node:'slider_hue',type:'slider'},{node:'slider_sat'},{node:'slider_tempo'}];
  const p=compileScene(f.text,own(all),f.plugin).package;
- assert.deepEqual(p.controls.map(c=>[c.name,c.type]),[['Kill','toggle'],['Level','slider'],['Lift','slider'],['Hue','slider'],['Tempo','integer']]);
+ assert.deepEqual(p.params.map(c=>[c.name,c.ffgl]),[['Kill','boolean'],['Level','standard'],['Lift','standard'],['Hue','standard'],['Sat','standard'],['Tempo','integer']]);
  assert.deepEqual(p.parameters[0].program,['c1',1,'c0','-','*']);
- assert.deepEqual(p.hostBpm,{control:4,default:false});
+ assert.deepEqual(p.hostBpm,{control:5,default:false});
  // With no list of its own, a plugin takes the shared one; with neither, every control in graph order.
- assert.deepEqual(compileScene(f.text,{...own(undefined),controls:all},f.plugin).package.controls.map(c=>c.name),['Kill','Level','Lift','Hue','Tempo']);
+ assert.deepEqual(compileScene(f.text,{...own(undefined),controls:all},f.plugin).package.params.map(c=>c.name),['Kill','Level','Lift','Hue','Sat','Tempo']);
  const every=compileScene(f.text,own(undefined),f.plugin);
- assert.deepEqual(every.package.controls.map(c=>c.node),['slider_gain','slider_hue','slider_lift','slider_spare','slider_tempo','toggle_kill'] /* saved files order nodes by id */);
+ assert.deepEqual(every.package.controls.map(c=>c.node),['slider_gain','slider_hue','slider_lift','slider_sat','slider_spare','slider_tempo','toggle_kill'] /* saved files order nodes by id */);
+ assert.deepEqual(every.package.params.find(x=>x.name==='Hue').ffgl,'hue'); // a lone 0..1 hue slider
  assert.deepEqual(every.report.unusedControls,['slider_spare']);
  assert.throws(()=>compileScene(f.text,own([{node:'slider_none'}]),f.plugin),/"slider_none", which is not a slider or toggle/);
+ assert.throws(()=>compileScene(f.text,own([...all,{node:'slider_gain'}]),f.plugin),/"slider_gain" is listed twice/);
  // A control the picture reads but the list leaves out cannot be evaluated.
  assert.throws(()=>compileScene(f.text,own([{node:'slider_gain'}],{hostBpm:undefined}),f.plugin),/is not an exported control/);
+});
+test('a colour is a native picker over two 0..1 sliders, and groups stay together',()=>{
+ const base=f.contract.plugins[0].controls,own=(controls)=>({...f.contract,plugins:[{...f.contract.plugins[0],controls}]});
+ const swap=(edit)=>own(base.map(c=>c.color?edit(c):c));
+ assert.throws(()=>compileScene(f.text,swap(c=>({...c,hue:'slider_tempo'})),f.plugin),/its hue control "slider_tempo" must be a slider running 0\.\.1/);
+ assert.throws(()=>compileScene(f.text,swap(c=>({...c,dims:'slider_spare'})),f.plugin),/dims names "slider_spare", which must be a slider in this plugin/);
+ assert.throws(()=>compileScene(f.text,swap(c=>({...c,color:'A colour name far too long'})),f.plugin),/must be named in 1\.\.16/);
+ assert.throws(()=>compileScene(f.text,swap(c=>({...c,color:'Lift'})),f.plugin),/would both be named "Lift"/);
+ // Colour (Tint, Lift) then Rhythm then Colour again would draw two regions in Arena.
+ assert.throws(()=>compileScene(f.text,own([...base.slice(0,3),{node:'toggle_kill',group:'Colour'}]),f.plugin),/Group "Colour" is split|is not an exported control/);
+ const split=[{node:'slider_gain',group:'A'},base[1],{node:'slider_lift',group:'A'},base[3],base[4]];
+ assert.throws(()=>compileScene(f.text,own(split),f.plugin),/Group "A" is split/);
 });
 test('a driven parameter on the chain of another output does not need this plugin to export its control',()=>{
  // A second chain off the same still, driven by the control this plugin leaves out.

@@ -19,7 +19,7 @@ import {decodePng} from './png.mjs';
 
 export const PROFILE='loom-native-2';
 /** Bumped whenever the engine must read the package differently. The engine refuses any other value. */
-export const PACKAGE_ABI=2;
+export const PACKAGE_ABI=4;
 /** Nodes the engine executes. */
 export const RENDER_NODES=new Set(['customWgsl','customWgslMulti','blur','add','null','output','movieFileIn']);
 /** Nodes that become plugin parameters. */
@@ -93,6 +93,49 @@ const uniformSnapshot=(compiled)=>new Map(compiled.passes.map(p=>[p.id,p.uniform
 /** Shape of a plan with the uniform VALUES left out: two plans with the same shape differ only in numbers. */
 const shapeOf=(compiled)=>JSON.stringify([compiled.resources,compiled.passes.map(({uniforms,...rest})=>[rest,Object.keys(uniforms??{})])]);
 
+/** Bank prefixes for the one alphabetical Preset menu: each bank sorts together. */
+const BANK_NAMES=[[/look/i,'Look'],[/palette/i,'Palette'],[/pill/i,'Pill']];
+/**
+ * Loom's preset banks as FFGL parameter values. A bank is a partial snapshot: only what it targets
+ * is written. A picker is written whole (Arena stores one colour), so a preset that sets a hue but
+ * not its saturation takes the missing channel from the control's default, and says so.
+ */
+function presetsOf(graph,controls,params,report){
+ const out=[],index=new Map(controls.map((c,i)=>[c.node,i]));
+ for(const node of Object.values(graph.nodes)){
+  if(node.type!=='presets'||typeof node.parameters.presets!=='string')continue;
+  let bank;try{bank=JSON.parse(node.parameters.presets);}catch{fail(`Presets ${where(node)} holds text that is not JSON`);}
+  const label=node.label??node.id,prefix=BANK_NAMES.find(([pattern])=>pattern.test(label))?.[1]??label.replace(/^presets_/,'');
+  for(const preset of bank.presets??[]){
+   const held=new Map(),skipped=[];
+   for(const [target,fields] of Object.entries(preset.values??{})){
+    const at=index.get(target),control=controls[at];
+    if(at===undefined){skipped.push(target);continue;}
+    const raw=fields[control.valueKey];
+    if(typeof raw==='number'&&Number.isFinite(raw))held.set(at,Math.min(control.max,Math.max(control.min,raw)));
+    else if(typeof raw==='boolean')held.set(at,raw?1:0);
+   }
+   const values=[],filled=[];
+   params.forEach((p,i)=>{
+    if(p.quad){
+     const quad=params.filter(q=>q.quad===p.quad);
+     if(!quad.some(q=>q.control!==null&&held.has(q.control)))return;
+     if(p.control!==null&&!held.has(p.control))filled.push(p.name);
+     values.push([i,p.control!==null&&held.has(p.control)?held.get(p.control):p.default]);
+    }else if(held.has(p.control))values.push([i,held.get(p.control)]);
+   });
+   const name=`${prefix} ${preset.name}`;
+   if(!/^[A-Za-z0-9][ -~]*$/.test(name)||/[\/\\:`]/.test(name))fail(`Preset "${name}" cannot be a file name`);
+   if(skipped.length)report.warnings.push(`Preset "${name}" targets ${skipped.join(', ')}, which this plugin does not list; those values are left out`);
+   if(filled.length)report.warnings.push(`Preset "${name}" sets part of a colour; ${filled.join(', ')} take their defaults`);
+   if(values.length)out.push({name,bank:label,morphSeconds:numberOr(node.parameters.morph,0),values});
+  }
+ }
+ const names=new Set();
+ for(const p of out){if(names.has(p.name))fail(`Two presets are named "${p.name}"`);names.add(p.name);}
+ return out.sort((a,b)=>a.name<b.name?-1:1);
+}
+
 /**
  * Compiles one plugin of the contract. Pure (no GPU, no files): `package.assets` lists what
  * `bakeAssets` must still produce.
@@ -112,7 +155,8 @@ export function compileScene(text,contract,pluginName){
  if(!Array.isArray(contract.plugins)||!contract.plugins.length)fail('interface.plugins must list at least one plugin');
  const plugin=contract.plugins.find(p=>p?.name===pluginName);
  if(!plugin)fail(`interface.plugins has no plugin named "${pluginName}"`);
- keys(plugin,['name','kind','code','output','controls','hostBpm'],'plugin');
+ keys(plugin,['name','kind','code','output','present','controls','hostBpm'],'plugin');
+ if(plugin.present!==undefined&&!['none','srgb'].includes(plugin.present))fail(`Plugin "${plugin.name}": present "${plugin.present}" must be "none" or "srgb"`);
  keys(plugin.output,['nodeId','portId'],'plugin.output');
  if(plugin.kind!=='source')fail(`Plugin "${plugin.name}": kind "${plugin.kind}" is not built yet (only "source")`);
  if(plugin.code!==undefined&&(typeof plugin.code!=='string'||!/^[A-Za-z0-9]{4}$/.test(plugin.code)))fail(`Plugin "${plugin.name}": code "${plugin.code}" must be four letters or digits (the FFGL plugin id)`);
@@ -129,28 +173,67 @@ export function compileScene(text,contract,pluginName){
  if(refused.length)fail(`Nodes outside the ${PROFILE} profile:\n  ${refused.join('\n  ')}`);
  if(!graph.nodes[plugin.output.nodeId])fail(`Plugin "${plugin.name}": output node "${plugin.output.nodeId}" does not exist`);
 
- let controls=controlsOf(graph);
- // A plugin's own list wins over the shared one. Either fixes the order and the names for good.
- contract={...contract,controls:plugin.controls??contract.controls};
- if(contract.controls!==undefined){
-  if(!Array.isArray(contract.controls))fail('interface.controls must be an array');
-  const byNode=new Map(controls.map(c=>[c.node,c]));
-  controls=contract.controls.map(entry=>{
-   keys(entry,['node','name','type'],'control');
-   const control=byNode.get(entry.node);
-   if(!control)fail(`interface.controls names "${entry.node}", which is not a slider or toggle in the scene`);
-   if(entry.type!==undefined&&(control.type==='toggle'||!['slider','hue','integer'].includes(entry.type)))fail(`Control "${entry.node}": type "${entry.type}" is not one of slider, hue, integer (a toggle takes none)`);
-   if(entry.type==='hue'&&(control.max-control.min!==1))fail(`Control "${entry.node}": a hue control must span exactly one turn (it spans ${control.min}..${control.max})`);
-   return {...control,...(entry.name===undefined?{}:{caption:entry.name}),...(entry.type===undefined?{}:{type:entry.type})};
-  });
+ // `controls` is what the engine evaluates (one per Slider or Toggle); `params` is the FFGL
+ // parameter list in index order. A plain entry is one parameter. A colour entry is Resolume's
+ // native picker: four parameters (hue, saturation, brightness, alpha) that Arena shows as one.
+ const every=controlsOf(graph),byNode=new Map(every.map(c=>[c.node,c]));
+ const listed=plugin.controls??contract.controls??every.map(c=>({node:c.node}));
+ if(!Array.isArray(listed))fail('interface.controls must be an array');
+ const controls=[],params=[],place=new Map();
+ const use=(node,what)=>{
+  const control=byNode.get(node);
+  if(!control)fail(`${what} names "${node}", which is not a slider or toggle in the scene`);
+  if(place.has(node))fail(`Control "${node}" is listed twice`);
+  place.set(node,controls.length);controls.push(control);
+  return control;
+ };
+ const group=(entry)=>{
+  if(entry.group===undefined)return null;
+  if(typeof entry.group!=='string'||!/^[ -~]{1,32}$/.test(entry.group))fail(`Group "${entry.group}" must be 1..32 printable ASCII characters`);
+  return entry.group;
+ };
+ const pending=[];
+ for(const entry of listed){
+  if(entry&&entry.color!==undefined){
+   keys(entry,['color','hue','saturation','dims','group'],'colour control');
+   if(typeof entry.color!=='string'||!/^[ -~]{1,16}$/.test(entry.color))fail(`Colour "${entry.color}" must be named in 1..16 printable ASCII characters`);
+   const hue=use(entry.hue,`Colour "${entry.color}".hue`),saturation=use(entry.saturation,`Colour "${entry.color}".saturation`);
+   for(const [channel,c] of [['hue',hue],['saturation',saturation]])if(c.type==='toggle'||c.min!==0||c.max!==1)fail(`Colour "${entry.color}": its ${channel} control "${c.node}" must be a slider running 0..1 (it runs ${c.min}..${c.max})`);
+   const base={group:group(entry),quad:entry.color,min:0,max:1,step:0,scales:null};
+   params.push({...base,name:entry.color,ffgl:'hue',control:place.get(hue.node),default:hue.default});
+   params.push({...base,name:`${entry.color}_saturation`,ffgl:'saturation',control:place.get(saturation.node),default:saturation.default});
+   params.push({...base,name:`${entry.color}_brightness`,ffgl:'brightness',control:null,default:1});
+   params.push({...base,name:`${entry.color}_alpha`,ffgl:'alpha',control:null,default:1});
+   if(entry.dims!==undefined)pending.push([params.length-2,entry.dims,entry.color]);
+   continue;
+  }
+  keys(entry,['node','name','type','group'],'control');
+  const control=use(entry.node,'interface.controls');
+  if(entry.type!==undefined&&(control.type==='toggle'||!['slider','hue','integer'].includes(entry.type)))fail(`Control "${entry.node}": type "${entry.type}" is not one of slider, hue, integer (a toggle takes none)`);
+  if(entry.type==='hue'&&(control.max-control.min!==1))fail(`Control "${entry.node}": a hue control must span exactly one turn (it spans ${control.min}..${control.max})`);
+  const type=entry.type??control.type;
+  controls[controls.length-1]={...control,caption:entry.name??control.caption,type};
+  params.push({name:entry.name??control.caption,ffgl:{slider:'standard',hue:'hue',integer:'integer',toggle:'boolean'}[type],group:group(entry),quad:null,
+   min:control.min,max:control.max,step:control.step,control:place.get(control.node),scales:null,default:control.default});
+ }
+ // A picker's brightness has no control of its own in the scene: it can dim the group's level control.
+ for(const [index,node,colour] of pending){
+  const at=place.get(node);
+  if(at===undefined||controls[at].type==='toggle')fail(`Colour "${colour}".dims names "${node}", which must be a slider in this plugin's list`);
+  if(params.some(p=>p.scales===at))fail(`Two colours dim "${node}"`);
+  params[index].scales=at;
  }
  const seenNames=new Map();
- for(const c of controls){
-  if(!/^[ -~]{1,16}$/.test(c.caption))fail(`Control "${c.node}": the name "${c.caption}" must be 1..16 printable ASCII characters (FFGL cuts the rest off); name it in interface.controls`);
-  if(RESERVED_NAMES.includes(c.caption))fail(`Control "${c.node}": the name "${c.caption}" is taken by the plugin's own parameters`);
-  if(seenNames.has(c.caption))fail(`Controls "${seenNames.get(c.caption)}" and "${c.node}" would both be named "${c.caption}"`);
-  seenNames.set(c.caption,c.node);
+ for(const p of params){
+  if(p.quad&&p.ffgl!=='hue')continue; // Arena shows and stores the picker under its head name
+  if(!/^[ -~]{1,16}$/.test(p.name))fail(`Control "${controls[p.control].node}": the name "${p.name}" must be 1..16 printable ASCII characters (FFGL cuts the rest off); name it in interface.controls`);
+  if(RESERVED_NAMES.includes(p.name))fail(`Control "${controls[p.control].node}": the name "${p.name}" is taken by the plugin's own parameters`);
+  if(seenNames.has(p.name))fail(`Controls "${seenNames.get(p.name)}" and "${controls[p.control].node}" would both be named "${p.name}"`);
+  seenNames.set(p.name,controls[p.control].node);
  }
+ // Arena draws a group as one collapsible region only while its parameters are neighbours.
+ const closed=new Set();
+ params.forEach((p,i)=>{if(i&&params[i-1].group!==p.group&&params[i-1].group!==null)closed.add(params[i-1].group);if(p.group!==null&&closed.has(p.group))fail(`Group "${p.group}" is split: its controls must be listed together`);});
  const indexOf=new Map(controls.map((c,i)=>[`${c.node}\n${c.channel}`,i]));
  const controlIndex=(name,channel)=>indexOf.get(`${name}\n${channel}`)??(controls.some(c=>c.node===name)?`"${name}" publishes no channel "${channel}"`:`"${name}" is not an exported control`);
 
@@ -292,12 +375,12 @@ export function compileScene(text,contract,pluginName){
   if(index<0||controls[index].type==='toggle')fail(`plugin.hostBpm names "${plugin.hostBpm.node}", which is not an exported slider`);
   hostBpm={control:index,default:plugin.hostBpm.default===true};
  }
- const pkg={schemaVersion:2,profile:PROFILE,abi:PACKAGE_ABI,name:plugin.name,kind:plugin.kind,code:plugin.code??null,
+ const pkg={schemaVersion:2,profile:PROFILE,abi:PACKAGE_ABI,name:plugin.name,kind:plugin.kind,code:plugin.code??null,present:plugin.present??'none',
   output:output.resourceId,size:output.size,frame:{fps:projectFps(settings),randomSeed:settings.randomSeed??0,resolution:[settings.outputResolution.width,settings.outputResolution.height]},
   vertex:VERTEX,resources,passes,
   assets:assets.map(({id,file,size,format,source,node})=>({id,file,size,format,encoding:'deflate',source,node})),
   controls:controls.map(({node,type,channel,caption,min,max,step,default:d})=>({node,type,channel,name:caption,min,max,step,default:d})),
-  hostBpm,
+  params,hostBpm,presets:presetsOf(graph,controls,params,report),
   parameters:parameters.map(({node,parameter,source,program})=>({node,parameter,source,program})),
   drives:liveDrives};
  return {package:pkg,assets,report,document,settings,registry,baseline,controls,plugin};
