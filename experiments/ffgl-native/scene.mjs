@@ -19,7 +19,7 @@ import {decodePng} from './png.mjs';
 
 export const PROFILE='loom-native-2';
 /** Bumped whenever the engine must read the package differently. The engine refuses any other value. */
-export const PACKAGE_ABI=1;
+export const PACKAGE_ABI=2;
 /** Nodes the engine executes. */
 export const RENDER_NODES=new Set(['customWgsl','customWgslMulti','blur','add','null','output','movieFileIn']);
 /** Nodes that become plugin parameters. */
@@ -28,6 +28,8 @@ export const CONTROL_NODES=new Set(['slider','toggle']);
 export const DROPPED_NODES=new Set(['panel','syphonOut','presets']);
 const SHARED_FRAME=[['time',0],['deltaTime',4],['frameIndex',8],['randomSeed',12],['wallTime',16],['wallDelta',20],['absTime',24],['absFrame',28],['resolution',32],['pointer',48]];
 const PASS_FIELDS=new Set(['kind','id','nodeId','label','shader','target','textures','samplers','uniformBinding','uniforms','sharedBinding','sourceMap']);
+/** Names the preset block and the plugin's own parameters take; a control may not use them (drmbt-custom-fx docs/KNOWLEDGE.md). */
+export const RESERVED_NAMES=['Preset','Morph','Recall','Rescan','Snap','Curve','Next','Prev','Random','Host BPM','Fit'];
 const fail=(message)=>{throw Error(`FFGL export: ${message}`);};
 const where=(node)=>`"${node.label??node.id}" (${node.type}, id ${node.id}, at the root)`;
 const numberOr=(value,fallback)=>typeof value==='number'&&Number.isFinite(value)?value:fallback;
@@ -47,13 +49,17 @@ function controlsOf(graph){
   const channel=typeof p.channel==='string'&&/^[A-Za-z_]\w*$/.test(p.channel)?p.channel:'value';
   const caption=typeof p.caption==='string'&&p.caption.trim()?p.caption.trim():channel;
   if(node.type==='toggle'){
-   controls.push({node:node.label??node.id,nodeId:node.id,type:'toggle',valueKey:'on',channel,caption,min:0,max:1,default:p.defaultOn===true?1:0});
+   controls.push({node:node.label??node.id,nodeId:node.id,type:'toggle',valueKey:'on',channel,caption,min:0,max:1,step:1,default:p.defaultOn===true?1:0});
    continue;
   }
   const min=numberOr(p.min,0),max=numberOr(p.max,1);
   if(!(min<max))fail(`Control ${where(node)} has an empty range ${min}..${max}`);
-  const stored=numberOr(p.defaultValue,numberOr(p.value,min));
-  controls.push({node:node.label??node.id,nodeId:node.id,type:'slider',valueKey:'value',channel,caption,min,max,default:Math.min(max,Math.max(min,stored))});
+  const stored=numberOr(p.defaultValue,numberOr(p.value,min)),step=Math.max(0,numberOr(p.step,0));
+  // Loom's slider snaps a drag to multiples of Step, so a stepped control only ever holds those.
+  const snap=(v)=>Math.min(max,Math.max(min,step>0?Math.round(v/step)*step:v));
+  const whole=step===1&&Number.isInteger(min)&&Number.isInteger(max);
+  const hue=min===0&&max===1&&/hue/i.test(`${caption} ${channel}`);
+  controls.push({node:node.label??node.id,nodeId:node.id,type:whole?'integer':hue?'hue':'slider',valueKey:'value',channel,caption,min,max,step,default:snap(stored)});
  }
  const names=new Set();
  for(const c of controls){if(names.has(c.node))fail(`Two controls are named "${c.node}"`);names.add(c.node);}
@@ -106,9 +112,10 @@ export function compileScene(text,contract,pluginName){
  if(!Array.isArray(contract.plugins)||!contract.plugins.length)fail('interface.plugins must list at least one plugin');
  const plugin=contract.plugins.find(p=>p?.name===pluginName);
  if(!plugin)fail(`interface.plugins has no plugin named "${pluginName}"`);
- keys(plugin,['name','kind','code','output'],'plugin');
+ keys(plugin,['name','kind','code','output','controls','hostBpm'],'plugin');
  keys(plugin.output,['nodeId','portId'],'plugin.output');
  if(plugin.kind!=='source')fail(`Plugin "${plugin.name}": kind "${plugin.kind}" is not built yet (only "source")`);
+ if(plugin.code!==undefined&&(typeof plugin.code!=='string'||!/^[A-Za-z0-9]{4}$/.test(plugin.code)))fail(`Plugin "${plugin.name}": code "${plugin.code}" must be four letters or digits (the FFGL plugin id)`);
  if(typeof plugin.name!=='string'||!/^[ -~]{1,16}$/.test(plugin.name))fail(`Plugin name "${plugin.name}" must be 1..16 printable ASCII characters (FFGL's limit)`);
 
  const document=loaded.document,graph=document.graph,settings=document.settings;
@@ -123,23 +130,38 @@ export function compileScene(text,contract,pluginName){
  if(!graph.nodes[plugin.output.nodeId])fail(`Plugin "${plugin.name}": output node "${plugin.output.nodeId}" does not exist`);
 
  let controls=controlsOf(graph);
+ // A plugin's own list wins over the shared one. Either fixes the order and the names for good.
+ contract={...contract,controls:plugin.controls??contract.controls};
  if(contract.controls!==undefined){
   if(!Array.isArray(contract.controls))fail('interface.controls must be an array');
   const byNode=new Map(controls.map(c=>[c.node,c]));
   controls=contract.controls.map(entry=>{
-   keys(entry,['node','name'],'control');
+   keys(entry,['node','name','type'],'control');
    const control=byNode.get(entry.node);
    if(!control)fail(`interface.controls names "${entry.node}", which is not a slider or toggle in the scene`);
-   return {...control,...(entry.name===undefined?{}:{caption:entry.name})};
+   if(entry.type!==undefined&&(control.type==='toggle'||!['slider','hue','integer'].includes(entry.type)))fail(`Control "${entry.node}": type "${entry.type}" is not one of slider, hue, integer (a toggle takes none)`);
+   if(entry.type==='hue'&&(control.max-control.min!==1))fail(`Control "${entry.node}": a hue control must span exactly one turn (it spans ${control.min}..${control.max})`);
+   return {...control,...(entry.name===undefined?{}:{caption:entry.name}),...(entry.type===undefined?{}:{type:entry.type})};
   });
+ }
+ const seenNames=new Map();
+ for(const c of controls){
+  if(!/^[ -~]{1,16}$/.test(c.caption))fail(`Control "${c.node}": the name "${c.caption}" must be 1..16 printable ASCII characters (FFGL cuts the rest off); name it in interface.controls`);
+  if(RESERVED_NAMES.includes(c.caption))fail(`Control "${c.node}": the name "${c.caption}" is taken by the plugin's own parameters`);
+  if(seenNames.has(c.caption))fail(`Controls "${seenNames.get(c.caption)}" and "${c.node}" would both be named "${c.caption}"`);
+  seenNames.set(c.caption,c.node);
  }
  const indexOf=new Map(controls.map((c,i)=>[`${c.node}\n${c.channel}`,i]));
  const controlIndex=(name,channel)=>indexOf.get(`${name}\n${channel}`)??(controls.some(c=>c.node===name)?`"${name}" publishes no channel "${channel}"`:`"${name}" is not an exported control`);
 
+ // The nodes this plugin's picture is made of: everything upstream of its output. A driven parameter
+ // on any other node (another output's chain) is not this plugin's business and is left as saved.
+ const upstream=new Set([plugin.output.nodeId]);
+ for(let grew=true;grew;){grew=false;for(const edge of Object.values(graph.edges))if(upstream.has(edge.target.nodeId)&&!upstream.has(edge.source.nodeId)){upstream.add(edge.source.nodeId);grew=true;}}
  // Every driven parameter, lowered. The expression is kept; nothing is frozen.
  const parameters=[];
  for(const node of Object.values(graph.nodes)){
-  if(!RENDER_NODES.has(node.type))continue;
+  if(!RENDER_NODES.has(node.type)||!upstream.has(node.id))continue;
   for(const [key,slot] of Object.entries(node.parameters)){
    if(!isParameterSlot(slot)||slot.mode==='static')continue;
    const source=slot.bindings?.expression?.source;
@@ -176,14 +198,18 @@ export function compileScene(text,contract,pluginName){
   const probe=(v)=>{const values=[...atDefaults];values[index]=v;const c=compile(withValues(values),settings,registry,plugin.output);
    if(shapeOf(c)!==baseShape)fail(`Parameter "${p.parameter}" of "${p.node}" changes the render plan itself between ${a} and ${b} (not only a uniform value); it cannot be driven per frame`);
    return uniformSnapshot(c);};
-  const ua=probe(a),ub=probe(b),mid=a+(b-a)*0.375,um=probe(mid);
+  // Two ends give the line; the points between are where a clamp, a cap or a table would show.
+  const ua=probe(a),ub=probe(b),between=[0.0625,0.19,0.375,0.5,0.71,0.875,0.97].map(t=>{const at=a+(b-a)*t;return [at,probe(at)];});
   for(const pass of selected.passes){
    for(const field of Object.keys(pass.uniforms??{})){
-    const va=[ua.get(pass.id)[field]].flat(),vb=[ub.get(pass.id)[field]].flat(),vm=[um.get(pass.id)[field]].flat();
+    const va=[ua.get(pass.id)[field]].flat(),vb=[ub.get(pass.id)[field]].flat();
     va.forEach((x,component)=>{
-     if(x===vb[component])return;
-     const scale=(vb[component]-x)/(b-a),offset=x-scale*a,expected=scale*mid+offset;
-     if(Math.abs(expected-vm[component])>1e-9*Math.max(1,Math.abs(expected)))fail(`Parameter "${p.parameter}" of "${p.node}" reaches uniform ${pass.id}.${field} through a curve (${vm[component]} at ${mid}, a straight line gives ${expected}); the profile carries straight-line mappings only`);
+     if(x===vb[component]&&between.every(([,u])=>[u.get(pass.id)[field]].flat()[component]===x))return;
+     const scale=(vb[component]-x)/(b-a),offset=x-scale*a;
+     for(const [at,u] of between){
+      const got=[u.get(pass.id)[field]].flat()[component],expected=scale*at+offset;
+      if(Math.abs(expected-got)>1e-9*Math.max(1,Math.abs(expected)))fail(`Parameter "${p.parameter}" of "${p.node}" reaches uniform ${pass.id}.${field} through a curve (${got} at ${at}, a straight line gives ${expected}); the profile carries straight-line mappings only`);
+     }
      drives.push({parameter:index,pass:pass.id,field,component,scale,offset});
     });
    }
@@ -259,11 +285,19 @@ export function compileScene(text,contract,pluginName){
  }
  if(baseline.feedback?.length&&baseline.feedback.some(f=>JSON.stringify(f).includes(output.resourceId)))fail('The output depends on a feedback loop; feedback is outside the profile');
  const liveDrives=drives.filter(d=>live.has(d.pass)&&passes.some(p=>p.id===d.pass));
- const pkg={schemaVersion:2,profile:PROFILE,abi:PACKAGE_ABI,name:plugin.name,kind:plugin.kind,
+ let hostBpm=null;
+ if(plugin.hostBpm!==undefined){
+  keys(plugin.hostBpm,['node','default'],'plugin.hostBpm');
+  const index=controls.findIndex(c=>c.node===plugin.hostBpm.node);
+  if(index<0||controls[index].type==='toggle')fail(`plugin.hostBpm names "${plugin.hostBpm.node}", which is not an exported slider`);
+  hostBpm={control:index,default:plugin.hostBpm.default===true};
+ }
+ const pkg={schemaVersion:2,profile:PROFILE,abi:PACKAGE_ABI,name:plugin.name,kind:plugin.kind,code:plugin.code??null,
   output:output.resourceId,size:output.size,frame:{fps:projectFps(settings),randomSeed:settings.randomSeed??0,resolution:[settings.outputResolution.width,settings.outputResolution.height]},
   vertex:VERTEX,resources,passes,
   assets:assets.map(({id,file,size,format,source,node})=>({id,file,size,format,encoding:'deflate',source,node})),
-  controls:controls.map(({node,type,channel,caption,min,max,default:d})=>({node,type,channel,name:caption,min,max,default:d})),
+  controls:controls.map(({node,type,channel,caption,min,max,step,default:d})=>({node,type,channel,name:caption,min,max,step,default:d})),
+  hostBpm,
   parameters:parameters.map(({node,parameter,source,program})=>({node,parameter,source,program})),
   drives:liveDrives};
  return {package:pkg,assets,report,document,settings,registry,baseline,controls,plugin};
@@ -315,7 +349,14 @@ export async function writeScene(scene,blobs,out){
  await writeFile(resolve(out,'report.json'),JSON.stringify(scene.report,null,1)+'\n');
  return pkg;
 }
-if(process.argv[1]===new URL(import.meta.url).pathname){
+if(process.argv[1]===new URL(import.meta.url).pathname&&process.argv[2]==='--controls'){
+ // Prints the control list to paste into the interface: the controls this plugin's picture reads, in graph order.
+ const [project,interfaceFile,pluginName]=process.argv.slice(3);
+ if(!pluginName)fail('Usage: scene.mjs --controls project.loom.json interface.json "Plugin Name"');
+ const scene=compileScene(await readFile(project,'utf8'),JSON.parse(await readFile(interfaceFile,'utf8')),pluginName);
+ const unused=new Set(scene.report.unusedControls);
+ console.log('[\n'+scene.controls.filter(c=>!unused.has(c.node)).map(c=>'  '+JSON.stringify({node:c.node,name:c.caption,...(c.type==='toggle'?{}:{type:c.type})})).join(',\n')+'\n]');
+}else if(process.argv[1]===new URL(import.meta.url).pathname){
  const [project,interfaceFile,pluginName,out,mediaRoot]=process.argv.slice(2);
  if(!out)fail('Usage: scene.mjs project.loom.json interface.json "Plugin Name" output-directory [media-root]');
  const scene=compileScene(await readFile(project,'utf8'),JSON.parse(await readFile(interfaceFile,'utf8')),pluginName);
