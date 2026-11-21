@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 import { useStore } from "zustand";
 import type { LoomBus } from "@domain/commands/bus.ts";
 import type { InvocationContext } from "@domain/types/commands.ts";
@@ -28,6 +28,8 @@ import { boardFit, boardValueEm, cueListBoardLayout, cueListShowsCues, layerBoar
 import { ControlWidget, type ControlWrite } from "./control-widget.tsx";
 import { layerOpacityFader, setLayerOn } from "./layer-controls.ts";
 import { usePresetCatalogue } from "./use-preset-catalogue.ts";
+import { registerPresetRenameSessionCommand } from "./preset-rename-session.ts";
+import { PRESET_RENAME_COMMAND } from "@domain/presets/rename-command.ts";
 import styles from "./board-members.module.css";
 
 /**
@@ -170,6 +172,10 @@ function PresetStrip({ node, rect, cells, bus, invocation, view, name }: BoardMe
   const fade = useMorphFade(bus, node.parameters[view?.morphsKey ?? "morphs"]);
   const storable = view?.kind !== "instance";
   const { refusal, press } = usePress(bus);
+  // VN152: the right-click menu's Rename… opens a name field on the button (`ui.beginPresetRename`).
+  const renames = useMemo(() => registerPresetRenameSessionCommand(bus.root), [bus]);
+  const renaming = useSyncExternalStore(renames.subscribe, renames.get);
+  const [renameRefusal, setRenameRefusal] = useState<string | null>(null);
   if (!parsed.ok) {
     return (
       <div className={styles.member} data-board-member={PRESETS_NODE_TYPE} data-control-node={node.id}>
@@ -201,6 +207,26 @@ function PresetStrip({ node, rect, cells, bus, invocation, view, name }: BoardMe
       >
         {presets.map((preset) => {
           const fading = fade !== null && fade.preset === preset.name;
+          if (renaming !== null && renaming.nodeId === node.id && renaming.name === preset.name) {
+            const session = renaming;
+            return (
+              <PresetNameField
+                key={preset.name}
+                name={preset.name}
+                onCommit={async (to) => {
+                  const result = await bus.execute(PRESET_RENAME_COMMAND, { nodeId: node.id, name: preset.name, to }, invocation);
+                  const message = refusalMessage(result);
+                  setRenameRefusal(message);
+                  if (message === null) renames.end(session);
+                  return message === null;
+                }}
+                onClose={() => {
+                  setRenameRefusal(null);
+                  renames.end(session);
+                }}
+              />
+            );
+          }
           return (
             <button
               key={preset.name}
@@ -230,8 +256,68 @@ function PresetStrip({ node, rect, cells, bus, invocation, view, name }: BoardMe
           </button>
         ) : null}
       </div>
-      <Refusal message={refusal} />
+      <Refusal message={renameRefusal ?? refusal} />
     </div>
+  );
+}
+
+/**
+ * VN152 — a preset button as a name field, `NameEditor`'s rules (`node-view.tsx`): it opens
+ * focused with the name selected; Enter runs the rename and closes on success, a refusal stays
+ * open and is said on the strip; Escape and blur close having renamed nothing. An unchanged or
+ * empty name closes without a command, so no undo entry is made for an edit that did not happen.
+ */
+function PresetNameField({
+  name,
+  onCommit,
+  onClose,
+}: {
+  readonly name: string;
+  readonly onCommit: (to: string) => Promise<boolean>;
+  readonly onClose: () => void;
+}) {
+  const input = useRef<HTMLInputElement | null>(null);
+  const [draft, setDraft] = useState(name);
+  // Enter commits, and the field leaving the DOM then blurs it: one settle per session.
+  const settling = useRef(false);
+  useEffect(() => {
+    // One task later: the field opens from a menu row, and the menu's own teardown moves focus
+    // after the field has mounted (the host's B/T709 note). Focused at once, it was blurred, and
+    // blur closes it — measured: the field was gone before it could be typed into.
+    const at = setTimeout(() => {
+      input.current?.focus();
+      input.current?.select();
+    }, 0);
+    return () => clearTimeout(at);
+  }, []);
+  const commit = async (): Promise<void> => {
+    const to = draft.trim();
+    if (to === "" || to === name) {
+      onClose();
+      return;
+    }
+    settling.current = true;
+    const done = await onCommit(to);
+    if (!done) settling.current = false;
+  };
+  return (
+    <input
+      ref={input}
+      className={styles.press}
+      value={draft}
+      aria-label={`Rename preset ${name}`}
+      data-preset-rename={name}
+      spellCheck={false}
+      onChange={(event) => setDraft(event.target.value)}
+      onKeyDown={(event) => {
+        event.stopPropagation();
+        if (event.key === "Enter") void commit();
+        else if (event.key === "Escape") onClose();
+      }}
+      onBlur={() => {
+        if (!settling.current) onClose();
+      }}
+    />
   );
 }
 

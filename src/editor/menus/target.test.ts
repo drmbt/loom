@@ -289,3 +289,34 @@ describe("§T1619b — a live control", () => {
     expect(resolveMenuTarget(board("button", true))).toEqual({ surface: "node", nodeId: "panel-node" });
   });
 });
+
+describe("VN152 — a preset button on a bank's strip", () => {
+  const strip = (withPanel: boolean): { preset: HTMLElement; store: HTMLElement; member: HTMLElement } => {
+    const panel = document.createElement("div");
+    if (withPanel) panel.setAttribute("data-control-panel", "panel-node");
+    const member = document.createElement("div");
+    member.setAttribute("data-board-member", "presets");
+    member.setAttribute("data-control-node", "bank-1");
+    const preset = document.createElement("button");
+    preset.setAttribute("data-preset", "night");
+    const label = document.createElement("span");
+    preset.append(label);
+    const store = document.createElement("button");
+    store.setAttribute("data-preset-store", "preset3");
+    member.append(preset, store);
+    panel.append(member);
+    document.body.append(panel);
+    return { preset: label, store, member };
+  };
+
+  it("resolves the button (from its caption inside it) to the bank and the preset, with the Panel it is on", () => {
+    expect(resolveMenuTarget(strip(true).preset)).toEqual({ surface: "preset", nodeId: "bank-1", preset: "night", panelId: "panel-node" });
+    expect(resolveMenuTarget(strip(false).preset)).toEqual({ surface: "preset", nodeId: "bank-1", preset: "night" });
+  });
+
+  it("Store's button and the rest of the strip are no preset", () => {
+    const { store, member } = strip(true);
+    expect(resolveMenuTarget(store)).toBeNull();
+    expect(resolveMenuTarget(member)).toBeNull();
+  });
+});

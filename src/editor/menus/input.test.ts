@@ -226,3 +226,34 @@ describe("commands that want nothing from the target", () => {
     ).toEqual({ ok: true, input: { position: { x: 5, y: 6 } } });
   });
 });
+
+/**
+ * VN152 (§T1648b) — a preset button's rows: the bank and the preset's own name, so Overwrite
+ * is Store under that name (in place) and Delete removes exactly that one.
+ */
+describe("a preset button", () => {
+  const node = (id: string, type: string) => ({ id, type, definitionVersion: 1, position: { x: 0, y: 0 }, parameters: {} });
+  const context = {
+    graph: { revision: 1, groups: {}, edges: {}, nodes: { bank: node("bank", "presets"), city: node("city", "component:look-1@1") } },
+    revision: 1,
+    selection: [],
+    registry: undefined as never,
+  };
+  const preset = (nodeId: string): MenuTarget => ({ surface: "preset", nodeId, preset: "night" });
+
+  it("gives Overwrite and Delete the bank and the preset's name", () => {
+    for (const command of ["preset.store", "ui.beginPresetRename", "preset.delete"]) {
+      expect(resolveMenuInput(item(command), preset("bank"), context)).toEqual({ ok: true, input: { nodeId: "bank", name: "night" } });
+    }
+  });
+
+  it("greys Overwrite and Rename on a look's instance, whose component has no undo; Delete stays", () => {
+    expect(resolveMenuInput(item("preset.store"), preset("city"), context)).toEqual({ ok: false, reason: "A look's presets are its component's: store them inside the component." });
+    expect(resolveMenuInput(item("ui.beginPresetRename"), preset("city"), context)).toEqual({ ok: false, reason: "A look's presets are its component's: rename them inside the component." });
+    expect(resolveMenuInput(item("preset.delete"), preset("city"), context).ok).toBe(true);
+  });
+
+  it("refuses with no preset under the cursor rather than sending a half-formed input", () => {
+    expect(resolveMenuInput(item("preset.delete"), { surface: "preset", nodeId: "bank" }, context).ok).toBe(false);
+  });
+});

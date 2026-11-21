@@ -72,6 +72,12 @@ export const CHANNEL_VALUE_ATTRIBUTE = "data-channel-value";
 export const CONTROL_KIND_ATTRIBUTE = "data-control";
 export const CONTROL_NODE_ATTRIBUTE = "data-control-node";
 export const CONTROL_PANEL_ATTRIBUTE = "data-control-panel";
+/**
+ * VN152 (§T1648b): a preset button on a bank's strip (`board-members.tsx`). `data-preset`
+ * names the preset; the bank is the nearest `data-control-node` around it (the strip's own
+ * member element). Store's button carries `data-preset-store` instead, so it is no preset.
+ */
+export const PRESET_NAME_ATTRIBUTE = "data-preset";
 /** The `data-control` values whose control holds a default: Slider, Toggle, XY Pad. */
 const DEFAULT_HOLDING_CONTROLS: ReadonlySet<string> = new Set(["slider", "toggle", "xy"]);
 
@@ -111,6 +117,15 @@ function surfaceOf(element: Element): MenuTarget | null {
     const panel = element.closest(`[${CONTROL_PANEL_ATTRIBUTE}]`);
     const panelId = panel === null ? null : attribute(panel, CONTROL_PANEL_ATTRIBUTE);
     if (nodeId !== null) return { surface: "control", nodeId, ...(panelId === null ? {} : { panelId }) };
+  }
+
+  const preset = attribute(element, PRESET_NAME_ATTRIBUTE);
+  if (preset !== null) {
+    const bank = element.closest(`[${CONTROL_NODE_ATTRIBUTE}]`);
+    const nodeId = bank === null ? null : attribute(bank, CONTROL_NODE_ATTRIBUTE);
+    const panel = element.closest(`[${CONTROL_PANEL_ATTRIBUTE}]`);
+    const panelId = panel === null ? null : attribute(panel, CONTROL_PANEL_ATTRIBUTE);
+    if (nodeId !== null) return { surface: "preset", nodeId, preset, ...(panelId === null ? {} : { panelId }) };
   }
 
   const channel = attribute(element, CHANNEL_NAME_ATTRIBUTE);

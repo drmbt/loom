@@ -138,6 +138,8 @@ describe("command bus — registration surface (§V39)", () => {
       // T1505b: a bank beside a look moved into its component (refused by name with no catalogue).
       "preset.moveIntoComponent",
       "preset.recall",
+      // VN152 (§T1648b): Rename, beside Store and Delete.
+      "preset.rename",
       "preset.store",
       // T272: settings are document state, so they mutate through the domain bus like
       // every other document edit rather than through a pane holding an object.

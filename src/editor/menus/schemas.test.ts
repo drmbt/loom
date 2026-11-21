@@ -22,7 +22,8 @@ import { PLANNED_COMMANDS, TOGGLE_GUARD, addNodeSubmenu, menuSchemaFor } from ".
 const { bus } = createHarness();
 const registry = bus.registry;
 // T1619b: "control" — a live control's menu — is held to every rule below like the others.
-const SURFACES = ["canvas", "node", "port", "edge", "parameter", "control"] as const;
+// VN152: "preset" — a preset button's menu — too.
+const SURFACES = ["canvas", "node", "port", "edge", "parameter", "control", "preset"] as const;
 
 const schemas: MenuSchema[] = SURFACES.map((surface) => menuSchemaFor(surface, registry));
 
@@ -58,7 +59,8 @@ describe("every item names a command (§V78)", () => {
 
   it("marks only destructive items as dangerous", () => {
     const dangerous = everyItem.filter((item) => item.danger === true).map((item) => item.label);
-    expect(dangerous).toEqual(["Delete", "Delete"]);
+    // VN152: the third is a preset button's Delete.
+    expect(dangerous).toEqual(["Delete", "Delete", "Delete"]);
   });
 });
 
@@ -86,6 +88,9 @@ const APP_REGISTERED = [
   // document state, so the domain bus does not own it. Live, not planned: the menu row
   // that names it opens a real editor.
   "ui.beginRename",
+  // VN152: registered by the mounted preset strip (`src/editor/controls/preset-rename-session.ts`),
+  // `ui.beginRename`'s shape for a preset button — which button is a name field is view state.
+  "ui.beginPresetRename",
   // T709: registered by the mounted graph canvas (`src/editor/library/node-search-command.ts`),
   // for the same reason as `ui.beginRename` — whether a browser is OPEN, and at which
   // point, is view state and produces no patch, so the domain bus does not own it. The
@@ -317,7 +322,7 @@ describe("every guarded toggle can actually dispatch (B87)", () => {
  * from the target. An exemption is a claim, and a wrong one shows up here as a row that
  * cannot be exempted rather than as a silent dispatch of `{}`.
  */
-const TARGET_BEARING = ["node", "port", "edge", "parameter", "control"] as const;
+const TARGET_BEARING = ["node", "port", "edge", "parameter", "control", "preset"] as const;
 
 /**
  * Commands that legitimately want NOTHING from the thing under the cursor, even though
@@ -402,5 +407,21 @@ describe("the control menu (T1619b)", () => {
   it("prints no chord beside Reset: the chord resets the canvas selection, the row what was clicked", () => {
     const reset = items(menuSchemaFor("control", registry, context, { surface: "control", nodeId: "heat", panelId: "desk" }).entries).filter((item) => item.command === "control.reset");
     expect(reset.map((item) => item.noShortcut)).toEqual([true, true]);
+  });
+});
+
+/**
+ * VN152 (§T1648b) — a preset button's menu: the bank's own commands, the preset taken from the
+ * button, Delete the danger row and nothing after it.
+ */
+describe("the preset menu (VN152)", () => {
+  it("is Overwrite, Rename…, a separator, then Delete marked as danger; each row the bank's own command", () => {
+    const schema = menuSchemaFor("preset", registry);
+    expect(schema.entries.map((entry) => (isMenuSeparator(entry) ? "—" : [entry.label, entry.command, entry.danger === true]))).toEqual([
+      ["Overwrite with current settings", "preset.store", false],
+      ["Rename…", "ui.beginPresetRename", false],
+      "—",
+      ["Delete", "preset.delete", true],
+    ]);
   });
 });
