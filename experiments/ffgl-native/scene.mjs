@@ -1,6 +1,9 @@
 /** Scene export, profile `loom-native-2`: a saved Loom scene to a package the native Dawn engine runs.
  *  The project loader and the compiler stay authoritative. This file only selects, checks and packs
  *  what they produce, and refuses by name whatever the profile does not cover. See README.md. */
+import {URL} from 'node:url';
+import console from 'node:console';
+import process from 'node:process';
 import {readFile,mkdir,writeFile,rm} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {deflateRawSync} from 'node:zlib';
@@ -125,7 +128,7 @@ function presetsOf(graph,controls,params,report){
     }else if(held.has(p.control))values.push([i,held.get(p.control)]);
    });
    const name=`${prefix} ${preset.name}`;
-   if(!/^[A-Za-z0-9][ -~]*$/.test(name)||/[\/\\:`]/.test(name))fail(`Preset "${name}" cannot be a file name`);
+   if(!/^[A-Za-z0-9][ -~]*$/.test(name)||/[/\\:`]/.test(name))fail(`Preset "${name}" cannot be a file name`);
    if(skipped.length)report.warnings.push(`Preset "${name}" targets ${skipped.join(', ')}, which this plugin does not list; those values are left out`);
    if(filled.length)report.warnings.push(`Preset "${name}" sets part of a colour; ${filled.join(', ')} take their defaults`);
    if(values.length)out.push({name,bank:label,morphSeconds:numberOr(node.parameters.morph,0),values});

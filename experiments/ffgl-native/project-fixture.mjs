@@ -1,4 +1,7 @@
 /** A normal editable Loom document made only of production nodes. */
+import {URL} from 'node:url';
+import console from 'node:console';
+import process from 'node:process';
 import {mkdir,writeFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {createDomainBus} from '../../src/domain/commands/index.ts';

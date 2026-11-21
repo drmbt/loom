@@ -1,4 +1,6 @@
 /** Compare native host captures against the existing Loom WebGPU backend. */
+import console from 'node:console';
+import process from 'node:process';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fixture } from './export.mjs';
