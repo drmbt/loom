@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 2,
+  "plugins": [
+    { "name": "Hotel Facade", "kind": "source", "output": { "nodeId": "encode", "portId": "out" } },
+    { "name": "Hotel IMAG", "kind": "source", "output": { "nodeId": "imagFill", "portId": "out" } }
+  ]
+}
