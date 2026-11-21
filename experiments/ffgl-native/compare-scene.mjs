@@ -110,6 +110,14 @@ if(mode==='plan'){
   const tempo=pkg.controls[pkg.hostBpm.control],bpm=Math.fround(Math.round(tempo.min+0.62*(tempo.max-tempo.min))),loom=controlsFor(pkg,a);
   loom[pkg.hostBpm.control]=bpm;
   flush(run('hostbpm',sw,sh,a,FRAMES,{loom,beat:bpm}));
+  // Each toggle on by itself, under the host's tempo: the sweeps leave toggles off, so a
+  // toggle that changes how the scene keeps time (a beat sync) was never compared.
+  params.forEach((param,i)=>{
+   if(param.ffgl!=='boolean')return;
+   const values=a.map((v,j)=>j===i?1:v),state=controlsFor(pkg,values);
+   state[pkg.hostBpm.control]=bpm;
+   flush(run(`toggle${i}`,sw,sh,values,[23],{loom:state,beat:bpm}));
+  });
  }
  // Preset recall: the plugin sits in sweep A, then its Preset menu is clicked twenty frames in (a
  // click in the first fifteen would be taken for the host restoring a comp). Morph is 0, so the look
@@ -188,7 +196,7 @@ if(mode==='plan'){
    }
    channels+=p.width*p.height*4;
    // A black frame matches a black frame: the comparison has to be looking at a picture.
-   if(lit<p.width*p.height*0.05)throw Error(`Capture ${p.name}: Loom's frame is almost entirely black (${lit} lit channels); nothing would be proven`);
+   if(lit<p.width*p.height*0.05&&!/^toggle\d+$/.test(p.label))throw Error(`Capture ${p.name}: Loom's frame is almost entirely black (${lit} lit channels); nothing would be proven`);
    if(frameWorst>TOLERANCE)throw Error(`Parity failed for ${p.name}: worst channel difference ${frameWorst}/255`);
    worst=Math.max(worst,frameWorst);count++;
   }
@@ -196,6 +204,11 @@ if(mode==='plan'){
  // The sweeps have to be different pictures, or moving every control proved nothing.
  const first=(label)=>plan.find(p=>p.label===label),same=async(x,y)=>Buffer.compare(await readFile(resolve(captureDir,`${x.name}.rgba`)),await readFile(resolve(captureDir,`${y.name}.rgba`)))===0;
  for(const [x,y] of [['defaults','sweepA'],['sweepA','pairB'],['pairB','pairC']])if(first(x)&&first(y)&&await same(first(x),first(y)))throw Error(`The ${x} and ${y} captures are the same picture; the controls reach nothing`);
+ // A toggle has to change the picture too.
+ for(const p of plan.filter(p=>/^toggle\d+$/.test(p.label))){
+  const off=plan.find(q=>q.label==='hostbpm'&&q.frame===p.frame&&q.width===p.width);
+  if(off&&await same(p,off))throw Error(`Capture ${p.name} is the same picture as ${off.name}; the toggle reaches nothing`);
+ }
  // A recall has to change the picture, or matching Loom would only mean both ignored it.
  for(const p of plan.filter(p=>/^preset\d+$/.test(p.label))){
   const before=plan.find(q=>q.label==='sweepA'&&q.frame===p.frame&&q.width===p.width);
