@@ -12,6 +12,9 @@
  * The oracle is `renderHeadless` (the frame driver, the value graph and the animator the app runs)
  * on the saved project, with control values written through domain commands. It never reads the
  * package's lowered expressions or its driven-uniform table, so a wrong lowering shows as a wrong pixel. */
+import {Buffer} from 'node:buffer';
+import console from 'node:console';
+import process from 'node:process';
 import {readFile,writeFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {compileScene,DROPPED_NODES} from './scene.mjs';

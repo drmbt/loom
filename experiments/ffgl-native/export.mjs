@@ -1,4 +1,7 @@
 /** Isolated native-engine fixture. Run with the repository's alias-hooks loader. */
+import {URL} from 'node:url';
+import console from 'node:console';
+import process from 'node:process';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { compileGraph } from '../../src/compiler/index.ts';

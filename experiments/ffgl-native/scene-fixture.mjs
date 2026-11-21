@@ -1,6 +1,9 @@
 /** A small saved scene that uses the whole `loom-native-2` profile and needs no client media:
  *  a PNG still, Custom WGSL driven by sliders (plain, hue, stepped tempo) and a toggle, the frame clock, Blur at its own
  *  resolution, Add, Null, plus the authoring-only nodes the export drops. */
+import {URL} from 'node:url';
+import console from 'node:console';
+import process from 'node:process';
 import {mkdir,writeFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {buildProjectFile} from '../../src/domain/project/project-file.ts';

@@ -1,6 +1,7 @@
 /** Minimal still-image decoder for the export: 8-bit, non-interlaced PNG to RGBA8 rows, top row first.
  *  Loom's media texture is rgba8unorm-srgb and holds the file's bytes as they are, so this must not
  *  colour-manage: a PNG carrying an ICC profile is refused instead of being decoded differently. */
+import {Buffer} from 'node:buffer';
 import {inflateSync} from 'node:zlib';
 const SIGNATURE=[0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a];
 export function decodePng(bytes){
