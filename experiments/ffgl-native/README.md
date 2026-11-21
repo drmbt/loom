@@ -29,7 +29,7 @@ To export only: `pnpm exec node --import ./src/tooling/alias-hooks.ts experiment
 }
 ```
 
-- `plugins`: one generated plugin per output. `name` is the FFGL name (1 to 16 printable ASCII characters). `kind` is `source` for now. `output` names the node and port whose picture the plugin shows. Pick the node that holds display-encoded pixels (ICON HOTEL: `encode`, the node that feeds Syphon), because the engine writes the target to 8 bits as it is.
+- `plugins`: one generated plugin per output. `name` is the FFGL name (1 to 16 printable ASCII characters). `code` is its four-character FFGL id, claimed in drmbt-custom-fx `docs/PLUGIN-IDS.md` (a plugin without one builds as the placeholder `LSX0` and must not be installed). `kind` is `source` for now. `output` names the node and port whose picture the plugin shows. Pick the node that holds display-encoded pixels (ICON HOTEL: `encode`, the node that feeds Syphon), because the engine writes the target to 8 bits as it is.
 - `controls` is the plugin's parameter list, **in FFGL index order**. Comps, presets and MIDI maps store the index, so once a plugin is in use only append to this list. `name` is the FFGL name (default: the control's caption); `type` is `slider`, `hue` or `integer` (default: `integer` for a slider with Step 1 and whole Min and Max, `hue` for a 0..1 slider whose caption or channel says hue, else `slider`; a Toggle is always a toggle). A name over 16 characters, a name the plugin already uses (`Preset`, `Morph`, `Recall`, `Rescan`, `Snap`, `Curve`, `Next`, `Prev`, `Random`, `Host BPM`, `Fit`) or two controls with one name fail the export. A control the picture reads but the list leaves out fails it too.
 - `scene.mjs --controls <project> <interface> "<plugin>"` prints the list to start from: the controls that plugin's picture reads, in graph order. A top-level `controls` is a list shared by plugins that have none of their own; with neither, every Slider and Toggle is exported in graph order, which is for trying things out, not for a plugin that will be installed.
 - `hostBpm` is optional. It names the scene's tempo control. The plugin then gets a `Host BPM` toggle, and while it is on the host's tempo stands in for that control.
@@ -53,7 +53,7 @@ assets/<node>.<format>.deflate   raw-deflate of the still's texels, top row firs
 report.json      what was dropped, Loom's load warnings, controls this picture never reads
 ```
 
-`package.json` holds: `size` and `output`; `frame` (`fps`, `randomSeed`, `resolution` for the shared frame block); `vertex`; `resources` (`target`, `asset`, `sampler`); `passes` (shader, target, bindings, the uniform block with each field's byte offset, scalar type and default value, and the name of the shared frame binding); `assets` (file, size, format, byte length, SHA-256 of the inflated texels); `controls` (node, type, channel, name, min, max, step, default); `hostBpm` (the control index and the toggle's default, or null); `parameters` (the lowered program per driven parameter); `drives` (parameter index to pass, field and component, with scale and offset). ABI 2 added `step` and `hostBpm`. `abi` changes whenever the engine must read the package differently, and the engine refuses any other value. The build copies the folder into the bundle's `Contents/Resources/loom/`; asset blobs never go in git.
+`package.json` holds: `name`, `kind` and `code` (the four-character FFGL id from the interface, or null); `size` and `output`; `frame` (`fps`, `randomSeed`, `resolution` for the shared frame block); `vertex`; `resources` (`target`, `asset`, `sampler`); `passes` (shader, target, bindings, the uniform block with each field's byte offset, scalar type and default value, and the name of the shared frame binding); `assets` (file, size, format, byte length, SHA-256 of the inflated texels); `controls` (node, type, channel, name, min, max, step, default); `hostBpm` (the control index and the toggle's default, or null); `parameters` (the lowered program per driven parameter); `drives` (parameter index to pass, field and component, with scale and offset). ABI 2 added `step` and `hostBpm`. `abi` changes whenever the engine must read the package differently, and the engine refuses any other value. The build copies the folder into the bundle's `Contents/Resources/loom/`; asset blobs never go in git.
 
 ### Checked
 
@@ -64,6 +64,7 @@ report.json      what was dropped, Loom's load warnings, controls this picture n
 - the host's tempo taking over: Loom is given the tempo in the scene's own control, the plugin keeps another value there and receives the tempo as FFGL beat info;
 - a walk through time (frames 0 to 23 stepped one by one, compared at 0, 7 and 23);
 - at each extra host size: the defaults, and one sweep in `Fill` and in `Stretch`.
+- not compared with Loom, but asserted: a second live instance uploads no stills (it shares the first one's), and five open/close cycles do not grow the process. The harness also prints the footprint with one and two instances and the frame time at 1920×1080 and 3840×2160.
 
 Results on 2026-11-21, worst channel difference of 255 in every case:
 
@@ -71,7 +72,7 @@ Results on 2026-11-21, worst channel difference of 255 in every case:
 |---|---|---|---|---|
 | Scene fixture (media-free, `scene-fixture.mjs`) | 23 | 5 | 96×64, 200×120, 64×64 | 1 |
 | ICON HOTEL `Hotel Facade` (54 controls, 9 passes, 4 stills: 122 MiB on the GPU, 7.8 MiB packed) | 23 | 5 | 3584×1024, 2000×571, 1920×1080 | 1 |
-| ICON HOTEL `Hotel IMAG` (30 controls, 10 passes, 3 stills: 39 MiB on the GPU, 3.3 MiB packed) | 23 | 5 | 1664×1024, 1920×1080, 832×512 | 1 |
+| ICON HOTEL `Hotel IMAG` (30 controls, 10 passes, 3 stills: 39 MiB on the GPU, 3.3 MiB packed) | 23 | 5 | 1664×1024, 2000×571, 1920×1080 | 1 |
 
 - The oracle is `renderHeadless` with the animator on, real stills, and control values written through `graph.applyPatch`. It does not read the package's programs or drives. It renders the scene without the dropped nodes. The comparison also fails if two sweeps come out as the same picture.
 - `scene.test.mjs` (no GPU): the fixture's package, every refusal above by message, control lists and names, uniform layout, the lowered program, the PNG decoder.

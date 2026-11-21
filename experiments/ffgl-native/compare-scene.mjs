@@ -101,6 +101,14 @@ if(mode==='plan'){
   flush(run('defaults',w,h,defaults,[0,7]));
   for(const fit of [1,2])flush(run(`sweepA-${FIT[fit]}`,w,h,a,[7],{fit}));
  }
+ // Not compared with Loom: two live instances must share one copy of the stills, and what a frame costs.
+ const first=instance++,second=instance++;
+ lines.push('footprint before',`step ${first} ${sw} ${sh} 0`,'footprint one-instance','mark-log',`step ${second} ${sw} ${sh} 0`);
+ if(pkg.assets.length)lines.push('expect-log stills 0 bytes uploaded');
+ lines.push('footprint two-instances',`bench ${first} 1920 1080 120`,`bench ${first} 3840 2160 120`,`close ${first}`,`close ${second}`);
+ // Opening and closing an instance must give its memory back: the fifth one may not sit far above the second.
+ for(let cycle=0;cycle<5;cycle++){const id=instance++;lines.push(`step ${id} ${sw} ${sh} 0`,`step ${id} ${sw} ${sh} ${1/fps}`,`footprint cycle-${cycle}`,`close ${id}`);}
+ lines.push('expect-growth cycle-1 cycle-4 25');
  await writeFile(planFile,lines.join('\n')+'\n');
  await writeFile(`${planFile}.json`,JSON.stringify({plugin:pluginName,captures},null,1)+'\n');
  console.log(`Wrote ${captures.length} captures on ${instance} instances and ${fitIndex+1} parameter checks to ${planFile}`);
