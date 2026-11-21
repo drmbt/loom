@@ -147,7 +147,11 @@ export function compileScene(text,contract,pluginName){
  if(loaded.newerThanApp)fail('The project was saved by a newer Loom than this checkout');
  if(loaded.placeholders.length)fail(`Unknown node types: ${JSON.stringify(loaded.placeholders)}`);
  if(loaded.unknownParameters.length)fail(`Unknown parameters: ${JSON.stringify(loaded.unknownParameters)}`);
- if(loaded.components.length)fail('Components are outside the export profile');
+ // A saved project may carry a component LIBRARY nothing uses (the desktop app embeds the
+ // starter set). Only an instance in the graph is outside the profile.
+ const builtIn=new Set(allNodeDefinitions.map(definition=>definition.type));
+ const instances=Object.values(loaded.document.graph.nodes).filter(node=>!builtIn.has(node.type));
+ if(instances.length)fail(`Components are outside the export profile: ${JSON.stringify(instances.map(node=>node.label??node.id))}`);
  const loadErrors=loaded.diagnostics.filter(d=>d.severity==='error');
  if(loadErrors.length)fail(`The project loads with errors: ${JSON.stringify(loadErrors)}`);
  keys(contract,['schemaVersion','plugins','controls'],'interface');
