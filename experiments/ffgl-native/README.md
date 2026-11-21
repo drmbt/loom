@@ -30,7 +30,12 @@ To export only: `pnpm exec node --import ./src/tooling/alias-hooks.ts experiment
 ```
 
 - `plugins`: one generated plugin per output. `name` is the FFGL name (1 to 16 printable ASCII characters). `code` is its four-character FFGL id, claimed in drmbt-custom-fx `docs/PLUGIN-IDS.md` (a plugin without one builds as the placeholder `LSX0` and must not be installed). `kind` is `source` for now. `output` names the node and port whose picture the plugin shows. Pick the node that holds display-encoded pixels (ICON HOTEL: `encode`, the node that feeds Syphon), because the engine writes the target to 8 bits as it is.
-- `controls` is the plugin's parameter list, **in FFGL index order**. Comps, presets and MIDI maps store the index, so once a plugin is in use only append to this list. `name` is the FFGL name (default: the control's caption); `type` is `slider`, `hue` or `integer` (default: `integer` for a slider with Step 1 and whole Min and Max, `hue` for a 0..1 slider whose caption or channel says hue, else `slider`; a Toggle is always a toggle). A name over 16 characters, a name the plugin already uses (`Preset`, `Morph`, `Recall`, `Rescan`, `Snap`, `Curve`, `Next`, `Prev`, `Random`, `Host BPM`, `Fit`) or two controls with one name fail the export. A control the picture reads but the list leaves out fails it too.
+- `present` is `"none"` (default) or `"srgb"`. With `"srgb"` the engine applies the linear to sRGB curve at the output, so `output` can name a linear node. Use it for a plugin with transparency: Arena composites an FFGL source's alpha as straight, so show the straight-alpha linear node (ICON HOTEL IMAG: `imagNull`) and never a premultiplied one.
+- `controls` is the plugin's parameter list, **in FFGL index order**. Comps, presets and MIDI maps store the index, so once a plugin is in use only append to this list. An entry is one of:
+  - `{ "node": "slider_master", "name": "Master", "type": "slider", "group": "Ambient" }`: one parameter. `name` is the FFGL name (default: the control's caption); `type` is `slider`, `hue` or `integer` (default: `integer` for a slider with Step 1 and whole Min and Max, `hue` for a lone 0..1 slider whose caption or channel says hue, else `slider`; a Toggle is always a toggle).
+  - `{ "color": "Pill color", "hue": "slider_pillHue", "saturation": "slider_pillSat", "dims": "slider_pillLevel", "group": "Pill" }`: Resolume's native colour picker over two 0..1 sliders of the scene. It becomes four FFGL parameters (hue, saturation, brightness, alpha). `dims` is optional and names a slider in the same list that the picker's brightness multiplies; alpha does nothing.
+  - `group` is optional on both. Parameters of one group must be listed together.
+  - A name over 16 characters, a name the plugin already uses (`Preset`, `Morph`, `Recall`, `Rescan`, `Snap`, `Curve`, `Next`, `Prev`, `Random`, `Host BPM`, `Fit`), two parameters with one name, a control listed twice or a split group fail the export. A control the picture reads but the list leaves out fails it too.
 - `scene.mjs --controls <project> <interface> "<plugin>"` prints the list to start from: the controls that plugin's picture reads, in graph order. A top-level `controls` is a list shared by plugins that have none of their own; with neither, every Slider and Toggle is exported in graph order, which is for trying things out, not for a plugin that will be installed.
 - `hostBpm` is optional. It names the scene's tempo control. The plugin then gets a `Host BPM` toggle, and while it is on the host's tempo stands in for that control.
 
@@ -43,17 +48,18 @@ To export only: `pnpm exec node --import ./src/tooling/alias-hooks.ts experiment
 - **Expressions:** numbers, `+ - * /`, unary sign, parentheses and `op('<control>').chan.<channel>`. They are lowered to a small stack program that the engine runs every frame; nothing is frozen. Anything else is refused, quoting the expression.
 - **Parameters to uniforms:** measured on the compiler, not assumed. The exporter recompiles with the parameter at three values and keeps the straight line it finds per uniform component. A parameter that changes the plan's shape, or reaches a uniform through a curve, is refused.
 - **Uniform layout:** `f32`, `i32`, `u32`, `vec2f`, `vec3f`, `vec4f` with WGSL alignment. Other member types are refused.
+- **Presets:** every `presets` node becomes entries of one alphabetical menu, prefixed by bank (`Look`, `Palette`, `Pill`, else the node's role). Only what a bank targets is written; a colour is written whole, and a preset that sets only part of a colour takes the rest from the control's default and is reported. A target the plugin does not list is left out and reported. drmbt-custom-fx turns them into Arena preset XML.
 - **Refused:** feedback, rings, buffers, dispatch and draw passes, blend state, layered or history texture bindings, components, node state, bind/map parameter modes, samplers other than linear clamp.
 
-### Package layout (ABI 2)
+### Package layout (ABI 4)
 
 ```
-package.json     schemaVersion 2, profile "loom-native-2", abi 2
+package.json     schemaVersion 2, profile "loom-native-2", abi 4
 assets/<node>.<format>.deflate   raw-deflate of the still's texels, top row first
 report.json      what was dropped, Loom's load warnings, controls this picture never reads
 ```
 
-`package.json` holds: `name`, `kind` and `code` (the four-character FFGL id from the interface, or null); `size` and `output`; `frame` (`fps`, `randomSeed`, `resolution` for the shared frame block); `vertex`; `resources` (`target`, `asset`, `sampler`); `passes` (shader, target, bindings, the uniform block with each field's byte offset, scalar type and default value, and the name of the shared frame binding); `assets` (file, size, format, byte length, SHA-256 of the inflated texels); `controls` (node, type, channel, name, min, max, step, default); `hostBpm` (the control index and the toggle's default, or null); `parameters` (the lowered program per driven parameter); `drives` (parameter index to pass, field and component, with scale and offset). ABI 2 added `step` and `hostBpm`. `abi` changes whenever the engine must read the package differently, and the engine refuses any other value. The build copies the folder into the bundle's `Contents/Resources/loom/`; asset blobs never go in git.
+`package.json` holds: `name`, `kind` and `code` (the four-character FFGL id from the interface, or null); `size` and `output`; `frame` (`fps`, `randomSeed`, `resolution` for the shared frame block); `vertex`; `resources` (`target`, `asset`, `sampler`); `passes` (shader, target, bindings, the uniform block with each field's byte offset, scalar type and default value, and the name of the shared frame binding); `assets` (file, size, format, byte length, SHA-256 of the inflated texels); `controls` (node, type, channel, name, min, max, step, default); `params` (the FFGL parameters in index order: name, FFGL type, range, default, group, the control each writes, the control a brightness dims, the picker it belongs to); `hostBpm` (the control index and the toggle's default, or null); `present`; `presets` (name, bank, and parameter index and value pairs, sorted by name); `parameters` (the lowered program per driven parameter); `drives` (parameter index to pass, field and component, with scale and offset). ABI 2 added `step` and `hostBpm`, 3 `present`, 4 `params` and `presets`. `abi` changes whenever the engine must read the package differently, and the engine refuses any other value. The build copies the folder into the bundle's `Contents/Resources/loom/`; asset blobs never go in git.
 
 ### Checked
 
@@ -61,6 +67,7 @@ report.json      what was dropped, Loom's load warnings, controls this picture n
 
 - every declared parameter read back through the FFGL ABI: count, name, type, default and range;
 - the defaults, and three sweeps that move every control at once to a random place in its range (toggles stay off, since a blackout leaves nothing to compare), two of them on two instances alive together and rendered turn by turn;
+- three presets recalled through the plugin's Preset menu from the exported XML, twenty frames in: Loom is given the swept state with only that preset's parameters replaced, so a partial bank that disturbed anything else would show, and a recall that changed nothing fails;
 - the host's tempo taking over: Loom is given the tempo in the scene's own control, the plugin keeps another value there and receives the tempo as FFGL beat info;
 - a walk through time (frames 0 to 23 stepped one by one, compared at 0, 7 and 23);
 - at each extra host size: the defaults, and one sweep in `Fill` and in `Stretch`.
@@ -70,9 +77,9 @@ Results on 2026-11-21, worst channel difference of 255 in every case:
 
 | Plugin | Captures | Control states | Host sizes | Worst |
 |---|---|---|---|---|
-| Scene fixture (media-free, `scene-fixture.mjs`) | 23 | 5 | 96×64, 200×120, 64×64 | 1 |
-| ICON HOTEL `Hotel Facade` (54 controls, 9 passes, 4 stills: 122 MiB on the GPU, 7.8 MiB packed) | 23 | 5 | 3584×1024, 2000×571, 1920×1080 | 1 |
-| ICON HOTEL `Hotel IMAG` (30 controls, 10 passes, 3 stills: 39 MiB on the GPU, 3.3 MiB packed) | 23 | 5 | 1664×1024, 2000×571, 1920×1080 | 1 |
+| Scene fixture (media-free, `scene-fixture.mjs`) | 22 | 8 | 96×64, 200×120 | 1 |
+| ICON HOTEL `Hotel Facade` (54 controls as 72 parameters, 9 passes, 4 stills: 122 MiB on the GPU, 7.8 MiB packed) | 26 | 8 | 3584×1024, 2000×571, 1920×1080 | 1 |
+| ICON HOTEL `Hotel IMAG` (30 controls as 36 parameters, 10 passes, 3 stills: 39 MiB on the GPU, 3.3 MiB packed) | 26 | 8 | 1664×1024, 2000×571, 1920×1080 | 1 |
 
 - The oracle is `renderHeadless` with the animator on, real stills, and control values written through `graph.applyPatch`. It does not read the package's programs or drives. It renders the scene without the dropped nodes. The comparison also fails if two sweeps come out as the same picture.
 - `scene.test.mjs` (no GPU): the fixture's package, every refusal above by message, control lists and names, uniform layout, the lowered program, the PNG decoder.
@@ -81,10 +88,11 @@ Results on 2026-11-21, worst channel difference of 255 in every case:
 
 ### Not checked yet
 
-- Anything live in Resolume (VN135): what Arena sends as host time is still unmeasured (VN95), and a lone `FF_TYPE_HUE` parameter has not been looked at in Arena's UI.
+- What was and was not checked live in Arena is in drmbt-custom-fx `experiments/loom-native/scene/README.md`. In short: both sources play, pickers, groups' declarations, preset recall with morph and the straight-alpha edge were checked; save and reopen, Arena's own P. dropdown on a partial preset, and 4K were not.
 - `deltaTime` and `frameIndex` in the shared frame block are filled but no scene here reads them, so their parity is unproven. `wallTime` is given the scene clock and `pointer` zeros.
 - A toggle that is on (ICON HOTEL's Blackout) is not compared against Loom, because the frame is black.
-- Presets (VN136), effect builds (VN137).
+- A preset morph in flight is not compared against Loom (Loom's own morph curve differs); only the settled look is.
+- Effect builds (VN137).
 - Scaling quality: the fit to the host size is a plain bilinear read of whole texels, chosen so the comparison can repeat it exactly. Below half size it will alias.
 
 ## Static-filter proof (`loom-native-static-1`)
