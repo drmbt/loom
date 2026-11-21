@@ -96,6 +96,13 @@ export interface PresentationOptions {
   readonly sizing?: "layout" | "source";
   /** Display-only coverage inspection. Raw RGB is the default for transport integrity. */
   readonly alphaDisplay?: "rgba" | "rgb";
+  /**
+   * VN132 — how the SURFACE composites alpha. `"opaque"` (the default): every presentation
+   * owns its pane and alpha never shows the page through (T674). `"premultiplied"`: the
+   * sink's alpha reaches the surface, read as premultiplied and clamped to [0, 1] — a
+   * native output (Syphon Out's Keep alpha) whose receiver keys on it.
+   */
+  readonly surfaceAlpha?: "opaque" | "premultiplied";
 }
 
 /**

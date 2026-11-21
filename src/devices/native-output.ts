@@ -9,10 +9,15 @@ export interface NativeOutputSelection {
 }
 export interface DesktopOutputBridge {
   readonly nativeOutput: true;
-  open(name: string, width: number, height: number, publisherName: string): Promise<void>;
+  /** VN132: `alpha` opens a transparent output window, so the published frame keeps the sink's alpha. */
+  open(name: string, width: number, height: number, publisherName: string, options?: NativeOutputOptions): Promise<void>;
   close(name: string): Promise<void>;
   resize(name: string, width: number, height: number): Promise<void>;
   status(name: string): Promise<{ copied: number; dropped: number; error: string | null }>;
+}
+export interface NativeOutputOptions {
+  /** VN132: publish the sink's alpha, read as premultiplied. Off: an opaque frame, as before. */
+  readonly alpha?: boolean;
 }
 export type NativeOutputTransport = NativeVideoTransport;
 export function desktopOutputBridge(transport: NativeOutputTransport = "syphon"): DesktopOutputBridge | undefined {
@@ -24,10 +29,12 @@ export function desktopOutputBridge(transport: NativeOutputTransport = "syphon")
     throw new Error(`Invalid ${transport} native output bridge: an advertised output requires open, close, resize and status methods.`);
   return candidate as DesktopOutputBridge;
 }
-export function attachNativeOutput(backend: LoomBackend, selection: NativeOutputSelection, canvas: PresentableCanvas) {
+export function attachNativeOutput(backend: LoomBackend, selection: NativeOutputSelection, canvas: PresentableCanvas,
+  options: NativeOutputOptions = {}) {
   canvas.width = selection.size[0]; canvas.height = selection.size[1];
   let disposed = false;
-  const presentation = backend.present(canvas, { outputId: selection.resourceId, label: "native-sdr-output" });
+  const presentation = backend.present(canvas, { outputId: selection.resourceId, label: "native-sdr-output",
+    ...(options.alpha ? { surfaceAlpha: "premultiplied" as const } : {}) });
   const dispose = () => {
     if (disposed) return;
     disposed = true;

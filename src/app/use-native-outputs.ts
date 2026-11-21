@@ -43,7 +43,7 @@ export function useNativeOutputs(runtime: AppRuntime, backend: LoomBackend | nul
         const selection = source && demanded.has(node.id) ? { resourceId: source.resourceId, size: source.size } : null;
         const transport = NATIVE_OUTPUT_TRANSPORTS[node.type];
         if (!transport) throw new Error(`No native output transport for ${node.type}`);
-        return { id: node.id, definition, transport, name: String(values["name"]), enabled,
+        return { id: node.id, definition, transport, name: String(values["name"]), alpha: values["alpha"] === true, enabled,
           selection, selectionKey: JSON.stringify(selection), key: JSON.stringify([transport, values]) };
       });
   }, [graph, compiled, runtime.registry, runtime.bus]);
@@ -116,7 +116,9 @@ export function useNativeOutputs(runtime: AppRuntime, backend: LoomBackend | nul
           entries.set(request.id, entry);
           const current = entry;
           try {
-            const session = createNativeOutputSession(backend, bridge, request.selection, request.name);
+            const session = (request.alpha
+              ? createNativeOutputSession(backend, bridge, request.selection, request.name, { alpha: true })
+              : createNativeOutputSession(backend, bridge, request.selection, request.name));
             current.session = session;
             void session.ready.then(() => { if (entries.get(request.id) === current) report(request.id, null); }, error => {
               if (entries.get(request.id) !== current) return;
