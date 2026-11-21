@@ -60,6 +60,7 @@ ae-host|VN118|`pr/drmbt-ae-host-2026-10-13` · `../loom-ae-host`|previz-trim `ea
 ae-effect|VN119|`feature/loom-ae` · `../drmbt-custom-fx-loom-ae` (drmbt-custom-fx repo)|`master` + VN116 `561d529`, `4277b3f`, protocol `e32ddf5`|`experiments/loom-ae/**` except `PROTOCOL.md` (main session)|none|drmbt-custom-fx, not Loom|opened 2026-10-13
 ma3-playback|VN123 → VN131|`pr/drmbt-ma3-playback-2026-10-13` · `../loom-ma3-playback`|previz-trim `ea3da682`|new `tools/ma3/**` (show-data bake), new `projects/stage-previz/ma3/**`, new `projects/stage-previz/stage-previz-14.loom.json`, new `public/media/stage-previz/ma3/**` (renders >4 MB stay uncommitted)|none|stack on previz-trim; local, not an upstream PR yet|opened 2026-10-13
 VN114|~|**WORKING END TO END 2026-10-13: AE project `~/Documents/Loom AE Bridge/Loom AE Bridge.aep` renders `DS.mp4` + `SIDES.mp4` (H.264 1080p30, 144.733 s) and the song; `stage-previz-13` (`ea3da682` on the previz lane: `stageFeeds@2` with `movie_dsFeed` / one shared `movie_sidesFeed`, FX on its test pattern via its own `sourceFX`; `audiofile_reference` = AUDIO.wav at 147.99 BPM; fps 30, range 0..4341; single view; 97 previz tests green) loads in the trial branch and plays: DS warm from the flame loop, both sides the cyan generative. Media lives in `public/media/ae-bridge/` (excluded, never committed).** Single view only, "real time-ish": an AE project renders two feeds and a song, and stage-previz plays them in sync. DS projector = a video loop or generative layer; BOTH side projectors = one shared layer; the session length = the song. **Built 2026-10-13:** `~/Documents/Loom AE Bridge/Loom AE Bridge.aep` (scripted through AE's DoScriptFile): comps `DS feed` (a looped ProRes clip), `SIDES feed` (Fractal Noise + Tint, opacity pulsing at cloud-9's 147.99 BPM), `MASTER (audio + feeds)`; render queue writes `renders/DS.mp4`, `renders/SIDES.mp4` (H.264) and `renders/AUDIO.aif`. Loom side: `stage-previz-13` on the previz lane, with the DS and SL/SR feeds as timeline-locked movies, the song as `audiofile_reference`, fps 30, range = the song, single view. Media never committed. Not done: a live AE → Loom link (no AE SDK on this machine; options: NDI Tools for Adobe → Loom's NDI In, or a Syphon-out AE effect once the SDK is downloaded); an AE plugin running Loom itself (needs native-engine coverage for scene/mesh/haze).|VN104, VN64, VN83
+syphon-alpha|VN132|`pr/drmbt-syphon-alpha-2026-11-20` · `../loom-syphon-alpha`|upstream/main `bcd572b7`|`src/nodes/definitions/syphon-out.ts`, `src/devices/native-output{,-session}.ts`, `src/app/use-native-output{,s}.ts`, `src/desktop/{native-output,output-renderer,preload}.*`, the present-options alpha in `src/runtime/backend/{backend-types,vgpu/vgpu-backend}.ts`, their tests|`src/nodes/definitions/syphon-out.ts` (parameter added)|independent|opened 2026-11-20; receiver-verified 2026-11-21, uncommitted
 
 **Board rule restated 2026-10-08:** VN78–VN83 were minted and committed by other sessions directly on `drmbt`, and two of them minted VN83 for different things: the stage-previz dual view keeps VN83 (its commit `b7679a3a` carries it) and the desktop-pairing row became VN88. All are adopted as written (their findings stand), and only the main session edits this file and mints numbers from here on; the sessions were told.
 
@@ -90,7 +91,7 @@ VN15|.|**A Presets bank cannot take a Panel's controls in one gesture.** Request
 VN16|.|**A widget target stores the widget's settings along with its value.** A whole-node target captures every non-pulse parameter, so a Slider preset holds `channel`, `caption`, `min`, `max` and `step` as well as `value` (`src/nodes/definitions/controls.ts:53`). Recall writes them all back: change a slider's range or rename its channel after storing, and an old preset restores the old range and name, breaking every expression that reads the new one (`op('<slider>').chan.<channel>`). Targeting `<widget>.value` avoids it, but must be typed per widget; "Add selected" and the canvas drop write whole names. Wanted: presets of controls capture values only. Shape to decide: (a) a bank parameter `capture: all | values`, where `values` narrows a widget target to its value keys, or (b) the add gestures (VN15's included) write `<widget>.<key>` tokens. Either way the value keys are DECLARED on each widget definition (Slider `value`, Toggle `on`, XY Pad `x` `y`; Button none, since `held` and `presses` are momentary), never listed by node type in the presets code (V316). Presets already stored are unaffected: a recall applies whatever keys a preset holds.|T1496b, V316, VN15
 VN19|.|**Panel widgets beyond the four.** Asked 2026-10-06. A Panel lays out exactly Slider, Toggle, Button and XY Pad (`CONTROL_WIDGET_TYPES`, `src/nodes/definitions/controls.ts:249`), and the Slider draws only as a horizontal bar (`control-widget.tsx:101`). Wanted, each a widget node that publishes a channel like the four: (1) a **knob**, either a Slider style or its own type; (2) a **vertical fader**, a Slider orientation that follows the cell's shape on the board; (3) a **colour picker** publishing r, g, b (and a); (4) a **menu / radio** with named options publishing the index, replacing today's stepped-slider workaround (`source`, `shot` in `stage-previz`); (5) a **number field** for typed values; (6) a **text field** publishing a string, which needs a decision first, since channels carry numbers only (`ValueChannels`); (7) a read-only **meter / readout** showing a channel without moving it. Each one also has to reach the board (`DEFAULT_SIZE`, `controls.ts:448`), presets (VN16's declared value keys) and the phone (`PHONE_WRITABLE_KEYS`, `src/devices/phone/phone-protocol.ts:185`, and the phone page's renderer).|T1388b, T1516b, VN16
 VN20|→|**Design proposal: the COMP model** (2026-10-06), on `pr/drmbt-comp-model-2026-10-06`, `docs/comp-model-2026-10-06/` (README + 01–08): COMPs as folders with opt-in linking, TD terminology and two-way Bind, Base/Container COMPs with panel inheritance and parent/global shortcuts, node dashboards and a persistent preset library, MIDI/OSC/key mapper tables, a table type (DAT analog), the command bus (bible, command actions, user commands), and operator families, family colour and a three-tier component palette (08, merged from a parallel session). Upstream's ruling; stage 0 (mesh write-back via overrides) can ship alone. Found while packaging `stage-previz-8`.|VN10, VN14, VN15, VN16, VN19, T1388b, T1505b
-VN21|→|**Loom bridge for Resolume / FFGL.** Recovered from the stash onto its own branch, `feature/ffgl-native`, by a parallel session. Syphon In/Out already exists (VNB7, VNB13); this is the FFGL plugin/host side. Tracked here so the branch has a row; scope and status live with that branch.|VNB7, VNB13
+VN21|→|**Loom bridge for Resolume / FFGL.** Recovered from the stash onto its own branch, `feature/ffgl-native`, by a parallel session. Syphon In/Out already exists (VNB7, VNB13); this is the FFGL plugin/host side. Tracked here so the branch has a row; scope and status live with that branch. **Continued 2026-11-21 by VN133–VN138** (scenes as FFGL Source/Effect plugins, section below).|VNB7, VNB13
 VN22|.|**Logging you can configure, and values you can watch.** Asked 2026-10-06. Log levels per subsystem with a filter in the console; an `info` tag a user can put on a parameter or channel to log its value as it changes (an observe/watch list), filterable by level and by tag; a debug toggle per subsystem instead of code edits. Today the console shows diagnostics but cannot watch a value or filter by level.|diagnostics, console
 VN23|.|**Notifications that get noticed.** Asked 2026-10-06. Long-running or important events (e.g. the depth model download) should (1) log to the console with their progress, (2) raise a visible notice at the top of the screen, and (3) badge the agent tab with a red, text-message-style unread count until seen. Today a model download is easy to miss.|console, agent tab
 VN24|.|**The value ladder should work like TD's.** Reported 2026-10-06: the magnitude ladder (`src/ui/controls/number-field.tsx:62`, T228, §V133, §V134) is awkward. Wanted: it pops up in focus *under the mouse*, centred on the current value's rung, and dragging can start immediately from that position, without a second click.|T228, V133, V134
@@ -158,6 +159,7 @@ VN128|.|**Moving lights in the previz: house rig + iForte FS.** 20 Mac Aura XB, 
 VN129|.|**Stage layout r3 from the MVR.** 42 JDC Bursts (r2 has 38; FIDs 409–412 at y ≈ −0.17 m have no window), 32-cell pixel lines (r2 assumed 39), the riser strobes' height (the show has them at deck height), MVR→previz Y offset +4.79 m made explicit.|VN79, VN123
 VN130|.|**MA3 show interpreter inside Loom (no pre-bake).** Load the onPC XML dump + timecode as a Loom node that evaluates cues/tracking/fades/phasers per frame on the timeline (the `bake_fx.py` model, ported and tested against onPC output), so any song plays without re-baking and scrubs exactly.|VN123, VN126
 VN131|~|**BUILT `8db0f7aa` on `pr/drmbt-ma3-playback-2026-10-13` (26 files): native grandMA3 playback, no pre-bake, on an r3 stage with every show fixture (asked 2026-10-13).** New node `ma3ShowIn` (engine `src/domain/lighting/ma3-show.ts`, pure, replayed per frame; page hook `use-ma3-show-sources.ts`) outputs a 512x128 DMX texture (row = universe-1) from a `.ma3show.json` (`tools/ma3/package_show.py`: patch + DMX profiles + cues/phasers + timecode). pointKernel Field declared data (§V57c) so DMX wires in. `stage-previz-15`: `kernel_cells` (4032 Pixel Line/Burst cells as instances) + `kernel_heads` (49 movers + 16 ColorStrobes: beam + lens), generated by `tools/ma3/gen_fixture_kernels.py`; `stage-r3.glb` (Blender `--layout r3`: housings, Bursts, mover bodies, 5 house trusses from the MVR; r2 byte-identical). Profiles: PL/Burst GDTF, movers from manufacturer charts (`mover-charts.json`). Verified: plays at 30 fps realtime in the app (chorus purple fan, breakdown red); engine tests 8/8 red-verified; `test:gates` 64 green after the classes rows; typecheck, lint, build; Dawn E34 + E42 claims green after the Field change. Pre-existing upstream drift: `index.test.ts` core list lacks `floatMapIn` (still red, not ours). Show data media (show json, wav) uncommitted (client data). Gaps: strobe/shutter, colour wheels/CTO/gobos, Burst tilt, cue delays/MAtricks, offline render/headless (no page hook), Lucius pan/tilt degrees unconfirmed.|VN123, VN126, VN128, VN129, VN130
+VN132|~|**Syphon Out carries alpha (asked 2026-11-20 for the ICON HOTEL IMAG frame).** Opt-in `alpha` parameter on `syphonOut`: the presentation surface is configured `premultiplied` instead of `opaque`, the output window is transparent and its bitmaprenderer keeps alpha, so the BGRA IOSurface the native addon publishes (unchanged, it already copies alpha) holds the sink's alpha. Input is read as premultiplied. Off by default: E9-Ember-style sinks carry junk alpha (T674). Verified 2026-11-21: Loom-IconHotel-IMAG arrives in a Syphon receiver with a transparent centre. Touched tests, test:gates, typecheck, lint green; not yet committed.|
 
 ## COMP-model roadmap (VN20, laubsauger/loom#3)
 
@@ -414,6 +416,171 @@ VN95|.|**Arena's host-time unit.** From the VN85 oracle run (2026-10-08): Arena'
 VN96|.|**FFGL output without the one-frame lag.** From VN85: the `ffgl` node's output lags exactly one frame, live and offline. The plugin processes frame N's input copy after frame N's blit has already read the previous result; this is the same seam (and lag) as the model nodes. Removing it needs a two-phase frame (the external work settles before the blit), which the compile/runtime seam does not offer today. The VN85 gate asserts the lag explicitly, so a fix shows up as a deliberate test change.|VN85
 VN97|.|**StylizedGrain diverges between Loom and Arena.** From the VN91 first pass: mean 8, max 118 per channel; 8-bit colour quantisation has been ruled out. Next: compare with Grain 0 in both hosts, then isolate the noise source (time unit, VN95; the seed; or `rand` ordering under the rebind). Until it's found, noise/grain parity between running the binary and porting is undecided.|VN91, VN95
 VN98|.|**Argue for the no-modifier parameter drag (VN63 as ruled).** Laub's review (#15) kept the plain drag as the value scrub and put the reference behind Ctrl/Cmd. Vincent's ruling was TouchDesigner's: an immediate drag carries a reference, press-and-hold is the ladder. Accepted upstream's version for now (2026-10-08). Later: a short case for upstream (TD's and Houdini's docs, discoverability, the T1026 hold timing as one constant), not a PR until he agrees.|VN63, T1026
+
+## Loom scenes as Resolume FFGL plugins: Source and Effect (filed 2026-11-21, VN133–VN138)
+
+Asked 2026-11-21: package a scene like ICON HOTEL as an FFGL plugin that Resolume runs by itself. No Loom app, no separate launch, no Syphon. Resolume plays the scene back and owns the knobs. Two builds come from one project: a **Source** (`FF_SOURCE`, a generator in the clip slot) and an **Effect** (`FF_EFFECT`, takes the layer's incoming video and uses it inside the scene). **Looks are stored as native Resolume presets** (Arena's own per-plugin preset XML) and recalled with drmbt-custom-fx's preset-morph system, not with a Loom-only format.
+
+This continues VN21 (Loom → FFGL, `feature/ffgl-native`, parked 2026-10-06). It is the reverse of VN84–VN97, which run FFGL plugins inside Loom.
+
+### Where things stand (read before writing code)
+
+- **Native engine, drmbt-custom-fx:** `experiments/loom-native/` runs Loom-compiled WGSL in native Dawn/Metal inside an FFGL plugin. Frames cross through IOSurface (GL ↔ Metal) with bounded synchronous waits. The engine is `engine.mm` (625 lines), `plugin.mm` (raw `CFFGLPlugin`, id `LNP1`), `loader.mm` (`LNL1`, two fixed control slots), `embed.py`, `build.py` and `package-validation.*`. Dawn is a checksum-pinned release with a **macOS 26 / Apple Silicon** floor. Evidence so far:
+  - Arena 7.27.1 loaded the plugin and ran it.
+  - 98 harness frames passed.
+  - 48 Loom comparisons came out within 1/255.
+  - Read `README.md`, `LOADER.md` and `docs/loom-ffgl-feasibility.md` there first.
+  - The engine exists only on `feature/showpack` (commit `10b1144`), not on `master`.
+- **Export side, Loom:** `experiments/ffgl-native/` exists only on `feature/ffgl-native` (`222105e0`, about 1,078 commits behind upstream). It has 9 files: `project.mjs`, `export.mjs`, `compare-project.mjs` and their tests. It loads a saved `.loom.json` through the real project loader and compiler, then emits `package.json` plus `interface.json`. Its profile today:
+  - Nodes: Transform, Tile, Mirror, Crop and Flip only.
+  - Refused: assets, components, and expression/bind/map parameters.
+  - Formats: RGBA8 only.
+  - Controls: at most two.
+  - It freezes one frame's uniforms.
+- **The target scene:** `projects/icon-hotel/icon-hotel.loom.json`. It is untracked on `drmbt` and its media is untracked in `public/media/icon-hotel/`. Read both by absolute path from `/Users/vincentnaples/Documents/GitHub/loom/`, never commit them (`passes_{a,b}.png` are 3.6 MB each), and read `projects/icon-hotel/README.md`. The graph has 90 nodes:
+
+  | Node type | Count | Notes |
+  |---|---|---|
+  | `customWgslMulti` | 2 | `wgsl_facade`, `wgsl_imagFrame` |
+  | `customWgsl` | 6 | |
+  | `blur` | 4 | |
+  | `add` | 4 | |
+  | `null` | 2 | |
+  | `output` | 1 | |
+  | `movieFileIn` | 7 | PNG stills: `passes_a`, `passes_b` (2000×3426 atlases), `mask`, `letters`, `imag_ambient`, `imag_pill`, `imag_mask` |
+  | `slider` | 56 | |
+  | `toggle` | 1 | blackout |
+  | `presets` | 3 | `presets_looks` (morph 1.5 s), `presets_palettes` (2.0 s), `presets_pill` (0.5 s); all "smooth", each a partial target list with one value per slider |
+  | `panel` | 1 | |
+  | `syphonOut` | 3 | `syphonout_hotel`, `syphonout_imag`, `syphonout_imagkey` |
+
+  - **Expressions:** all 81 are slider reads such as `op('slider_ambient').chan.ambient`. One is `op('slider_master').chan.master * (1 - op('toggle_blackout').chan.blackout)`. None reads `time`.
+  - **Time:** the shaders take time (chase, flicker) and BPM from the frame input.
+  - **Outputs:** two. The facade is 2000×571, opaque. The IMAG frame is 1664×1024, with alpha (VN132 made Syphon carry it).
+  - **Measured in the dev server:** 13 passes, about 0.7 ms of GPU time per frame, about 221 MiB of GPU memory (mostly the two half-float atlases).
+
+### Decisions taken in this spec (Vincent may overrule; a worker never does)
+
+1. **Route:** extend the native Dawn engine into a general exporter, not a hand port to GLSL (VN86). The same WGSL runs, the existing comparison harness proves parity, and the next scene costs nearly nothing. The price is macOS 26 / Apple Silicon only for now; Windows is a later row.
+2. **One generated plugin per output per kind.** Each has a fixed parameter list, which is what Arena scans for. The `LNL1` loader is not the vehicle: two control slots can't carry 56 knobs. ICON HOTEL yields up to four bundles from one export run:
+   - `Hotel Facade` Source
+   - `Hotel IMAG` Source
+   - `Hotel Facade FX` Effect
+   - `Hotel IMAG FX` Effect (only if a placement is ruled; see VN137)
+
+   Each gets its own four-character id, registered in drmbt-custom-fx `docs/PLUGIN-IDS.md`. Every display name and parameter name must fit FFGL's **16 characters**.
+3. **Authoring-only nodes are dropped at export, by rule:** `panel`, `syphonOut`, and `presets` (the preset banks become Arena preset files, VN136). Any other node type outside the profile fails the export, naming the node.
+4. **Fixed internal resolution** per output (the scene's own). It is fitted to Resolume's layer size at the output blit, with aspect preserved (letterbox) as the default. The option to offer instead (stretch, crop) is a parameter, not a rebuild.
+
+### Rows
+
+VN133|.|**Exporter profile for real scenes (Loom side + engine).** Grow the `loom-native-static-1` profile into a new `loom-native-2` profile that runs ICON HOTEL's render graph.
+- **Nodes:** `customWgsl`, `customWgslMulti` (several outputs), `blur`, `add`, `null`, `output`.
+- **Images:** `movieFileIn` with a still image becomes a packaged asset. Decode to **linear half-float** at export, exactly as Loom's media path does (sRGB PNG → linear, same colour space as the app), so the engine never decodes PNGs.
+- **Formats:** rgba16float render targets.
+- **Topology:** several passes with intermediate targets. Feedback/rings are not needed by this scene; refuse them with a diagnostic.
+- **Fail closed:** every node outside the profile is reported with its name and path.
+- **Package layout:** `package.json` (versioned ABI, stated in a README), asset blobs, and `interface.json`. Asset blobs are embedded in the bundle's `Contents/Resources`, never in git.
+- **Done when:** the native harness renders the Source build of `Hotel Facade` with all sliders at their defaults and time frozen, matching Loom's headless Dawn render of the same graph within the 1/255 the experiment already holds. Compare at 2000×571 and at one other size.|VN21
+VN134|.|**Controls, time and BPM, evaluated every frame.** Replace the frozen uniforms with per-frame evaluation in the engine.
+- **Parameters:** every `slider` and `toggle` becomes an FFGL parameter. The name comes from the slider's `caption` (≤ 16 characters, unique, never `Preset`/`Morph`/`Recall`/`Rescan`/`Snap`/`Curve`/`Next`/`Prev`/`Random`; see drmbt-custom-fx `docs/KNOWLEDGE.md`). Range is its `min`/`max`, the default is `defaultValue`, and the declared default is passed explicitly (the `SetParamInfof` trap in the `ffgl-preset-morph` skill).
+- **Hue:** hue sliders are typed `FF_TYPE_HUE` so they wrap.
+- **Index order** is fixed by `interface.json` and never renumbered by a later export. Index is what comps, presets and MIDI maps store.
+- **Expressions:** lower the scene's expressions to a small expression evaluator (arithmetic + `op('x').chan.y` over the exported controls) emitted into the package. Refuse anything else, naming it. Do not freeze it.
+- **Uniform packing** follows what Loom's `customWgsl` reflection produces.
+- **Time:** comes from FFGL `SetTime`. Measure Arena's unit first (VN95 says it looks like milliseconds and may loop).
+- **BPM:** comes from FFGL beat info, behind a `Host BPM` toggle that replaces the scene's BPM slider while on.
+- **Pause and seek:** state the behaviour in the README; an ejected clip must not jump when re-shown.
+- **Done when:** a parameter sweep through the FFGL ABI matches Loom renders, with the slider values set through domain commands, per the existing `compare-project.mjs` oracle rule. Also test a time sweep and two instances with different values.|VN133
+VN135|.|**Source plugins in Arena, live.**
+- **Build:** `Hotel Facade` and `Hotel IMAG` as `FF_SOURCE` bundles.
+- **Alpha:** the IMAG frame's alpha goes out premultiplied the way Resolume expects. Check one translucent edge in Arena against Loom's IMAG key.
+- **Memory:** load the atlases once per process and share them across instances (they are read-only). Two clips of the facade must not cost 2 × 221 MiB.
+- **Cost:** measure GPU time and frame pacing at 1080p and 4K layers in Arena.
+- **Persistence:** test save → reopen of a comp with the plugin, including parameter values.
+- **Install:** copies go to `~/Documents/Resolume Arena/Extra Effects/` only when Vincent says so. Re-opening his show comps is his call.
+- **Done when:** both sources play in Arena with no Loom running; the knobs move the picture; the comp reopens with the same values; and the numbers are written down.|VN134
+VN136|.|**Looks as native Resolume presets, recalled with morph (drmbt-custom-fx preset system).** Before writing any of this, read and follow, in drmbt-custom-fx:
+- `.claude/skills/ffgl-preset-morph/SKILL.md` (the whole thing)
+- `docs/KNOWLEDGE.md` § "Preset recall" and § "Arena's per-effect wrapper and preset XML"
+- `sdk/drmbt/PresetMorph.{h,cpp}`, `PresetEffect.h`, `PresetRawEffect.h`
+- `tools/make_preset.py`
+- the reference `effects/background-color/ffgl/BackgroundColor.{h,cpp}`
+- for a raw-SDK plugin with a source path, `effects/figlet-text/`
+
+Rules from those sources:
+- **Mixin:** the generated plugin is a raw `CFFGLPlugin` (like `plugin.mm`), so it uses the raw-SDK preset layer. Check which mixin and which morph-clock rule applies (`PresetRawPlugin` over quickstart vs `RawPresetPlugin<CFFGLPlugin>`; their names are near-identical and their rules are opposite). Clock the morph on accumulated `deltaTime`, clamped, never on wall time.
+- **Parameter block:** append the canonical nine-parameter block **last**: `Preset` (None), `Morph`, `Recall`, `Rescan`, `Snap`, `Curve`, `Next`, `Prev`, `Random`. Defaults are canonical (Morph 0.5, Curve SineInOut) unless Vincent rules otherwise. Loom's Looks morph at 1.5 s; ask whether the generated default follows the scene.
+- **Recall set:** hue parameters wrap the shortest way. Bool/blackout snaps. Exclude live-modulated performance parameters from recall, and document the exclusion set in the plugin README.
+- **Export:** the exporter writes one Arena preset XML per Loom preset, for all three banks, in the same format `make_preset.py` writes. Paths:
+  - Sources: `Presets/Sources/<truncated display name>/`
+  - Effects: `Presets/Video Effects/<truncated display name>/`
+- **Partial banks:** a Loom bank is a partial snapshot (Palettes touches only colour, Pill only pattern). Write only the bank's targets into its XML. Then **verify** two things live in Arena: (a) that the plugin's recall leaves untouched parameters alone, and (b) what Arena's own P. dropdown does with a file that lacks some parameters. That is not yet known.
+- **One menu:** all three banks share one alphabetical `Preset` menu, where index is identity. Name them so each bank sorts together: `Look Reference`, `Palette Amber`, `Pill Chase`. Plain names, **never the backtick prefix**, which is Vincent's favourites marker.
+- **Keyboard mapping is out of scope** (`resolume-preset-keymap` runs only on his request).
+- **Done when:**
+  - Every Loom look exists as an Arena preset.
+  - Recalling `Look Reference` in Arena matches Loom's Reference look after the morph settles (render comparison).
+  - A morph between two looks glides the faders in Arena's UI.
+  - Comp load adopts without a surprise recall.
+  - The Loom panel's Looks and the Arena preset menu list the same names.|VN135
+VN137|.|**Effect builds: the layer's video inside the scene.** The `interface.json` names a host-input node. The export substitutes the FFGL input texture for it, as the experiment already does. Gated on a **placement ruling from Vincent**, which the worker asks for before building this row. It changes the network itself (an input node wired into `wgsl_facade` or `wgsl_imagFrame`, authored in the `.loom.json` through the published Loom tools, not in TypeScript). Candidates to put to him:
+- (a) the video plays in the windows behind the drapes, as the room light;
+- (b) inside the IMAG frame's centre, under the frame;
+- (c) as an extra light pass that tints by the video;
+- (d) keyed onto the wall as a projection (it multiplies the wall's albedo).
+
+Other requirements:
+- **Input handling:** state the input's alpha and colour handling once (premultiplied in, converted once).
+- **Padding:** honour Resolume's content size vs texture size (the padded-input case the harness already covers).
+- **Bypass:** a missing input renders the scene with black there, never stale pixels.
+- **Done when:** `Hotel Facade FX` (and IMAG if ruled) runs on a layer in Arena with a movie under it, the movie shows where ruled, and parity holds against Loom with the same still in the input.|VN135, a placement ruling
+VN138|.|**One command from a saved scene to installed-ready bundles.** `export → validate → build.py → harness → parity` as one command. It takes a `.loom.json` path plus `interface.json` and writes bundles + preset folders into an output directory (not into Arena's folders). Requirements:
+- **Report:** for any project it prints what was dropped, what was refused, and why.
+- **README:** a short one for exporting the next scene.
+- **Windows** (D3D11 shared textures, `.dll`) is a separate later row, not this one.|VN136, VN137
+
+### Lane (opened only when Vincent says start)
+
+lane|row|branch · worktree|base|owns|hotspots
+ffgl-export|VN133–VN138|Loom: `exp/drmbt-ffgl-export-2026-11-21` · `../loom-ffgl-export`, cut from fresh `upstream/main`, with the 9 files of `experiments/ffgl-native/` copied over from `feature/ffgl-native` via `git show <ref>:<path>` (no checkout, no cherry-pick). drmbt-custom-fx: `feature/loom-scene-export` · `../drmbt-custom-fx-ffgl-export`, cut from `feature/showpack` at `b73c86d` (the only branch with `experiments/loom-native`; the main drmbt-custom-fx checkout has uncommitted work, so don't touch it)|as cut|Loom: `experiments/ffgl-native/**` only. drmbt-custom-fx: `experiments/loom-native/**`, one new id row in `docs/PLUGIN-IDS.md`. Read-only: `projects/icon-hotel/**`, `public/media/icon-hotel/**` in `loom/`, `sdk/drmbt/**`, `tools/make_preset.py`, the skills|none. **No `src/` edits**: if the exporter needs something Loom's compiler or media path does not expose, the worker stops and asks. VN137's network edit is a `.loom.json` change in `projects/icon-hotel/`, made only after the ruling, through the Loom tools
+
+**Never upstream.** This is drmbt tooling. No PR to laubsauger/loom, no push to either remote unless Vincent asks.
+
+**Worker brief (a Fable session).** You are a worker, not the main session. Your scope:
+- Work in the two worktrees above, in row order VN133 → VN138, one row at a time.
+- Commit subjects carry the row id (`VN133: …`). Commit with explicit paths only, never `git add -A`, never stash/reset/checkout in shared checkouts.
+- Run heavy commands (Dawn builds, GPU parity runs, `build.py`) through `tools/heavy.sh` in the Loom worktree.
+- Nothing over 4 MB in a commit. No client media or build output in git.
+
+When to stop and ask:
+- Before VN137 (the placement).
+- When any name won't fit in 16 characters.
+- When the expression lowering meets something other than slider reads and arithmetic.
+- Before installing into Arena or opening Vincent's comps.
+
+How to work:
+- Testing bar: assert rendered pixels against Loom's own Dawn render, red-verify each gate once by breaking it on purpose, and state what was not checked.
+- Report to the main session (`loom/` on `drmbt`) at start, on each commit (hash), when blocked, and when each row is done.
+- Do not edit `SPEC.md`, `SPEC-VN.md`, or anything outside the owned paths.
+
+## Big-scene authoring gaps (filed 2026-11-21, from the ICON HOTEL grand build)
+
+Found while building `projects/icon-hotel/icon-hotel-grand.loom.json`: fifteen 4K Cycles light
+passes relit in WGSL, a baked cloth curtain driven by panel buttons, two Syphon outputs. Each
+row names the workaround the project uses today. None has a lane yet; assess (rule 2) before one opens.
+
+VN139|.|**More than four textures into one shader.** `customWgslMulti` binds `input` plus three `more`. Fifteen passes became a chain of five stages, each writing a 3840×2160 rgba16float target that the next reads back (~330 MB and the bandwidth). Options: raise the `more` count (bind-group limits allow far more sampled textures), accept a `texture_2d_array` input, or both. Workaround: the stage chain.|
+VN140|.|**Keep 8-bit stills 8-bit.** A PNG in `movieFileIn` is held at the working format, so each 4K pass costs 66 MB where `rgba8unorm-srgb` would cost 33 MB. Add a storage-format choice (or a policy: stills keep their source depth unless a consumer needs float). The grand project's ~2.8 GB is mostly this.|
+VN141|.|**Raw (non-colour) images.** Stills and video sample through an `-srgb` external texture, so data maps (cove ring position, material mask, letter IDs) arrive sRGB-decoded and every shader re-encodes to get the bytes back. Add a Colour space option on `movieFileIn`: sRGB (default) / Raw.|
+VN142|.|**HDR RGB image input.** EXR and .hdr are refused by `movieFileIn`; `floatMapIn` is single-channel. 8-bit light passes clip at the emitters, so neon and LED cores are faked in the shader. Needs an RGB(A) half-float image path (extends the T1222 float texture path).|T1222
+VN143|.|**Bigger atlases.** Packing passes into atlases is blocked by the project default `maxResolution` 4096 (two stacked 4K passes are 4320 tall), though `HARD_LIMITS` allows 16384 and Apple GPUs report 16384. Raise the default, or derive it from the device report.|
+VN144|.|**State in the value graph: Latch / Sample-and-Hold.** Nothing can remember a value between events, so the curtain's "which state am I leaving" is derived by ordering three Count `Since` channels in a 20-line expression. A Latch (hold input when a trigger fires) or a small state-machine node makes this one node.|
+VN145|.|**Movie segments: play A to B and hold.** Named markers on `movieFileIn` plus a "play to marker" pulse would replace driving Trim, Cue Point and Cue Pulse by expression. With segments known, the node could also crossfade a jump and reverse in place when a new move is called mid-move (the grand curtain jumps today).|
+VN146|.|**A command-line project check, and opening a file over MCP.** Validating a `.loom.json` (load, compile, Dawn compile, findings) needed a scratch script over `runExample`; MCP tools can't open a project by path, so the live check needed a `showOpenFilePicker` shim in the browser. Add `pnpm check-project <file>` and an MCP `open_project`.|
+VNB26|.|**A quick Button tap is missed by downstream counters.** A press and release inside one frame never raises the held channel, so a Count on it counts nothing; only `<channel>Count` steps. Workaround: Button → Slope → Count on the press counter. Fix: publish a one-frame press pulse channel on Button (or document the counter as the thing to count).|
+VNB27|.|**The load-time memory warning counts every node as a 4K texture.** `estimateProjectMemoryBytes` charges sliders, buttons and expressions a full output-resolution target, so the grand project warns 9 GB at the door while the compiler estimates 2.8 GB. Charge only nodes that produce a texture.|§V24
+VNB28|.|**A pulse parameter in expression mode refuses a stored static value.** `parameter.retained` when the envelope carries `static` (which every other expression-mode parameter does). Either accept and ignore it, or say so in the `apply_graph_patch` / parameter docs.|
 
 ## Needs a reproduction
 
