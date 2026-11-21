@@ -51,7 +51,58 @@ function graph(source: string, wireSecond: boolean): GraphDocument {
   } as never;
 }
 
+/*
+ * VN139: all fifteen More inputs, in edge order. Each input is a black or a white solid, and
+ * the shader writes input k as bit k of the output: inputs 1..8 are red's eight bits, 9..15
+ * are green's low seven. Only fifteen bindings, each reading its own edge, spell the pattern.
+ */
+const PATTERN = [1, 0, 1, 1, 0, 0, 1, 0, /* red 0b01001101 */ 0, 1, 1, 0, 1, 0, 1 /* green 0b1010110 */];
+const FIFTEEN_INPUTS = `@group(0) @binding(0) var inputSampler: sampler;
+@group(0) @binding(1) var inputTexture: texture_2d<f32>;
+${PATTERN.map((_, k) => `@group(0) @binding(${k + 4}) var inputTexture${k + 1}: texture_2d<f32>;`).join("\n")}
+
+fn bit(t: texture_2d<f32>) -> f32 { return textureLoad(t, vec2i(0, 0), 0).r; }
+
+@fragment
+fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
+  let keep = textureSampleLevel(inputTexture, inputSampler, uv, 0.0).a;
+  let red = ${PATTERN.slice(0, 8).map((_, k) => `bit(inputTexture${k + 1}) * ${2 ** k}.0`).join(" + ")};
+  let green = ${PATTERN.slice(8).map((_, k) => `bit(inputTexture${k + 9}) * ${2 ** k}.0`).join(" + ")};
+  return vec4f(red / 255.0, green / 255.0, 0.0, keep);
+}`;
+
+function fifteenGraph(): GraphDocument {
+  const node = (id: string, type: string, parameters: Record<string, unknown>) => ({ id, type, definitionVersion: 1, position: { x: 0, y: 0 }, parameters });
+  const edge = (id: string, source: string, target: string, portId: string) => ({ id, source: { nodeId: source, portId: "out" }, target: { nodeId: target, portId } });
+  return {
+    revision: 1,
+    nodes: {
+      a: node("a", "solid", { color: [0, 0, 0, 1] }),
+      ...Object.fromEntries(PATTERN.map((on, k) => [`s${k + 1}`, node(`s${k + 1}`, "solid", { color: [on, on, on, 1] })])),
+      fx: node("fx", "customWgslMulti", { source: FIFTEEN_INPUTS }),
+      out: node("out", "output", {}),
+    },
+    edges: {
+      e0: edge("e0", "a", "fx", "input"),
+      // Edge ids sort in wiring order (m01..m15): edge order is binding order.
+      ...Object.fromEntries(PATTERN.map((_, k) => { const id = `m${String(k + 1).padStart(2, "0")}`; return [id, edge(id, `s${k + 1}`, "fx", "more")]; })),
+      z: edge("z", "fx", "out", "input"),
+    },
+    groups: {},
+  } as never;
+}
+
 describe("Custom WGSL with more than one input (T1365b, §V147)", () => {
+  it("binds all fifteen More inputs in edge order (VN139)", async () => {
+    const probe = await probeDawn();
+    if (!probe.available) throw new Error(`Dawn unavailable: ${probe.error}`);
+    const result = await renderHeadless({ host: nodeGpuHost(), graph: fifteenGraph(), settings: SETTINGS, frames: 1, outputNodeId: "fx", outputPortId: "out" });
+    const bytes = result.frames[0]!.bytes;
+    const bits = (from: number, to: number): number => PATTERN.slice(from, to).reduce((sum, on, k) => sum + on * 2 ** k, 0);
+    expect([bits(0, 8), bits(8, 15)]).toEqual([0b01001101, 0b1010110]);
+    expect([bytes[0], bytes[1], bytes[2]]).toEqual([0b01001101, 0b1010110, 0]);
+  });
+
   it("reads Input 2 beside Input: the output is their difference to the byte", async () => {
     const probe = await probeDawn();
     if (!probe.available) throw new Error(`Dawn unavailable: ${probe.error}`);

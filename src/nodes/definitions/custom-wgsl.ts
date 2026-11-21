@@ -349,7 +349,7 @@ export const customWgslNode: NodeDefinition = {
        node attached, or worse a silent black. */
     const extraTextures: Array<{ binding: string; resourceId: string; sampled: "unfiltered" }> = [];
     const more = inputEdges["more"] ?? [];
-    for (const index of [1, 2, 3]) {
+    for (let index = 1; index <= CUSTOM_WGSL_MORE_INPUTS; index += 1) {
       const binding = `inputTexture${index}`;
       if (!new RegExp(`var\\s+${binding}\\s*:`).test(expanded.toString())) continue;
       const wired = more[index - 1];
@@ -364,7 +364,7 @@ export const customWgslNode: NodeDefinition = {
               nodeId,
               suggestion:
                 more.length === 0 && inputEdges["more"] === undefined
-                  ? `Use Custom WGSL · Multi (its More input feeds inputTexture1..3), or remove the \`${binding}\` declaration.`
+                  ? `Use Custom WGSL · Multi (its More input feeds inputTexture1..${CUSTOM_WGSL_MORE_INPUTS}), or remove the \`${binding}\` declaration.`
                   : `Wire ${index} texture(s) into More (edge order is binding order), or remove the \`${binding}\` declaration.`,
             },
           ],
@@ -398,13 +398,22 @@ export const customWgslNode: NodeDefinition = {
 };
 
 /**
- * T1365b — CUSTOM WGSL · MULTI: the same node with up to three more images. A depth, a
+ * How many textures More binds. WebGPU guarantees 16 sampled textures per shader stage
+ * (`maxSampledTexturesPerShaderStage`), and Input is one of them. It was three, which made a
+ * relight of fifteen light passes a chain of five stages, each writing a full-size target
+ * only for the next to read back (VN139).
+ */
+export const CUSTOM_WGSL_MORE_INPUTS = 15;
+
+/**
+ * T1365b — CUSTOM WGSL · MULTI: the same node with more images, up to
+ * `CUSTOM_WGSL_MORE_INPUTS` of them. A depth, a
  * normal buffer, a history — so a pass that needs more than one image no longer packs depth
  * into alpha. A SIBLING rather than a port on Custom WGSL on purpose: node cards are sized by
  * their sockets and shipped layouts are gated on those sizes (§V389), so one more socket on
  * every Custom WGSL would move every shipped document that holds one. Same compile, same
  * reflection, same contract; `More` is one variadic, DATA-typed socket (read raw, whatever
- * the source space, §V57c) whose edges bind in order as inputTexture1..3, unfilterable, so
+ * the source space, §V57c) whose edges bind in order as inputTexture1..15, unfilterable, so
  * the shader reads them with textureLoad. Each binds only when the source declares it.
  */
 export const customWgslMultiNode: NodeDefinition = {
@@ -412,7 +421,7 @@ export const customWgslMultiNode: NodeDefinition = {
   type: "customWgslMulti",
   title: "Custom WGSL · Multi",
   description:
-    "Custom WGSL with up to three more texture inputs: edges into More bind, in order, as inputTexture1..3 (declare them, read them with textureLoad — depth and other float data work). Otherwise identical to Custom WGSL.",
+    `Custom WGSL with up to ${CUSTOM_WGSL_MORE_INPUTS} more texture inputs: edges into More bind, in order, as inputTexture1..${CUSTOM_WGSL_MORE_INPUTS} (declare the ones you read, read them with textureLoad — depth and other float data work). Otherwise identical to Custom WGSL.`,
   inputs: [
     { id: "input", label: "Input", type: RGBA_TEXTURE },
     {
@@ -422,7 +431,7 @@ export const customWgslMultiNode: NodeDefinition = {
       variadic: true,
       type: DATA_TEXTURE,
       description:
-        "Up to three more textures, in edge order, as inputTexture1, inputTexture2, inputTexture3. Declare `var inputTexture1: texture_2d<f32>;` and read it with textureLoad (bound unfilterable). Each keeps its own resolution.",
+        `Up to ${CUSTOM_WGSL_MORE_INPUTS} more textures, in edge order, as inputTexture1, inputTexture2, … inputTexture${CUSTOM_WGSL_MORE_INPUTS}. Declare \`var inputTexture1: texture_2d<f32>;\` at a binding of its own and read it with textureLoad (bound unfilterable). Only the ones the source declares are bound. Each keeps its own resolution.`,
     },
   ],
 };
