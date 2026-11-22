@@ -140,6 +140,11 @@ if(mode==='plan'){
   for(const [index,value] of menu[pick].values)after[index]=value;
   flush(run(`preset${pick+1}`,sw,sh,a,[23],{loom:controlsFor(pkg,after),at:{0:[`set $id ${presetIndex+1} 0`],20:[`set $id ${presetIndex} ${pick+1}`]}}));
  }
+ for(const check of pkg.checks??[]){
+  const values=[...defaults];
+  for(const [index,value] of check.values)values[index]=Math.fround(value);
+  flush(run(`check${check.label}`,sw,sh,values,[7]));
+ }
  if(pkg.input){
   // An Effect: the scene must see the input at the input's own size (a shader may read
   // textureDimensions), whatever the scene's and the host's sizes are; and nothing with no input.
@@ -234,9 +239,9 @@ if(mode==='plan'){
  const first=(label)=>plan.find(p=>p.label===label),same=async(x,y)=>Buffer.compare(await readFile(resolve(captureDir,`${x.name}.rgba`)),await readFile(resolve(captureDir,`${y.name}.rgba`)))===0;
  for(const [x,y] of [['defaults','sweepA'],['sweepA','pairB'],['pairB','pairC']])if(first(x)&&first(y)&&await same(first(x),first(y)))throw Error(`The ${x} and ${y} captures are the same picture; the controls reach nothing`);
  // An Effect's input has to reach the picture: another input size, or none, is another picture.
- for(const p of plan.filter(p=>/^(input\d+x\d+|noinput)$/.test(p.label))){
+ for(const p of plan.filter(p=>/^(input\d+x\d+|noinput|check[A-Za-z0-9]+)$/.test(p.label))){
   const with_=plan.find(q=>q.label==='defaults'&&q.frame===p.frame&&q.width===p.width);
-  if(with_&&await same(p,with_))throw Error(`Capture ${p.name} is the same picture as ${with_.name}; the input reaches nothing`);
+  if(with_&&await same(p,with_))throw Error(`Capture ${p.name} is the same picture as ${with_.name}; ${p.label.startsWith('check')?'the moved controls reach':'the input reaches'} nothing`);
  }
  // A toggle has to change the picture too.
  for(const p of plan.filter(p=>/^toggle\d+$/.test(p.label))){

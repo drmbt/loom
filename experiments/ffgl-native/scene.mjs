@@ -164,7 +164,7 @@ export function compileScene(text,contract,pluginName){
  if(!Array.isArray(contract.plugins)||!contract.plugins.length)fail('interface.plugins must list at least one plugin');
  const plugin=contract.plugins.find(p=>p?.name===pluginName);
  if(!plugin)fail(`interface.plugins has no plugin named "${pluginName}"`);
- keys(plugin,['name','kind','code','output','present','controls','hostBpm','syphon','input'],'plugin');
+ keys(plugin,['name','kind','code','output','present','controls','hostBpm','syphon','input','checks'],'plugin');
  if(plugin.syphon!==undefined){
   // A name publishes this plugin's own picture; {name, plugin} publishes another plugin's picture from inside this one.
   const feed=typeof plugin.syphon==='object';
@@ -414,12 +414,22 @@ export function compileScene(text,contract,pluginName){
   if(index<0||controls[index].type==='toggle')fail(`plugin.hostBpm names "${plugin.hostBpm.node}", which is not an exported slider`);
   hostBpm={control:index,default:plugin.hostBpm.default===true};
  }
+ // Extra captures the comparison takes: the defaults with the named parameters moved. Each must
+ // match Loom and must not be the picture the defaults give, so a control that reaches nothing fails.
+ const checks=(plugin.checks??[]).map(check=>{
+  keys(check,['label','set'],'check');
+  if(typeof check.label!=='string'||!/^[A-Za-z][A-Za-z0-9]{0,23}$/.test(check.label))fail(`A check's label must be letters and digits ("${check.label}")`);
+  return {label:check.label,values:Object.entries(check.set??{}).map(([name,value])=>{
+   const index=params.findIndex(p=>p.name===name);
+   if(index<0||typeof value!=='number'||value<params[index].min||value>params[index].max)fail(`Check "${check.label}" sets "${name}" to ${value}: not a parameter of this plugin, or outside its range`);
+   return [index,value];})};
+ });
  const pkg={schemaVersion:2,profile:PROFILE,abi:PACKAGE_ABI,name:plugin.name,kind:plugin.kind,code:plugin.code??null,present:plugin.present??'none',
   output:output.resourceId,size:output.size,input:input&&{resource:input.resource,node:input.node,size:input.size},frame:{fps:projectFps(settings),randomSeed:settings.randomSeed??0,resolution:[settings.outputResolution.width,settings.outputResolution.height]},
   vertex:VERTEX,resources,passes,
   assets:assets.map(({id,file,size,format,source,node})=>({id,file,size,format,encoding:'deflate',source,node})),
   controls:controls.map(({node,type,channel,caption,min,max,step,default:d})=>({node,type,channel,name:caption,min,max,step,default:d})),
-  params,hostBpm,presets:presetsOf(graph,controls,params,report),
+  params,hostBpm,checks,presets:presetsOf(graph,controls,params,report),
   parameters:parameters.map(({node,parameter,source,program})=>({node,parameter,source,program})),
   drives:liveDrives};
  if(input&&!passes.some(p=>p.textures.some(t=>t.resourceId===input.resource)))fail(`Plugin "${plugin.name}": no pass reads the input node's picture`);

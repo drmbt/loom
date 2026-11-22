@@ -118,6 +118,32 @@
      "name": "Bloom in alpha",
      "group": "Bloom"
     }
+   ],
+   "checks": [
+    {
+     "label": "PanRight",
+     "set": {
+      "Content X": 0.5
+     }
+    },
+    {
+     "label": "PanLeft",
+     "set": {
+      "Content X": -0.5
+     }
+    },
+    {
+     "label": "PanUp",
+     "set": {
+      "Content Y": 0.5
+     }
+    },
+    {
+     "label": "PanDown",
+     "set": {
+      "Content Y": -0.5
+     }
+    }
    ]
   }
  ]
