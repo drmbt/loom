@@ -51,6 +51,13 @@ function present(source,sw,sh,w,h,fit,srgb){
  }
  return out;
 }
+/** The still an Effect's input holds in both renders (the harness draws the same one: `Host::input`).
+ *  Opaque, different in every row and column, top row first. */
+function testStill(w,h){
+ const out=new Uint8Array(w*h*4);
+ for(let y=0;y<h;y++)for(let x=0;x<w;x++){const i=(y*w+x)*4;out[i]=Math.floor(x*255/(w>1?w-1:1));out[i+1]=Math.floor(y*255/(h>1?h-1:1));out[i+2]=(((x>>6)+(y>>6))&1)?230:40;out[i+3]=255;}
+ return out;
+}
 const FFGL_TYPE={standard:10,hue:200,saturation:201,brightness:202,alpha:203,integer:13,boolean:0},FIT=['fit','fill','stretch'],FRAMES=[0,7,23];
 const random=(seed)=>()=>{seed=(seed+0x6d2b79f5)|0;let t=Math.imul(seed^(seed>>>15),1|seed);t=(t+Math.imul(t^(t>>>7),61|t))^t;return ((t^(t>>>14))>>>0)/4294967296;};
 /** Every FFGL parameter somewhere else in its range, on a value an FFGL float carries exactly. */
@@ -88,15 +95,16 @@ if(mode==='plan'){
  let instance=0;
  /** One instance walked through `frames`, capturing each. `values` are the plugin's parameters; Loom gets the controls they mean.
   *  `loom` overrides what Loom is told; `at` adds plan lines before a given frame. */
- const run=(label,w,h,values,frames,{fit=0,loom=controlsFor(pkg,values),beat=null,at={}}={})=>{
+ const run=(label,w,h,values,frames,{fit=0,loom=controlsFor(pkg,values),beat=null,at={},input=pkg.input?.size??null}={})=>{
   const id=instance++,queue=[];
+  if(input)lines.push(`input ${id} ${input[0]} ${input[1]}`);
   values.forEach((v,i)=>{if(v!==defaults[i])lines.push(`set ${id} ${i} ${v}`);});
   if(fit)lines.push(`set ${id} ${fitIndex} ${fit}`);
   if(beat!==null){lines.push(`set ${id} ${hostBpmIndex} 1`);lines.push(`beat ${id} ${beat} 0`);}
   for(let frame=0;frame<=frames.at(-1);frame++){
    const before=(at[frame]??[]).map(line=>line.replace('$id',id)).join('\n');
    const step=frames.includes(frame)?`capture ${label}-${w}x${h}-f${frame} ${w} ${h} ${frame/fps} ${id}`:`step ${id} ${w} ${h} ${frame/fps}`;
-   if(frames.includes(frame))captures.push({name:`${label}-${w}x${h}-f${frame}`,width:w,height:h,frame,state:loom,fit:FIT[fit],label});
+   if(frames.includes(frame))captures.push({name:`${label}-${w}x${h}-f${frame}`,width:w,height:h,frame,state:loom,fit:FIT[fit],label,input});
    queue.push(before?`${before}\n${step}`:step);
   }
   return {id,queue};
@@ -131,6 +139,13 @@ if(mode==='plan'){
   const after=[...a];
   for(const [index,value] of menu[pick].values)after[index]=value;
   flush(run(`preset${pick+1}`,sw,sh,a,[23],{loom:controlsFor(pkg,after),at:{0:[`set $id ${presetIndex+1} 0`],20:[`set $id ${presetIndex} ${pick+1}`]}}));
+ }
+ if(pkg.input){
+  // An Effect: the scene must see the input at the input's own size (a shader may read
+  // textureDimensions), whatever the scene's and the host's sizes are; and nothing with no input.
+  const [iw,ih]=pkg.input.size;
+  for(const size of [[Math.round(iw*0.625),Math.round(ih*1.25)],[640,360]])flush(run(`input${size[0]}x${size[1]}`,sw,sh,defaults,[7],{input:size}));
+  flush(run('noinput',sw,sh,defaults,[7],{input:null}));
  }
  for(const size of rest){
   const [w,h]=size.toLowerCase().split('x').map(Number);
@@ -169,17 +184,26 @@ if(mode==='plan'){
   pictures[node.id]=(size)=>{if(size[0]!==png.width||size[1]!==png.height)throw Error(`${node.id}: texture ${size} is not the file's ${png.width}×${png.height}`);return png.rgba;};
  }
  const states=new Map();
- for(const p of plan){const key=JSON.stringify(p.state);if(!states.has(key))states.set(key,[]);states.get(key).push(p);}
+ for(const p of plan){const key=JSON.stringify([p.state,p.input??null]);if(!states.has(key))states.set(key,[]);states.get(key).push(p);}
  let worst=0,count=0,differing=0,channels=0,kept=0;
  for(const [key,group] of states){
-  const state=JSON.parse(key);
+  const [state,input]=JSON.parse(key);
   if(state.length!==scene.controls.length)throw Error('The plan was written for another export of this scene');
   // Each state is the saved scene with its controls written through a domain command.
-  const {bus,store}=createDomainBus({registry:scene.registry,initialGraph,initialSettings:scene.settings});
+  // An Effect's input node holds the test still at the size the capture's input had (its own size is
+  // what the engine gives the scene), or an empty transparent picture when the capture had none.
+  let graphNow=initialGraph;
+  const shown={...pictures};
+  if(scene.input){
+   const node=initialGraph.nodes[scene.input.nodeId],size=input??scene.input.size;
+   graphNow={...initialGraph,nodes:{...initialGraph.nodes,[node.id]:{...node,resolution:{mode:'fixed',width:size[0],height:size[1]}}}};
+   shown[node.id]=(got)=>{if(got[0]!==size[0]||got[1]!==size[1])throw Error(`${node.id}: Loom made its media ${got}, not the input's ${size}`);return input?testStill(size[0],size[1]):new Uint8Array(size[0]*size[1]*4);};
+  }
+  const {bus,store}=createDomainBus({registry:scene.registry,initialGraph:graphNow,initialSettings:scene.settings});
   const patch=await bus.execute('graph.applyPatch',{baseRevision:store.view.getRevision(),operations:scene.controls.map((c,i)=>({op:'setParameters',nodeId:c.nodeId,parameters:{[c.valueKey]:c.type==='toggle'?state[i]>=0.5:state[i]}}))},{actor:{kind:'human',id:'ffgl-parity'},projectId:scene.document.projectId,capabilities:[]});
   if(patch.status!=='applied')throw Error(`Could not set the controls: ${JSON.stringify(patch)}`);
   const frames=[...new Set(group.map(p=>p.frame))].sort((x,y)=>x-y);
-  const result=await renderHeadless({host:nodeGpuHost(),graph:store.view.getGraph(),settings:scene.settings,fps:pkg.frame.fps,frames:frames.at(-1)+1,capture:frames,animate:true,pictures,outputNodeId:scene.plugin.output.nodeId,outputPortId:scene.plugin.output.portId,sinks:[scene.plugin.output]});
+  const result=await renderHeadless({host:nodeGpuHost(),graph:store.view.getGraph(),settings:scene.settings,fps:pkg.frame.fps,frames:frames.at(-1)+1,capture:frames,animate:true,pictures:shown,outputNodeId:scene.plugin.output.nodeId,outputPortId:scene.plugin.output.portId,sinks:[scene.plugin.output]});
   // A finding about a payload a slot only keeps (`retained`) is about the file, not about these frames:
   // the render never read it. It is counted and said; everything else Loom reports stops the comparison.
   kept=Math.max(kept,result.findings.filter(f=>f.retained).length);
@@ -199,7 +223,9 @@ if(mode==='plan'){
    }
    channels+=p.width*p.height*4;
    // A black frame matches a black frame: the comparison has to be looking at a picture.
-   if(lit<p.width*p.height*0.05&&!/^toggle\d+$/.test(p.label))throw Error(`Capture ${p.name}: Loom's frame is almost entirely black (${lit} lit channels); nothing would be proven`);
+   // A toggle may black the scene out, a preset may be a dark look (each is checked below to have
+   // changed the picture), and an Effect with no input may legitimately show nothing.
+   if(lit<p.width*p.height*0.05&&!/^(toggle\d+|preset\d+|noinput)$/.test(p.label))throw Error(`Capture ${p.name}: Loom's frame is almost entirely black (${lit} lit channels); nothing would be proven`);
    if(frameWorst>TOLERANCE)throw Error(`Parity failed for ${p.name}: worst channel difference ${frameWorst}/255`);
    worst=Math.max(worst,frameWorst);count++;
   }
@@ -207,6 +233,11 @@ if(mode==='plan'){
  // The sweeps have to be different pictures, or moving every control proved nothing.
  const first=(label)=>plan.find(p=>p.label===label),same=async(x,y)=>Buffer.compare(await readFile(resolve(captureDir,`${x.name}.rgba`)),await readFile(resolve(captureDir,`${y.name}.rgba`)))===0;
  for(const [x,y] of [['defaults','sweepA'],['sweepA','pairB'],['pairB','pairC']])if(first(x)&&first(y)&&await same(first(x),first(y)))throw Error(`The ${x} and ${y} captures are the same picture; the controls reach nothing`);
+ // An Effect's input has to reach the picture: another input size, or none, is another picture.
+ for(const p of plan.filter(p=>/^(input\d+x\d+|noinput)$/.test(p.label))){
+  const with_=plan.find(q=>q.label==='defaults'&&q.frame===p.frame&&q.width===p.width);
+  if(with_&&await same(p,with_))throw Error(`Capture ${p.name} is the same picture as ${with_.name}; the input reaches nothing`);
+ }
  // A toggle has to change the picture too.
  for(const p of plan.filter(p=>/^toggle\d+$/.test(p.label))){
   const off=plan.find(q=>q.label==='hostbpm'&&q.frame===p.frame&&q.width===p.width);

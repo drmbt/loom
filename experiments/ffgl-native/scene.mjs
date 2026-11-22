@@ -22,9 +22,11 @@ import {decodePng} from './png.mjs';
 
 export const PROFILE='loom-native-2';
 /** Bumped whenever the engine must read the package differently. The engine refuses any other value. */
-export const PACKAGE_ABI=4;
+export const PACKAGE_ABI=5;
 /** Nodes the engine executes. */
 export const RENDER_NODES=new Set(['customWgsl','customWgslMulti','blur','add','null','output','movieFileIn']);
+/** Nodes an Effect's interface may name as its input: the host's texture stands where their picture was. */
+export const INPUT_NODES=new Set(['movieFileIn','syphonIn']);
 /** Nodes that become plugin parameters. */
 export const CONTROL_NODES=new Set(['slider','toggle']);
 /** Authoring-only nodes, dropped at export by rule (SPEC-VN decision 3). */
@@ -162,7 +164,7 @@ export function compileScene(text,contract,pluginName){
  if(!Array.isArray(contract.plugins)||!contract.plugins.length)fail('interface.plugins must list at least one plugin');
  const plugin=contract.plugins.find(p=>p?.name===pluginName);
  if(!plugin)fail(`interface.plugins has no plugin named "${pluginName}"`);
- keys(plugin,['name','kind','code','output','present','controls','hostBpm','syphon'],'plugin');
+ keys(plugin,['name','kind','code','output','present','controls','hostBpm','syphon','input'],'plugin');
  if(plugin.syphon!==undefined){
   // A name publishes this plugin's own picture; {name, plugin} publishes another plugin's picture from inside this one.
   const feed=typeof plugin.syphon==='object';
@@ -173,7 +175,11 @@ export function compileScene(text,contract,pluginName){
  }
  if(plugin.present!==undefined&&!['none','srgb'].includes(plugin.present))fail(`Plugin "${plugin.name}": present "${plugin.present}" must be "none" or "srgb"`);
  keys(plugin.output,['nodeId','portId'],'plugin.output');
- if(plugin.kind!=='source')fail(`Plugin "${plugin.name}": kind "${plugin.kind}" is not built yet (only "source")`);
+ if(plugin.kind!=='source'&&plugin.kind!=='effect')fail(`Plugin "${plugin.name}": kind "${plugin.kind}" must be "source" or "effect"`);
+ // An Effect names the node whose picture the host's input texture replaces. A Source has no input.
+ if((plugin.kind==='effect')!==(plugin.input!==undefined))fail(`Plugin "${plugin.name}": ${plugin.kind==='effect'?'an effect needs "input": {"nodeId": …}, the node the layer\'s video replaces':'a source takes no "input"'}`);
+ if(plugin.input!==undefined)keys(plugin.input,['nodeId'],'plugin.input');
+ const inputId=plugin.input?.nodeId??null;
  if(plugin.code!==undefined&&(typeof plugin.code!=='string'||!/^[A-Za-z0-9]{4}$/.test(plugin.code)))fail(`Plugin "${plugin.name}": code "${plugin.code}" must be four letters or digits (the FFGL plugin id)`);
  if(typeof plugin.name!=='string'||!/^[ -~]{1,16}$/.test(plugin.name))fail(`Plugin name "${plugin.name}" must be 1..16 printable ASCII characters (FFGL's limit)`);
 
@@ -182,11 +188,13 @@ export function compileScene(text,contract,pluginName){
  const refused=[];
  for(const node of Object.values(graph.nodes)){
   if(DROPPED_NODES.has(node.type))report.dropped.push({node:node.label??node.id,type:node.type,why:'authoring-only node'});
+  else if(node.id===inputId&&INPUT_NODES.has(node.type))continue;
   else if(!RENDER_NODES.has(node.type)&&!CONTROL_NODES.has(node.type))refused.push(where(node));
   if(RENDER_NODES.has(node.type)&&node.state&&Object.keys(node.state).length)refused.push(`${where(node)}: node state`);
  }
  if(refused.length)fail(`Nodes outside the ${PROFILE} profile:\n  ${refused.join('\n  ')}`);
  if(!graph.nodes[plugin.output.nodeId])fail(`Plugin "${plugin.name}": output node "${plugin.output.nodeId}" does not exist`);
+ if(inputId!==null&&!INPUT_NODES.has(graph.nodes[inputId]?.type))fail(`Plugin "${plugin.name}": input node "${inputId}" must be a Movie File In or a Syphon In in the scene`);
 
  // `controls` is what the engine evaluates (one per Slider or Toggle); `params` is the FFGL
  // parameter list in index order. A plain entry is one parameter. A colour entry is Resolume's
@@ -259,7 +267,7 @@ export function compileScene(text,contract,pluginName){
  // Every driven parameter, lowered. The expression is kept; nothing is frozen.
  const parameters=[];
  for(const node of Object.values(graph.nodes)){
-  if(!RENDER_NODES.has(node.type)||!upstream.has(node.id))continue;
+  if(!RENDER_NODES.has(node.type)||!upstream.has(node.id)||node.id===inputId)continue;
   for(const [key,slot] of Object.entries(node.parameters)){
    if(!isParameterSlot(slot)||slot.mode==='static')continue;
    const source=slot.bindings?.expression?.source;
@@ -319,9 +327,25 @@ export function compileScene(text,contract,pluginName){
 
  const nodeOf=(pass)=>graph.nodes[pass.nodeId];
  const assets=[],bakedTargets=new Set();
+ // The input node's own pass copies its media into a target. The engine fills that target from the
+ // host's texture instead, at the host texture's size, so the pass and its media are left out.
+ let input=null;
  for(const pass of selected.passes){
   const node=nodeOf(pass);
-  if(node?.type!=='movieFileIn')continue;
+  if(node?.id!==inputId)continue;
+  const media=baseline.resources.find(r=>r.kind==='externalTexture'&&(pass.textures??[]).some(t=>t.resourceId===r.id));
+  const target=baseline.resources.find(r=>r.id===pass.target);
+  if(input||!media||!target||(pass.textures??[]).length!==1)fail(`${where(node)}: the input node's media pass has an unexpected shape`);
+  // The engine hands the scene the host's picture as it is. A Movie File In that fits or crops its image would not.
+  if(node.type==='movieFileIn'&&node.parameters.imageFit!=='stretch')fail(`${where(node)}: as an effect's input its Image fit must be Stretch (the layer's video is taken whole)`);
+  if(media.format!=='rgba8unorm-srgb')fail(`${where(node)}: its media is ${media.format}; the host's texture is read as 8-bit sRGB`);
+  if(target.format!=='rgba16float')fail(`${where(node)} holds its picture as ${target.format}; as an effect's input it must be rgba16float (leave its format at the working format)`);
+  input={resource:target.id,node:node.label??node.id,nodeId:node.id,size:target.size};
+ }
+ if(inputId!==null&&!input)fail(`Plugin "${plugin.name}": input node "${inputId}" does not reach the output, so the layer's video would show nowhere`);
+ for(const pass of selected.passes){
+  const node=nodeOf(pass);
+  if(node?.type!=='movieFileIn'||node.id===inputId)continue;
   const file=node.parameters.file;
   if(typeof file!=='string'||!file)fail(`${where(node)} has no still image; a movie source needs a file`);
   if(extname(file).toLowerCase()!=='.png')fail(`${where(node)} reads "${file}"; the profile packages PNG stills only (movies and other formats are refused)`);
@@ -333,7 +357,7 @@ export function compileScene(text,contract,pluginName){
  }
  const passes=[];
  for(const pass of selected.passes){
-  if(bakedTargets.has(pass.target))continue;
+  if(bakedTargets.has(pass.target)||pass.target===input?.resource)continue;
   const node=nodeOf(pass),label=node?where(node):pass.id;
   if(pass.kind!=='effect')fail(`Pass ${pass.id} of ${label} is a "${pass.kind}" pass; the profile runs fullscreen effect passes`);
   const extra=Object.keys(pass).filter(k=>!PASS_FIELDS.has(k));
@@ -379,7 +403,7 @@ export function compileScene(text,contract,pluginName){
   const more=Object.keys(r).filter(k=>!['kind','id','size','format','label'].includes(k));
   if(more.length)fail(`Target ${r.id} uses ${more.join(', ')}, which the profile does not allocate`);
   if(!['rgba16float','rgba8unorm'].includes(r.format))fail(`Target ${r.id} is ${r.format}; the profile renders rgba16float and rgba8unorm`);
-  resources.push({id:r.id,kind:bakedTargets.has(r.id)?'asset':'target',size:r.size,format:r.format});
+  resources.push({id:r.id,kind:r.id===input?.resource?'host':bakedTargets.has(r.id)?'asset':'target',size:r.size,format:r.format});
  }
  if(baseline.feedback?.length&&baseline.feedback.some(f=>JSON.stringify(f).includes(output.resourceId)))fail('The output depends on a feedback loop; feedback is outside the profile');
  const liveDrives=drives.filter(d=>live.has(d.pass)&&passes.some(p=>p.id===d.pass));
@@ -391,14 +415,15 @@ export function compileScene(text,contract,pluginName){
   hostBpm={control:index,default:plugin.hostBpm.default===true};
  }
  const pkg={schemaVersion:2,profile:PROFILE,abi:PACKAGE_ABI,name:plugin.name,kind:plugin.kind,code:plugin.code??null,present:plugin.present??'none',
-  output:output.resourceId,size:output.size,frame:{fps:projectFps(settings),randomSeed:settings.randomSeed??0,resolution:[settings.outputResolution.width,settings.outputResolution.height]},
+  output:output.resourceId,size:output.size,input:input&&{resource:input.resource,node:input.node,size:input.size},frame:{fps:projectFps(settings),randomSeed:settings.randomSeed??0,resolution:[settings.outputResolution.width,settings.outputResolution.height]},
   vertex:VERTEX,resources,passes,
   assets:assets.map(({id,file,size,format,source,node})=>({id,file,size,format,encoding:'deflate',source,node})),
   controls:controls.map(({node,type,channel,caption,min,max,step,default:d})=>({node,type,channel,name:caption,min,max,step,default:d})),
   params,hostBpm,presets:presetsOf(graph,controls,params,report),
   parameters:parameters.map(({node,parameter,source,program})=>({node,parameter,source,program})),
   drives:liveDrives};
- return {package:pkg,assets,report,document,settings,registry,baseline,controls,plugin};
+ if(input&&!passes.some(p=>p.textures.some(t=>t.resourceId===input.resource)))fail(`Plugin "${plugin.name}": no pass reads the input node's picture`);
+ return {package:pkg,assets,report,document,settings,registry,baseline,controls,plugin,input};
 }
 
 /** One Loom render of the baseline plan with the real stills, read back per baked target. Needs Dawn. */

@@ -1,0 +1,119 @@
+{
+ "schemaVersion": 2,
+ "plugins": [
+  {
+   "name": "Billboard FX",
+   "code": "LHBX",
+   "kind": "effect",
+   "input": {
+    "nodeId": "poster"
+   },
+   "output": {
+    "nodeId": "straightNull",
+    "portId": "out"
+   },
+   "present": "srgb",
+   "controls": [
+    {
+     "node": "slider_bbAssemble",
+     "name": "Assemble"
+    },
+    {
+     "node": "slider_bbAspect",
+     "name": "Aspect",
+     "group": "Shape"
+    },
+    {
+     "node": "slider_bbSize",
+     "name": "Board size",
+     "group": "Shape"
+    },
+    {
+     "node": "slider_bbPosX",
+     "name": "Position X",
+     "group": "Shape"
+    },
+    {
+     "node": "slider_bbHeight",
+     "name": "Height",
+     "group": "Shape"
+    },
+    {
+     "node": "slider_bbYaw",
+     "name": "Yaw",
+     "group": "Shape"
+    },
+    {
+     "node": "slider_bbRoll",
+     "name": "Roll",
+     "group": "Shape"
+    },
+    {
+     "node": "slider_bbPersp",
+     "name": "Perspective",
+     "group": "Shape"
+    },
+    {
+     "node": "slider_bbOffsetX",
+     "name": "Content X",
+     "group": "Content"
+    },
+    {
+     "node": "slider_bbOffsetY",
+     "name": "Content Y",
+     "group": "Content"
+    },
+    {
+     "node": "slider_bbBrightness",
+     "name": "Brightness",
+     "group": "Screen"
+    },
+    {
+     "node": "slider_bbBlack",
+     "name": "Black level",
+     "group": "Screen"
+    },
+    {
+     "node": "slider_bbGrid",
+     "name": "Module grid",
+     "group": "Screen"
+    },
+    {
+     "node": "slider_bbAngle",
+     "name": "Angle falloff",
+     "group": "Screen"
+    },
+    {
+     "node": "slider_bbSpill",
+     "name": "Screen spill",
+     "group": "Structure"
+    },
+    {
+     "node": "slider_bbTone",
+     "name": "Structure tone",
+     "group": "Structure"
+    },
+    {
+     "node": "slider_bbFill",
+     "name": "Night ambient",
+     "group": "Structure"
+    },
+    {
+     "node": "slider_bbGlow",
+     "name": "Bloom",
+     "group": "Bloom"
+    },
+    {
+     "node": "slider_bbGlowThreshold",
+     "name": "Bloom threshold",
+     "group": "Bloom"
+    },
+    {
+     "node": "slider_bbGlowAlpha",
+     "name": "Bloom in alpha",
+     "group": "Bloom"
+    }
+   ]
+  }
+ ]
+}
