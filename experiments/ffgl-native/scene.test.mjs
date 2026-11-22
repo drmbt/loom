@@ -66,7 +66,24 @@ test('stills are PNG only, and names must fit FFGL',()=>{
  assert.throws(()=>compileScene(f.text,long,'Seventeen letters'),/1\.\.16 printable ASCII/);
  assert.throws(()=>compileScene(f.text,{...f.contract,extra:1},f.plugin),/Unsupported interface fields: extra/);
  assert.throws(()=>compileScene(f.text,{...f.contract,plugins:[{...f.contract.plugins[0],code:'TOOLONG'}]},f.plugin),/must be four letters or digits/);
- assert.throws(()=>compileScene(f.text,{...f.contract,plugins:[{...f.contract.plugins[0],kind:'effect'}]},f.plugin),/not built yet/);
+ // An Effect names the node the host's texture replaces; a Source may not.
+ const as=(extra)=>({...f.contract,plugins:[{...f.contract.plugins[0],...extra}]});
+ assert.throws(()=>compileScene(f.text,as({kind:'effect'}),f.plugin),/an effect needs "input"/);
+ assert.throws(()=>compileScene(f.text,as({input:{nodeId:'card'}}),f.plugin),/a source takes no "input"/);
+ assert.throws(()=>compileScene(f.text,as({kind:'filter'}),f.plugin),/must be "source" or "effect"/);
+ assert.throws(()=>compileScene(f.text,as({kind:'effect',input:{nodeId:'grade'}}),f.plugin),/must be a Movie File In or a Syphon In/);
+});
+test('an effect: the host texture stands where the input node\'s picture was',()=>{
+ const f=sceneFixture(),contract={...f.contract,plugins:[{...f.contract.plugins[0],kind:'effect',input:{nodeId:'card'}}]};
+ const {package:p}=compileScene(f.text,contract,f.plugin);
+ assert.equal(p.kind,'effect');
+ assert.deepEqual(p.input,{resource:'target:card:out',node:'movie_card',size:[48,32]});
+ // No still is packed for it, its media pass is gone, and the passes that read it still do.
+ assert.deepEqual(p.assets,[]);
+ assert.equal(p.resources.find(r=>r.id==='target:card:out').kind,'host');
+ assert.deepEqual(p.passes.map(x=>x.nodeId),['grade','soft','soft','mix']);
+ assert.ok(p.passes[0].textures.some(t=>t.resourceId==='target:card:out'));
+ assert.ok(p.resources.every(r=>r.kind!=='externalTexture'));
 });
 test('a control list fixes the order, the names and the types; a plugin list wins over the shared one',()=>{
  const own=(controls,more={})=>({...f.contract,plugins:[{...f.contract.plugins[0],controls,...more}]});
