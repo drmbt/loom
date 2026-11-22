@@ -162,7 +162,15 @@ export function compileScene(text,contract,pluginName){
  if(!Array.isArray(contract.plugins)||!contract.plugins.length)fail('interface.plugins must list at least one plugin');
  const plugin=contract.plugins.find(p=>p?.name===pluginName);
  if(!plugin)fail(`interface.plugins has no plugin named "${pluginName}"`);
- keys(plugin,['name','kind','code','output','present','controls','hostBpm'],'plugin');
+ keys(plugin,['name','kind','code','output','present','controls','hostBpm','syphon'],'plugin');
+ if(plugin.syphon!==undefined){
+  // A name publishes this plugin's own picture; {name, plugin} publishes another plugin's picture from inside this one.
+  const feed=typeof plugin.syphon==='object';
+  if(feed)keys(plugin.syphon,['name','plugin'],'plugin.syphon');
+  const name=feed?plugin.syphon.name:plugin.syphon;
+  if(typeof name!=='string'||!/^[ -~]{1,32}$/.test(name))fail(`Plugin "${plugin.name}": the syphon name must be 1 to 32 plain ASCII characters`);
+  if(feed&&(plugin.syphon.plugin===plugin.name||!contract.plugins.some(p=>p?.name===plugin.syphon.plugin)))fail(`Plugin "${plugin.name}": syphon.plugin must name another plugin of this interface`);
+ }
  if(plugin.present!==undefined&&!['none','srgb'].includes(plugin.present))fail(`Plugin "${plugin.name}": present "${plugin.present}" must be "none" or "srgb"`);
  keys(plugin.output,['nodeId','portId'],'plugin.output');
  if(plugin.kind!=='source')fail(`Plugin "${plugin.name}": kind "${plugin.kind}" is not built yet (only "source")`);

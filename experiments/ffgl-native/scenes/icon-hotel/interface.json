@@ -5,6 +5,7 @@
       "name": "Hotel Facade",
       "code": "LHF1",
       "kind": "source",
+      "syphon": { "name": "Hotel IMAG", "plugin": "Hotel IMAG" },
       "output": { "nodeId": "final", "portId": "out" },
       "present": "srgb",
       "hostBpm": { "node": "slider_bpm", "default": false },
