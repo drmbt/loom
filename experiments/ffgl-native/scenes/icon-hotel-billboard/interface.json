@@ -54,6 +54,11 @@
      "group": "Shape"
     },
     {
+     "node": "slider_bbFit",
+     "name": "Content fit",
+     "group": "Content"
+    },
+    {
      "node": "slider_bbOffsetX",
      "name": "Content X",
      "group": "Content"
