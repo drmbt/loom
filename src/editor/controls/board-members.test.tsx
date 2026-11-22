@@ -326,7 +326,9 @@ describe("VN152 — a preset button's right-click menu", () => {
     const before = undoDepth(runtime);
     await choose(openOn(button("hard")), "Rename…");
     expect(field().getAttribute("data-preset-rename")).toBe("hard");
-    expect(document.activeElement).toBe(field());
+    // Whether it is FOCUSED once the menu has closed is `preset-rename.spec.ts`'s to say, in
+    // Chromium: jsdom drops focus silently when the menu leaves the DOM, where a browser runs the
+    // menu's teardown, and this assertion passed here while the field closed in the real app.
     expect(field().value).toBe("hard");
 
     await type(field(), "night", "Enter");

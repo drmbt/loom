@@ -262,10 +262,19 @@ function PresetStrip({ node, rect, cells, bus, invocation, view, name }: BoardMe
 }
 
 /**
- * VN152 — a preset button as a name field, `NameEditor`'s rules (`node-view.tsx`): it opens
- * focused with the name selected; Enter runs the rename and closes on success, a refusal stays
- * open and is said on the strip; Escape and blur close having renamed nothing. An unchanged or
- * empty name closes without a command, so no undo entry is made for an edit that did not happen.
+ * VN152 — a preset button as a name field. It opens focused with the name selected; Enter runs
+ * the rename and closes on success, and a refusal stays open and is said on the strip. Escape,
+ * or a press anywhere outside the field, closes it having renamed nothing. An unchanged or empty
+ * name closes without a command, so no undo entry is made for an edit that did not happen.
+ *
+ * A BLUR IS NOT A CANCEL, unlike `NameEditor`'s title field. This one opens from a menu row,
+ * and mounts while the menu is still open. The menu is modal: its focus trap sends every focus
+ * outside it straight back to the menu item, and when the menu unmounts, focus drops to the
+ * page (measured in Chromium, `preset-rename.spec.ts`: input → menuitem eight times, then
+ * menuitem → nothing). A field that read that as cancel was gone before it could be typed into
+ * (Vincent, desktop app). So it closes only on what the person does — a key, or a press
+ * outside it — and the first time focus leaves for NOWHERE before any key, which is the menu's
+ * teardown, it takes focus. Focus moved somewhere real (a Tab) is the person's and left alone.
  */
 function PresetNameField({
   name,
@@ -278,17 +287,35 @@ function PresetNameField({
 }) {
   const input = useRef<HTMLInputElement | null>(null);
   const [draft, setDraft] = useState(name);
-  // Enter commits, and the field leaving the DOM then blurs it: one settle per session.
-  const settling = useRef(false);
+  const close = useRef(onClose);
+  close.current = onClose;
   useEffect(() => {
-    // One task later: the field opens from a menu row, and the menu's own teardown moves focus
-    // after the field has mounted (the host's B/T709 note). Focused at once, it was blurred, and
-    // blur closes it — measured: the field was gone before it could be typed into.
-    const at = setTimeout(() => {
+    const take = (): void => {
       input.current?.focus();
       input.current?.select();
-    }, 0);
-    return () => clearTimeout(at);
+    };
+    take();
+    // The menu's teardown: focus leaving for nowhere, before the person has pressed a key.
+    const teardown = (event: FocusEvent): void => {
+      if (event.relatedTarget !== null) return;
+      stopWatching();
+      take();
+    };
+    const stopWatching = (): void => {
+      document.removeEventListener("focusout", teardown, true);
+      input.current?.removeEventListener("keydown", stopWatching);
+    };
+    document.addEventListener("focusout", teardown, true);
+    input.current?.addEventListener("keydown", stopWatching);
+    // Added after mount, so the press that chose the menu row is not one of them.
+    const outside = (event: PointerEvent): void => {
+      if (input.current !== null && event.target instanceof Node && !input.current.contains(event.target)) close.current();
+    };
+    document.addEventListener("pointerdown", outside, true);
+    return () => {
+      stopWatching();
+      document.removeEventListener("pointerdown", outside, true);
+    };
   }, []);
   const commit = async (): Promise<void> => {
     const to = draft.trim();
@@ -296,9 +323,7 @@ function PresetNameField({
       onClose();
       return;
     }
-    settling.current = true;
-    const done = await onCommit(to);
-    if (!done) settling.current = false;
+    await onCommit(to);
   };
   return (
     <input
@@ -313,9 +338,6 @@ function PresetNameField({
         event.stopPropagation();
         if (event.key === "Enter") void commit();
         else if (event.key === "Escape") onClose();
-      }}
-      onBlur={() => {
-        if (!settling.current) onClose();
       }}
     />
   );
